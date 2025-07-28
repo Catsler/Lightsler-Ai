@@ -1,0 +1,32 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "8102af9807fd9df0b322a44f500a1d0e"
+name = "Lightsler Ai"
+handle = "lightsler-ai"
+application_url = "https://passengers-pros-want-generating.trycloudflare.com"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
+
+[auth]
+redirect_urls = ["https://passengers-pros-want-generating.trycloudflare.com/auth/callback", "https://passengers-pros-want-generating.trycloudflare.com/auth/shopify/callback", "https://passengers-pros-want-generating.trycloudflare.com/api/auth/callback"]
+
+[pos]
+embedded = false

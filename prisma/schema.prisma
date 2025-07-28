@@ -1,0 +1,94 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+// 店铺信息
+model Shop {
+  id          String   @id
+  domain      String   @unique
+  accessToken String
+  languages   Language[]
+  resources   Resource[]
+  translations Translation[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 支持的语言
+model Language {
+  id       String @id @default(cuid())
+  code     String // zh-CN, en, fr等
+  name     String
+  shopId   String
+  shop     Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  isActive Boolean @default(true)
+  
+  @@unique([shopId, code])
+}
+
+// 待翻译资源
+model Resource {
+  id           String   @id @default(cuid())
+  shopId       String
+  resourceType String   // product, collection
+  resourceId   String   // Shopify资源ID
+  title        String
+  description  String?
+  seoTitle     String?
+  seoDescription String?
+  status       String   // pending, processing, completed
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  translations Translation[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([shopId, resourceType, resourceId])
+}
+
+// 翻译结果
+model Translation {
+  id         String   @id @default(cuid())
+  resourceId String
+  shopId     String
+  language   String
+  titleTrans String?
+  descTrans  String?
+  seoTitleTrans String?
+  seoDescTrans String?
+  status     String   // pending, completed, failed
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([resourceId, language])
+}
