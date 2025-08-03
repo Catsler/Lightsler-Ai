@@ -14,6 +14,7 @@ const GET_PRODUCTS_QUERY = `
           title
           description
           descriptionHtml
+          handle
           seo {
             title
             description
@@ -38,6 +39,7 @@ const GET_COLLECTIONS_QUERY = `
           title
           description
           descriptionHtml
+          handle
           seo {
             title
             description
@@ -150,6 +152,7 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
         title: product.title,
         description: product.description || '',
         descriptionHtml: product.descriptionHtml || '',
+        handle: product.handle || '',
         seoTitle: product.seo?.title || '',
         seoDescription: product.seo?.description || '',
         resourceType: 'product'
@@ -230,6 +233,7 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
         title: collection.title,
         description: collection.description || '',
         descriptionHtml: collection.descriptionHtml || '',
+        handle: collection.handle || '',
         seoTitle: collection.seo?.title || '',
         seoDescription: collection.seo?.description || '',
         resourceType: 'collection'
@@ -328,6 +332,9 @@ export async function updateProductTranslation(admin, productGid, translations, 
       }
     }
 
+    // 添加Handle翻译
+    addHandleTranslationForProduct(translations, translatableContent, translationInputs, targetLocale);
+
     if (translationInputs.length === 0) {
       console.log('没有找到可翻译的内容，跳过翻译注册');
       return { success: true, message: '没有可翻译的内容' };
@@ -369,6 +376,38 @@ export async function updateProductTranslation(admin, productGid, translations, 
   } catch (error) {
     console.error('产品翻译注册过程中发生错误:', error);
     throw error;
+  }
+}
+
+// 为产品添加handle翻译支持
+function addHandleTranslationForProduct(translations, translatableContent, translationInputs, targetLocale) {
+  if (translations.handleTrans) {
+    const handleContent = translatableContent.find(content => content.key === 'handle');
+    if (handleContent) {
+      translationInputs.push({
+        locale: targetLocale,
+        key: 'handle',
+        value: translations.handleTrans,
+        translatableContentDigest: handleContent.digest
+      });
+      console.log('添加Handle翻译:', translations.handleTrans);
+    }
+  }
+}
+
+// 为集合添加handle翻译支持
+function addHandleTranslationForCollection(translations, translatableContent, translationInputs, targetLocale) {
+  if (translations.handleTrans) {
+    const handleContent = translatableContent.find(content => content.key === 'handle');
+    if (handleContent) {
+      translationInputs.push({
+        locale: targetLocale,
+        key: 'handle',
+        value: translations.handleTrans,
+        translatableContentDigest: handleContent.digest
+      });
+      console.log('添加Collection Handle翻译:', translations.handleTrans);
+    }
   }
 }
 
@@ -456,6 +495,9 @@ export async function updateCollectionTranslation(admin, collectionGid, translat
         });
       }
     }
+
+    // 添加Handle翻译
+    addHandleTranslationForCollection(translations, translatableContent, translationInputs, targetLocale);
 
     if (translationInputs.length === 0) {
       console.log('没有找到可翻译的内容，跳过翻译注册');

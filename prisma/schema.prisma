@@ -64,6 +64,7 @@ model Resource {
   title        String
   description  String?  // 纯文本描述（无HTML）
   descriptionHtml String? // 富文本描述（包含HTML、视频等）
+  handle       String?  // URL handle
   seoTitle     String?
   seoDescription String?
   status       String   // pending, processing, completed
@@ -83,6 +84,7 @@ model Translation {
   language   String
   titleTrans String?
   descTrans  String?
+  handleTrans String? // URL handle 翻译
   seoTitleTrans String?
   seoDescTrans String?
   status     String   // pending, completed, failed

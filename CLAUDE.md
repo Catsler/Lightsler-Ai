@@ -38,6 +38,8 @@ npm run env             # 管理环境变量
 node test-setup.js      # 测试应用配置
 node simple-test.js     # 运行简单测试
 node check-status.js    # 检查应用状态
+npm run dev             # 开发模式（自动监听文件变化）
+open http://localhost:3000/app  # 打开应用界面
 ```
 
 ### Redis操作（可选队列功能）
@@ -81,7 +83,13 @@ app/
 - `POST /api/translate` - 同步翻译
 - `POST /api/translate-queue` - 异步翻译（需要Redis）
 - `GET /api/status` - 获取状态信息
+- `GET /api/config` - 获取配置信息
 - `POST /api/clear` - 清理数据
+
+### 测试页面
+- `/app` - 主应用界面（嵌入式）
+- `/test/translation` - 翻译功能测试页面
+- 通过 `open http://localhost:3000/app` 访问
 
 ## 开发注意事项
 
@@ -89,8 +97,10 @@ app/
 确保配置以下必需的环境变量：
 - `SHOPIFY_API_KEY` - Shopify应用API密钥
 - `SHOPIFY_API_SECRET` - Shopify应用密钥
+- `GPT_API_URL` - GPT翻译API地址（默认：https://api-gpt-ge.apifox.cn）
 - `GPT_API_KEY` - GPT翻译API密钥（推荐）
-- `REDIS_URL` - Redis连接URL（可选）
+- `REDIS_URL` - Redis连接URL（可选，用于任务队列）
+- `DATABASE_URL` - 数据库连接URL（默认：file:dev.sqlite）
 
 ### 代码风格
 - 使用2个空格缩进
@@ -109,12 +119,31 @@ app/
 - 翻译失败会记录到数据库并返回详细错误信息
 - Redis连接失败会自动降级到内存队列
 
+## 数据模型结构
+
+### 核心数据表
+- **Session** - Shopify会话存储
+- **Shop** - 店铺信息
+- **Resource** - 待翻译资源（产品/集合）
+- **Translation** - 翻译结果记录
+- **Language** - 支持的语言列表
+
+### 数据库操作
+```bash
+npx prisma studio    # 打开数据库管理界面
+npx prisma db push   # 推送schema变更（开发环境）
+npx prisma reset     # 重置数据库（删除所有数据）
+```
+
 ## 任务完成检查
 
 完成开发任务后，请执行以下检查：
 1. 运行 `npm run lint` 确保代码质量
 2. 运行 `npm run build` 确保构建成功
 3. 如修改数据模型，运行 `npx prisma migrate dev`
-4. 测试相关功能是否正常工作
+4. 测试相关功能是否正常工作：
+   - 通过 `/app` 访问主界面
+   - 测试扫描功能
+   - 测试翻译功能
 5. 检查TypeScript类型错误（IDE自动检查）
 6. 如果添加新的Shopify权限，运行 `npm run deploy` 更新配置

@@ -58,6 +58,7 @@ export async function saveResources(shopId, resources) {
         title: resource.title,
         description: resource.description,
         descriptionHtml: resource.descriptionHtml,
+        handle: resource.handle,
         seoTitle: resource.seoTitle,
         seoDescription: resource.seoDescription,
         status: 'pending'
@@ -69,6 +70,7 @@ export async function saveResources(shopId, resources) {
         title: resource.title,
         description: resource.description,
         descriptionHtml: resource.descriptionHtml,
+        handle: resource.handle,
         seoTitle: resource.seoTitle,
         seoDescription: resource.seoDescription,
         status: 'pending'
@@ -136,6 +138,7 @@ export async function saveTranslation(resourceId, shopId, language, translations
     update: {
       titleTrans: translations.titleTrans,
       descTrans: translations.descTrans,
+      handleTrans: translations.handleTrans,
       seoTitleTrans: translations.seoTitleTrans,
       seoDescTrans: translations.seoDescTrans,
       status: 'completed'
@@ -146,6 +149,7 @@ export async function saveTranslation(resourceId, shopId, language, translations
       language: language,
       titleTrans: translations.titleTrans,
       descTrans: translations.descTrans,
+      handleTrans: translations.handleTrans,
       seoTitleTrans: translations.seoTitleTrans,
       seoDescTrans: translations.seoDescTrans,
       status: 'completed'

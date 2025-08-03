@@ -48,6 +48,188 @@ function getLanguageName(langCode) {
  * @param {number} retryCount - 当前重试次数
  * @returns {Promise<string>} 翻译结果
  */
+// 品牌词和专有词词库（不翻译的词汇）
+const BRAND_WORDS = new Set([
+  'shopify', 'apple', 'nike', 'adidas', 'google', 'microsoft', 'samsung',
+  'iphone', 'android', 'macbook', 'ipad', 'xbox', 'playstation', 'nintendo',
+  'coca-cola', 'pepsi', 'starbucks', 'mcdonalds', 'kfc',
+  // 可以根据需要添加更多品牌词
+]);
+
+// 语言特定的断句规则
+const SEGMENTATION_RULES = {
+  'zh-CN': {
+    // 中文：按词语单位断句，每段2-4个字
+    segmentLength: 3,
+    connector: '—',
+    wordPattern: /[\u4e00-\u9fff]+/g
+  },
+  'ja': {
+    // 日文：类似中文，但稍短
+    segmentLength: 2,
+    connector: '—',
+    wordPattern: /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]+/g
+  },
+  'ko': {
+    // 韩文：按音节单位
+    segmentLength: 2,
+    connector: '—',
+    wordPattern: /[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]+/g
+  },
+  'default': {
+    // 其他语言：按单词单位，每段1-2个单词
+    segmentLength: 1,
+    connector: '-',
+    wordPattern: /\b\w+\b/g
+  }
+};
+
+// 标准化URL handle格式
+function normalizeHandle(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af—-]/g, '') // 保留字母、数字、中日韩文字和连字符
+    .replace(/\s+/g, '-') // 空格替换为连字符
+    .replace(/—+/g, '-') // 长连字符替换为短连字符
+    .replace(/-+/g, '-') // 多个连字符合并为一个
+    .replace(/^-|-$/g, ''); // 移除开头和结尾的连字符
+}
+
+// 检查是否为品牌词
+function isBrandWord(word) {
+  return BRAND_WORDS.has(word.toLowerCase());
+}
+
+// 智能分词和断句
+function intelligentSegmentation(text, targetLang) {
+  const rules = SEGMENTATION_RULES[targetLang] || SEGMENTATION_RULES['default'];
+  const words = text.match(rules.wordPattern) || [text];
+  
+  // 按语言规则分组
+  const segments = [];
+  for (let i = 0; i < words.length; i += rules.segmentLength) {
+    const segment = words.slice(i, i + rules.segmentLength).join('');
+    if (segment.trim()) {
+      segments.push(segment);
+    }
+  }
+  
+  return segments.join(rules.connector);
+}
+
+export async function translateUrlHandle(handle, targetLang, retryCount = 0) {
+  if (!handle || !handle.trim()) {
+    return handle;
+  }
+
+  // 如果没有配置API密钥，返回原handle
+  if (!config.translation.apiKey) {
+    console.warn('未配置GPT_API_KEY，返回原handle');
+    return handle;
+  }
+
+  // 首先标准化输入的handle
+  const normalizedHandle = handle.replace(/-/g, ' ').replace(/[_]/g, ' ');
+  
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.translation.apiKey}`,
+    };
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.translation.timeout);
+    
+    // 构建专门的URL handle翻译提示词
+    const systemPrompt = `你是一个专业的URL handle翻译助手。请将用户提供的文本翻译成${getLanguageName(targetLang)}，用于生成URL友好的handle。
+
+严格要求：
+1. 品牌词和专有名词保持不变（如：Apple、Nike、iPhone等）
+2. 翻译要简洁，符合URL命名规范
+3. 保持语义准确，适合用作产品或集合的URL标识
+4. 只返回翻译结果，不要任何额外说明
+5. 结果应该是自然的${getLanguageName(targetLang)}表达
+
+翻译要求：
+- 保持专业的商务语调
+- 简洁明了，适合URL使用
+- 体现原文的核心含义
+- 符合目标语言的表达习惯`;
+    
+    try {
+      console.log(`正在翻译URL handle: "${normalizedHandle}" -> ${getLanguageName(targetLang)}`);
+      
+      const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: config.translation.model,
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: normalizedHandle
+            }
+          ],
+          temperature: 0.2, // 更低的温度确保一致性
+          max_tokens: 100, // URL handle不需要太长
+          top_p: 1,
+          frequency_penalty: 0,
+          presence_penalty: 0
+        }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`URL handle翻译API调用失败: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.choices && result.choices[0] && result.choices[0].message) {
+        const translatedText = result.choices[0].message.content.trim();
+        
+        // 应用智能断句规则
+        const segmentedText = intelligentSegmentation(translatedText, targetLang);
+        
+        // 标准化为URL friendly格式
+        const finalHandle = normalizeHandle(segmentedText);
+        
+        console.log(`URL handle翻译完成: "${handle}" -> "${finalHandle}"`);
+        return finalHandle;
+      }
+      
+      throw new Error('URL handle翻译API响应格式异常');
+      
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      throw fetchError;
+    }
+    
+  } catch (error) {
+    console.error(`URL handle翻译服务错误 (尝试 ${retryCount + 1}/${config.translation.maxRetries}):`, error);
+    
+    // 网络错误重试逻辑
+    if ((error.name === 'AbortError' || error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || error.message.includes('fetch failed')) 
+        && retryCount < config.translation.maxRetries - 1) {
+      console.log(`URL handle翻译失败，${2000 * (retryCount + 1)}ms后进行第${retryCount + 2}次尝试...`);
+      await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
+      return translateUrlHandle(handle, targetLang, retryCount + 1);
+    }
+    
+    // 如果翻译失败，应用基本的智能断句到原handle
+    console.warn(`URL handle翻译失败，应用智能断句到原文: ${error.message}`);
+    const segmentedHandle = intelligentSegmentation(normalizedHandle, targetLang);
+    return normalizeHandle(segmentedHandle);
+  }
+}
+
 export async function translateText(text, targetLang, retryCount = 0) {
   if (!text || !text.trim()) {
     return text;
@@ -472,6 +654,7 @@ export async function translateResource(resource, targetLang) {
   const translated = {
     titleTrans: null,
     descTrans: null,
+    handleTrans: null,
     seoTitleTrans: null,
     seoDescTrans: null,
   };
@@ -486,6 +669,12 @@ export async function translateResource(resource, targetLang) {
   if (descriptionToTranslate) {
     translated.descTrans = await translateText(descriptionToTranslate, targetLang);
     console.log(`翻译描述使用字段: ${resource.descriptionHtml ? 'descriptionHtml (富文本)' : 'description (纯文本)'}`);
+  }
+
+  // 翻译URL handle
+  if (resource.handle) {
+    translated.handleTrans = await translateUrlHandle(resource.handle, targetLang);
+    console.log(`翻译URL handle: "${resource.handle}" -> "${translated.handleTrans}"`);
   }
 
   // 翻译SEO标题
