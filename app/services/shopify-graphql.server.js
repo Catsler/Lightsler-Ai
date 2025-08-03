@@ -4,6 +4,78 @@
  * Shopify GraphQL查询和变更操作
  */
 
+// 资源类型配置
+export const RESOURCE_TYPES = {
+  PRODUCT: 'PRODUCT',
+  COLLECTION: 'COLLECTION', 
+  ARTICLE: 'ARTICLE',
+  BLOG: 'BLOG',
+  PAGE: 'PAGE',
+  MENU: 'MENU',
+  LINK: 'LINK',
+  FILTER: 'FILTER'
+};
+
+// 字段映射配置 - 定义翻译字段到GraphQL字段的映射
+export const FIELD_MAPPINGS = {
+  [RESOURCE_TYPES.PRODUCT]: {
+    titleTrans: 'title',
+    descTrans: 'body_html',
+    handleTrans: 'handle',
+    seoTitleTrans: 'meta_title',
+    seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.COLLECTION]: {
+    titleTrans: 'title',
+    descTrans: 'body_html',
+    handleTrans: 'handle',
+    seoTitleTrans: 'meta_title',
+    seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.ARTICLE]: {
+    titleTrans: 'title',
+    descTrans: 'body_html',
+    handleTrans: 'handle',
+    summaryTrans: 'summary',
+    seoTitleTrans: 'meta_title',
+    seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.BLOG]: {
+    titleTrans: 'title',
+    handleTrans: 'handle',
+    seoTitleTrans: 'meta_title',
+    seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.PAGE]: {
+    titleTrans: 'title',
+    descTrans: 'body_html',
+    handleTrans: 'handle',
+    seoTitleTrans: 'meta_title',
+    seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.MENU]: {
+    titleTrans: 'title'
+  },
+  [RESOURCE_TYPES.LINK]: {
+    titleTrans: 'title'
+  },
+  [RESOURCE_TYPES.FILTER]: {
+    labelTrans: 'label'
+  }
+};
+
+// 资源类型到可翻译字段的映射配置
+export const RESOURCE_FIELD_MAPPINGS = {
+  [RESOURCE_TYPES.PRODUCT]: ['title', 'body_html', 'handle', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.COLLECTION]: ['title', 'body_html', 'handle', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.ARTICLE]: ['title', 'body_html', 'handle', 'summary', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.BLOG]: ['title', 'handle', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.PAGE]: ['title', 'body_html', 'handle', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.MENU]: ['title'],
+  [RESOURCE_TYPES.LINK]: ['title'],
+  [RESOURCE_TYPES.FILTER]: ['label']
+};
+
 // GraphQL查询：获取产品（包括富文本内容）
 const GET_PRODUCTS_QUERY = `
   query getProducts($cursor: String) {
@@ -54,9 +126,9 @@ const GET_COLLECTIONS_QUERY = `
   }
 `;
 
-// GraphQL查询：获取可翻译资源内容
-const TRANSLATABLE_RESOURCES_QUERY = `
-  query getTranslatableResources($resourceId: ID!) {
+// GraphQL查询：获取单个可翻译资源内容
+const TRANSLATABLE_RESOURCE_QUERY = `
+  query getTranslatableResource($resourceId: ID!) {
     translatableResource(resourceId: $resourceId) {
       resourceId
       translatableContent {
@@ -64,6 +136,29 @@ const TRANSLATABLE_RESOURCES_QUERY = `
         value
         digest
         locale
+      }
+    }
+  }
+`;
+
+// GraphQL查询：按类型获取可翻译资源列表
+const TRANSLATABLE_RESOURCES_BY_TYPE_QUERY = `
+  query getTranslatableResourcesByType($resourceType: TranslatableResourceType!, $first: Int, $after: String) {
+    translatableResources(resourceType: $resourceType, first: $first, after: $after) {
+      edges {
+        node {
+          resourceId
+          translatableContent {
+            key
+            value
+            digest
+            locale
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
       }
     }
   }
@@ -255,161 +350,9 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
  * @returns {Promise<Object>} 更新结果
  */
 export async function updateProductTranslation(admin, productGid, translations, targetLocale) {
-  try {
-    console.log('开始注册产品翻译:', {
-      productGid,
-      targetLocale,
-      translations: Object.keys(translations).filter(key => translations[key])
-    });
-
-    // 第一步：获取可翻译内容和digest
-    const translatableResponse = await admin.graphql(TRANSLATABLE_RESOURCES_QUERY, {
-      variables: { resourceId: productGid }
-    });
-
-    const translatableData = await translatableResponse.json();
-    
-    if (translatableData.errors) {
-      console.error('获取可翻译内容失败:', translatableData.errors);
-      throw new Error(`获取可翻译内容失败: ${JSON.stringify(translatableData.errors)}`);
-    }
-
-    const translatableContent = translatableData.data.translatableResource?.translatableContent || [];
-    console.log('获取到可翻译内容:', translatableContent.length, '个字段');
-
-    // 第二步：准备翻译输入
-    const translationInputs = [];
-
-    // 标题翻译
-    if (translations.titleTrans) {
-      const titleContent = translatableContent.find(content => content.key === 'title');
-      if (titleContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'title',
-          value: translations.titleTrans,
-          translatableContentDigest: titleContent.digest
-        });
-      }
-    }
-
-    // 描述翻译
-    if (translations.descTrans) {
-      const descContent = translatableContent.find(content => content.key === 'body_html');
-      if (descContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'body_html',
-          value: translations.descTrans,
-          translatableContentDigest: descContent.digest
-        });
-      }
-    }
-
-    // SEO标题翻译
-    if (translations.seoTitleTrans) {
-      const seoTitleContent = translatableContent.find(content => content.key === 'meta_title');
-      if (seoTitleContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'meta_title',
-          value: translations.seoTitleTrans,
-          translatableContentDigest: seoTitleContent.digest
-        });
-      }
-    }
-
-    // SEO描述翻译
-    if (translations.seoDescTrans) {
-      const seoDescContent = translatableContent.find(content => content.key === 'meta_description');
-      if (seoDescContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'meta_description',
-          value: translations.seoDescTrans,
-          translatableContentDigest: seoDescContent.digest
-        });
-      }
-    }
-
-    // 添加Handle翻译
-    addHandleTranslationForProduct(translations, translatableContent, translationInputs, targetLocale);
-
-    if (translationInputs.length === 0) {
-      console.log('没有找到可翻译的内容，跳过翻译注册');
-      return { success: true, message: '没有可翻译的内容' };
-    }
-
-    console.log('准备注册', translationInputs.length, '个翻译');
-
-    // 第三步：注册翻译
-    const registerResponse = await admin.graphql(TRANSLATIONS_REGISTER_MUTATION, {
-      variables: {
-        resourceId: productGid,
-        translations: translationInputs
-      }
-    });
-
-    const registerData = await registerResponse.json();
-    
-    if (registerData.errors) {
-      console.error('注册翻译失败:', registerData.errors);
-      throw new Error(`注册翻译失败: ${JSON.stringify(registerData.errors)}`);
-    }
-
-    if (registerData.data.translationsRegister.userErrors.length > 0) {
-      console.error('翻译注册用户错误:', registerData.data.translationsRegister.userErrors);
-      throw new Error(`翻译注册错误: ${JSON.stringify(registerData.data.translationsRegister.userErrors)}`);
-    }
-
-    console.log('产品翻译注册成功:', {
-      resourceId: productGid,
-      locale: targetLocale,
-      translationsCount: registerData.data.translationsRegister.translations.length
-    });
-
-    return {
-      success: true,
-      translations: registerData.data.translationsRegister.translations
-    };
-
-  } catch (error) {
-    console.error('产品翻译注册过程中发生错误:', error);
-    throw error;
-  }
+  return await updateTranslationByType(admin, productGid, translations, targetLocale, RESOURCE_TYPES.PRODUCT);
 }
 
-// 为产品添加handle翻译支持
-function addHandleTranslationForProduct(translations, translatableContent, translationInputs, targetLocale) {
-  if (translations.handleTrans) {
-    const handleContent = translatableContent.find(content => content.key === 'handle');
-    if (handleContent) {
-      translationInputs.push({
-        locale: targetLocale,
-        key: 'handle',
-        value: translations.handleTrans,
-        translatableContentDigest: handleContent.digest
-      });
-      console.log('添加Handle翻译:', translations.handleTrans);
-    }
-  }
-}
-
-// 为集合添加handle翻译支持
-function addHandleTranslationForCollection(translations, translatableContent, translationInputs, targetLocale) {
-  if (translations.handleTrans) {
-    const handleContent = translatableContent.find(content => content.key === 'handle');
-    if (handleContent) {
-      translationInputs.push({
-        locale: targetLocale,
-        key: 'handle',
-        value: translations.handleTrans,
-        translatableContentDigest: handleContent.digest
-      });
-      console.log('添加Collection Handle翻译:', translations.handleTrans);
-    }
-  }
-}
 
 /**
  * 更新集合翻译到Shopify
@@ -419,85 +362,192 @@ function addHandleTranslationForCollection(translations, translatableContent, tr
  * @returns {Promise<Object>} 更新结果
  */
 export async function updateCollectionTranslation(admin, collectionGid, translations, targetLocale) {
+  return await updateTranslationByType(admin, collectionGid, translations, targetLocale, RESOURCE_TYPES.COLLECTION);
+}
+
+/**
+ * 通用GraphQL请求执行器，包含重试机制
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} query - GraphQL查询字符串
+ * @param {Object} variables - 查询变量
+ * @param {number} maxRetries - 最大重试次数
+ * @returns {Promise<Object>} 查询结果
+ */
+async function executeGraphQLWithRetry(admin, query, variables = {}, maxRetries = 3) {
+  let retryCount = 0;
+  let success = false;
+  let response, data;
+
+  while (retryCount < maxRetries && !success) {
+    try {
+      console.log(`执行GraphQL查询 - 尝试: ${retryCount + 1}/${maxRetries}`);
+      
+      // 设置超时控制
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('GraphQL请求超时')), 30000)
+      );
+      
+      const requestPromise = admin.graphql(query, { variables });
+      response = await Promise.race([requestPromise, timeoutPromise]);
+      data = await response.json();
+      success = true;
+      
+    } catch (error) {
+      retryCount++;
+      console.error(`GraphQL请求失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
+      
+      if (retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数退避，最大5秒
+        console.log(`${delay}ms后重试...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw new Error(`GraphQL请求失败，已达最大重试次数: ${error.message}`);
+      }
+    }
+  }
+  
+  if (data.errors) {
+    throw new Error(`GraphQL错误: ${JSON.stringify(data.errors)}`);
+  }
+
+  return data;
+}
+
+/**
+ * 通用资源获取函数 - 使用translatableResources API
+ * @param {Object} admin - Shopify Admin API客户端  
+ * @param {string} resourceType - 资源类型 (PRODUCT, COLLECTION, ARTICLE, etc.)
+ * @param {number} maxRetries - 最大重试次数
+ * @returns {Promise<Array>} 资源列表
+ */
+export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) {
+  const resources = [];
+  let cursor = null;
+  let hasNextPage = true;
+
+  console.log(`开始获取${resourceType}类型的可翻译资源`);
+
+  while (hasNextPage) {
+    const data = await executeGraphQLWithRetry(
+      admin, 
+      TRANSLATABLE_RESOURCES_BY_TYPE_QUERY, 
+      { 
+        resourceType: resourceType,
+        first: 50,
+        after: cursor 
+      }, 
+      maxRetries
+    );
+
+    if (!data.data || !data.data.translatableResources) {
+      throw new Error('GraphQL响应数据格式异常');
+    }
+
+    const edges = data.data.translatableResources.edges;
+    console.log(`成功获取 ${edges.length} 个${resourceType}资源`);
+    
+    for (const edge of edges) {
+      const resource = edge.node;
+      
+      // 提取基础信息从translatableContent
+      const content = {};
+      for (const item of resource.translatableContent) {
+        content[item.key] = item.value;
+      }
+      
+      // 构建标准化资源对象
+      const resourceId = resource.resourceId;
+      const numericId = resourceId.split('/').pop();
+      
+      // 根据资源类型构建特定字段
+      const resourceData = {
+        id: numericId,
+        gid: resourceId,
+        resourceType: resourceType.toLowerCase(),
+        title: content.title || '',
+        description: content.body || content.body_html || '',
+        descriptionHtml: content.body_html || '',
+        handle: content.handle || '',
+        seoTitle: content.meta_title || '',
+        seoDescription: content.meta_description || '',
+        // 存储所有可翻译内容供后续使用
+        translatableContent: resource.translatableContent
+      };
+
+      // 根据资源类型添加特定字段
+      if (resourceType === RESOURCE_TYPES.ARTICLE) {
+        resourceData.summary = content.summary || '';
+      } else if (resourceType === RESOURCE_TYPES.FILTER) {
+        resourceData.label = content.label || '';
+      }
+
+      // 将其他字段存储在contentFields中
+      const otherFields = {};
+      for (const [key, value] of Object.entries(content)) {
+        if (!['title', 'body', 'body_html', 'handle', 'meta_title', 'meta_description', 'summary', 'label'].includes(key)) {
+          otherFields[key] = value;
+        }
+      }
+      if (Object.keys(otherFields).length > 0) {
+        resourceData.contentFields = otherFields;
+      }
+
+      resources.push(resourceData);
+    }
+
+    hasNextPage = data.data.translatableResources.pageInfo.hasNextPage;
+    cursor = data.data.translatableResources.pageInfo.endCursor;
+  }
+
+  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  return resources;
+}
+
+/**
+ * 通用翻译注册函数
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} resourceGid - 资源GID
+ * @param {Object} translations - 翻译内容
+ * @param {string} targetLocale - 目标语言
+ * @param {Array} fieldMapping - 字段映射配置
+ * @returns {Promise<Object>} 注册结果
+ */
+export async function updateResourceTranslation(admin, resourceGid, translations, targetLocale, fieldMapping) {
   try {
-    console.log('开始注册集合翻译:', {
-      collectionGid,
+    console.log('开始注册资源翻译:', {
+      resourceGid,
       targetLocale,
       translations: Object.keys(translations).filter(key => translations[key])
     });
 
     // 第一步：获取可翻译内容和digest
-    const translatableResponse = await admin.graphql(TRANSLATABLE_RESOURCES_QUERY, {
-      variables: { resourceId: collectionGid }
-    });
+    const data = await executeGraphQLWithRetry(
+      admin, 
+      TRANSLATABLE_RESOURCE_QUERY, 
+      { resourceId: resourceGid }
+    );
 
-    const translatableData = await translatableResponse.json();
-    
-    if (translatableData.errors) {
-      console.error('获取可翻译内容失败:', translatableData.errors);
-      throw new Error(`获取可翻译内容失败: ${JSON.stringify(translatableData.errors)}`);
-    }
-
-    const translatableContent = translatableData.data.translatableResource?.translatableContent || [];
+    const translatableContent = data.data.translatableResource?.translatableContent || [];
     console.log('获取到可翻译内容:', translatableContent.length, '个字段');
 
     // 第二步：准备翻译输入
     const translationInputs = [];
 
-    // 标题翻译
-    if (translations.titleTrans) {
-      const titleContent = translatableContent.find(content => content.key === 'title');
-      if (titleContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'title',
-          value: translations.titleTrans,
-          translatableContentDigest: titleContent.digest
-        });
+    // 使用字段映射配置来处理翻译
+    for (const [translationKey, contentKey] of Object.entries(fieldMapping)) {
+      if (translations[translationKey]) {
+        const content = translatableContent.find(item => item.key === contentKey);
+        if (content) {
+          translationInputs.push({
+            locale: targetLocale,
+            key: contentKey,
+            value: translations[translationKey],
+            translatableContentDigest: content.digest
+          });
+          console.log(`添加${translationKey}翻译:`, translations[translationKey]);
+        }
       }
     }
-
-    // 描述翻译
-    if (translations.descTrans) {
-      const descContent = translatableContent.find(content => content.key === 'body_html');
-      if (descContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'body_html',
-          value: translations.descTrans,
-          translatableContentDigest: descContent.digest
-        });
-      }
-    }
-
-    // SEO标题翻译
-    if (translations.seoTitleTrans) {
-      const seoTitleContent = translatableContent.find(content => content.key === 'meta_title');
-      if (seoTitleContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'meta_title',
-          value: translations.seoTitleTrans,
-          translatableContentDigest: seoTitleContent.digest
-        });
-      }
-    }
-
-    // SEO描述翻译
-    if (translations.seoDescTrans) {
-      const seoDescContent = translatableContent.find(content => content.key === 'meta_description');
-      if (seoDescContent) {
-        translationInputs.push({
-          locale: targetLocale,
-          key: 'meta_description',
-          value: translations.seoDescTrans,
-          translatableContentDigest: seoDescContent.digest
-        });
-      }
-    }
-
-    // 添加Handle翻译
-    addHandleTranslationForCollection(translations, translatableContent, translationInputs, targetLocale);
 
     if (translationInputs.length === 0) {
       console.log('没有找到可翻译的内容，跳过翻译注册');
@@ -507,27 +557,22 @@ export async function updateCollectionTranslation(admin, collectionGid, translat
     console.log('准备注册', translationInputs.length, '个翻译');
 
     // 第三步：注册翻译
-    const registerResponse = await admin.graphql(TRANSLATIONS_REGISTER_MUTATION, {
-      variables: {
-        resourceId: collectionGid,
+    const registerData = await executeGraphQLWithRetry(
+      admin,
+      TRANSLATIONS_REGISTER_MUTATION,
+      {
+        resourceId: resourceGid,
         translations: translationInputs
       }
-    });
-
-    const registerData = await registerResponse.json();
-    
-    if (registerData.errors) {
-      console.error('注册翻译失败:', registerData.errors);
-      throw new Error(`注册翻译失败: ${JSON.stringify(registerData.errors)}`);
-    }
+    );
 
     if (registerData.data.translationsRegister.userErrors.length > 0) {
       console.error('翻译注册用户错误:', registerData.data.translationsRegister.userErrors);
       throw new Error(`翻译注册错误: ${JSON.stringify(registerData.data.translationsRegister.userErrors)}`);
     }
 
-    console.log('集合翻译注册成功:', {
-      resourceId: collectionGid,
+    console.log('资源翻译注册成功:', {
+      resourceId: resourceGid,
       locale: targetLocale,
       translationsCount: registerData.data.translationsRegister.translations.length
     });
@@ -538,7 +583,60 @@ export async function updateCollectionTranslation(admin, collectionGid, translat
     };
 
   } catch (error) {
-    console.error('集合翻译注册过程中发生错误:', error);
+    console.error('资源翻译注册过程中发生错误:', error);
     throw error;
   }
+}
+
+/**
+ * 根据资源类型获取对应的字段映射并调用通用翻译函数
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} resourceGid - 资源GID
+ * @param {Object} translations - 翻译内容
+ * @param {string} targetLocale - 目标语言
+ * @param {string} resourceType - 资源类型
+ * @returns {Promise<Object>} 注册结果
+ */
+export async function updateTranslationByType(admin, resourceGid, translations, targetLocale, resourceType) {
+  const fieldMapping = FIELD_MAPPINGS[resourceType];
+  if (!fieldMapping) {
+    throw new Error(`不支持的资源类型: ${resourceType}`);
+  }
+  
+  return await updateResourceTranslation(admin, resourceGid, translations, targetLocale, fieldMapping);
+}
+
+/**
+ * 便捷函数：获取文章资源
+ */
+export async function fetchAllArticles(admin, maxRetries = 3) {
+  return await fetchResourcesByType(admin, RESOURCE_TYPES.ARTICLE, maxRetries);
+}
+
+/**
+ * 便捷函数：获取博客资源
+ */
+export async function fetchAllBlogs(admin, maxRetries = 3) {
+  return await fetchResourcesByType(admin, RESOURCE_TYPES.BLOG, maxRetries);
+}
+
+/**
+ * 便捷函数：获取页面资源
+ */
+export async function fetchAllPages(admin, maxRetries = 3) {
+  return await fetchResourcesByType(admin, RESOURCE_TYPES.PAGE, maxRetries);
+}
+
+/**
+ * 便捷函数：获取菜单资源
+ */
+export async function fetchAllMenus(admin, maxRetries = 3) {
+  return await fetchResourcesByType(admin, RESOURCE_TYPES.MENU, maxRetries);
+}
+
+/**
+ * 便捷函数：获取过滤器资源
+ */
+export async function fetchAllFilters(admin, maxRetries = 3) {
+  return await fetchResourcesByType(admin, RESOURCE_TYPES.FILTER, maxRetries);
 }

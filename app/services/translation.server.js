@@ -655,6 +655,8 @@ export async function translateResource(resource, targetLang) {
     titleTrans: null,
     descTrans: null,
     handleTrans: null,
+    summaryTrans: null,
+    labelTrans: null,
     seoTitleTrans: null,
     seoDescTrans: null,
   };
@@ -675,6 +677,18 @@ export async function translateResource(resource, targetLang) {
   if (resource.handle) {
     translated.handleTrans = await translateUrlHandle(resource.handle, targetLang);
     console.log(`翻译URL handle: "${resource.handle}" -> "${translated.handleTrans}"`);
+  }
+
+  // 翻译摘要（主要用于文章）
+  if (resource.summary) {
+    translated.summaryTrans = await translateText(resource.summary, targetLang);
+    console.log(`翻译摘要: "${resource.summary}" -> "${translated.summaryTrans}"`);
+  }
+
+  // 翻译标签（主要用于过滤器）
+  if (resource.label) {
+    translated.labelTrans = await translateText(resource.label, targetLang);
+    console.log(`翻译标签: "${resource.label}" -> "${translated.labelTrans}"`);
   }
 
   // 翻译SEO标题

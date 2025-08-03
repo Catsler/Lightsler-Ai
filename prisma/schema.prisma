@@ -59,7 +59,7 @@ model Language {
 model Resource {
   id           String   @id @default(cuid())
   shopId       String
-  resourceType String   // product, collection
+  resourceType String   // product, collection, article, blog, page, menu, link, filter
   resourceId   String   // Shopify资源ID
   title        String
   description  String?  // 纯文本描述（无HTML）
@@ -67,6 +67,9 @@ model Resource {
   handle       String?  // URL handle
   seoTitle     String?
   seoDescription String?
+  summary      String?  // 摘要（主要用于文章）
+  label        String?  // 标签（主要用于过滤器）
+  contentFields Json?   // 存储不同资源类型的特定字段
   status       String   // pending, processing, completed
   shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   translations Translation[]
@@ -85,8 +88,11 @@ model Translation {
   titleTrans String?
   descTrans  String?
   handleTrans String? // URL handle 翻译
+  summaryTrans String? // 摘要翻译（文章）
+  labelTrans String? // 标签翻译（过滤器）
   seoTitleTrans String?
   seoDescTrans String?
+  translationFields Json? // 存储其他类型特定的翻译字段
   status     String   // pending, completed, failed
   resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)

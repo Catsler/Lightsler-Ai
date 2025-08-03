@@ -46,6 +46,20 @@ export async function saveResources(shopId, resources) {
   const savedResources = [];
 
   for (const resource of resources) {
+    // 构建更新和创建的数据对象
+    const resourceData = {
+      title: resource.title,
+      description: resource.description,
+      descriptionHtml: resource.descriptionHtml,
+      handle: resource.handle,
+      seoTitle: resource.seoTitle,
+      seoDescription: resource.seoDescription,
+      summary: resource.summary || null,
+      label: resource.label || null,
+      contentFields: resource.contentFields || null,
+      status: 'pending'
+    };
+
     const saved = await prisma.resource.upsert({
       where: {
         shopId_resourceType_resourceId: {
@@ -54,26 +68,12 @@ export async function saveResources(shopId, resources) {
           resourceId: resource.id
         }
       },
-      update: {
-        title: resource.title,
-        description: resource.description,
-        descriptionHtml: resource.descriptionHtml,
-        handle: resource.handle,
-        seoTitle: resource.seoTitle,
-        seoDescription: resource.seoDescription,
-        status: 'pending'
-      },
+      update: resourceData,
       create: {
         shopId: shopId,
         resourceType: resource.resourceType,
         resourceId: resource.id,
-        title: resource.title,
-        description: resource.description,
-        descriptionHtml: resource.descriptionHtml,
-        handle: resource.handle,
-        seoTitle: resource.seoTitle,
-        seoDescription: resource.seoDescription,
-        status: 'pending'
+        ...resourceData
       }
     });
     savedResources.push(saved);
@@ -128,6 +128,19 @@ export async function getAllResources(shopId) {
  * @returns {Promise<Object>} 翻译记录
  */
 export async function saveTranslation(resourceId, shopId, language, translations) {
+  // 构建翻译数据对象
+  const translationData = {
+    titleTrans: translations.titleTrans || null,
+    descTrans: translations.descTrans || null,
+    handleTrans: translations.handleTrans || null,
+    summaryTrans: translations.summaryTrans || null,
+    labelTrans: translations.labelTrans || null,
+    seoTitleTrans: translations.seoTitleTrans || null,
+    seoDescTrans: translations.seoDescTrans || null,
+    translationFields: translations.translationFields || null,
+    status: 'completed'
+  };
+
   return await prisma.translation.upsert({
     where: {
       resourceId_language: {
@@ -135,24 +148,12 @@ export async function saveTranslation(resourceId, shopId, language, translations
         language: language
       }
     },
-    update: {
-      titleTrans: translations.titleTrans,
-      descTrans: translations.descTrans,
-      handleTrans: translations.handleTrans,
-      seoTitleTrans: translations.seoTitleTrans,
-      seoDescTrans: translations.seoDescTrans,
-      status: 'completed'
-    },
+    update: translationData,
     create: {
       resourceId: resourceId,
       shopId: shopId,
       language: language,
-      titleTrans: translations.titleTrans,
-      descTrans: translations.descTrans,
-      handleTrans: translations.handleTrans,
-      seoTitleTrans: translations.seoTitleTrans,
-      seoDescTrans: translations.seoDescTrans,
-      status: 'completed'
+      ...translationData
     }
   });
 }
