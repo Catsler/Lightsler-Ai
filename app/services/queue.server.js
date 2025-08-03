@@ -139,9 +139,9 @@ if (translationQueue) {
       // 更新到Shopify
       let updateResult;
       if (resource.resourceType === 'product') {
-        updateResult = await updateProductTranslation(adminGraphQL, gid, translations);
+        updateResult = await updateProductTranslation(adminGraphQL, gid, translations, language);
       } else {
-        updateResult = await updateCollectionTranslation(adminGraphQL, gid, translations);
+        updateResult = await updateCollectionTranslation(adminGraphQL, gid, translations, language);
       }
       job.progress(90);
       

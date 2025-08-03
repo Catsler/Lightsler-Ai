@@ -62,7 +62,8 @@ model Resource {
   resourceType String   // product, collection
   resourceId   String   // Shopify资源ID
   title        String
-  description  String?
+  description  String?  // 纯文本描述（无HTML）
+  descriptionHtml String? // 富文本描述（包含HTML、视频等）
   seoTitle     String?
   seoDescription String?
   status       String   // pending, processing, completed

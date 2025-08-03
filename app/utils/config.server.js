@@ -61,10 +61,13 @@ export const config = {
     apiUrl: getEnvVar('GPT_API_URL', 'https://api.cursorai.art/v1'),
     apiKey: getEnvVar('GPT_API_KEY'),
     model: getEnvVar('GPT_MODEL', 'gpt-4o'),
-    timeout: getEnvVar('TRANSLATION_TIMEOUT', 30000, 'number'),
+    timeout: getEnvVar('TRANSLATION_TIMEOUT', 45000, 'number'), // 增加到45秒
+    longTextTimeout: getEnvVar('LONG_TEXT_TIMEOUT', 60000, 'number'), // 长文本60秒超时
     batchSize: getEnvVar('TRANSLATION_BATCH_SIZE', 10, 'number'),
     delayMs: getEnvVar('TRANSLATION_DELAY_MS', 1000, 'number'),
     maxRetries: getEnvVar('TRANSLATION_MAX_RETRIES', 3, 'number'),
+    maxChunkSize: getEnvVar('MAX_CHUNK_SIZE', 1500, 'number'), // 最大分块大小
+    longTextThreshold: getEnvVar('LONG_TEXT_THRESHOLD', 2000, 'number'), // 长文本阈值
   },
   
   // 队列配置

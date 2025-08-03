@@ -2,8 +2,7 @@
  * 简单的设置测试脚本
  */
 
-import { initializeConfig } from './app/utils/config.server.js';
-import { config } from './app/utils/config.server.js';
+import { initializeConfig, config } from './app/utils/config.server.js';
 
 console.log('🔧 测试应用配置...');
 

@@ -4,7 +4,7 @@
  * Shopify GraphQL查询和变更操作
  */
 
-// GraphQL查询：获取产品
+// GraphQL查询：获取产品（包括富文本内容）
 const GET_PRODUCTS_QUERY = `
   query getProducts($cursor: String) {
     products(first: 50, after: $cursor) {
@@ -13,6 +13,7 @@ const GET_PRODUCTS_QUERY = `
           id
           title
           description
+          descriptionHtml
           seo {
             title
             description
@@ -27,7 +28,7 @@ const GET_PRODUCTS_QUERY = `
   }
 `;
 
-// GraphQL查询：获取集合
+// GraphQL查询：获取集合（包括富文本内容）
 const GET_COLLECTIONS_QUERY = `
   query getCollections($cursor: String) {
     collections(first: 50, after: $cursor) {
@@ -36,6 +37,7 @@ const GET_COLLECTIONS_QUERY = `
           id
           title
           description
+          descriptionHtml
           seo {
             title
             description
@@ -50,43 +52,33 @@ const GET_COLLECTIONS_QUERY = `
   }
 `;
 
-// GraphQL变更：更新产品翻译
-const UPDATE_PRODUCT_MUTATION = `
-  mutation updateProduct($input: ProductInput!) {
-    productUpdate(input: $input) {
-      product {
-        id
-        title
-        descriptionHtml
-        seo {
-          title
-          description
-        }
-      }
-      userErrors {
-        field
-        message
+// GraphQL查询：获取可翻译资源内容
+const TRANSLATABLE_RESOURCES_QUERY = `
+  query getTranslatableResources($resourceId: ID!) {
+    translatableResource(resourceId: $resourceId) {
+      resourceId
+      translatableContent {
+        key
+        value
+        digest
+        locale
       }
     }
   }
 `;
 
-// GraphQL变更：更新集合翻译
-const UPDATE_COLLECTION_MUTATION = `
-  mutation updateCollection($input: CollectionInput!) {
-    collectionUpdate(input: $input) {
-      collection {
-        id
-        title
-        descriptionHtml
-        seo {
-          title
-          description
-        }
-      }
+// GraphQL变更：注册翻译内容
+const TRANSLATIONS_REGISTER_MUTATION = `
+  mutation translationsRegister($resourceId: ID!, $translations: [TranslationInput!]!) {
+    translationsRegister(resourceId: $resourceId, translations: $translations) {
       userErrors {
-        field
         message
+        field
+      }
+      translations {
+        locale
+        key
+        value
       }
     }
   }
@@ -157,6 +149,7 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
         gid: product.id,
         title: product.title,
         description: product.description || '',
+        descriptionHtml: product.descriptionHtml || '',
         seoTitle: product.seo?.title || '',
         seoDescription: product.seo?.description || '',
         resourceType: 'product'
@@ -236,6 +229,7 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
         gid: collection.id,
         title: collection.title,
         description: collection.description || '',
+        descriptionHtml: collection.descriptionHtml || '',
         seoTitle: collection.seo?.title || '',
         seoDescription: collection.seo?.description || '',
         resourceType: 'collection'
@@ -256,50 +250,126 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
  * @param {Object} translations - 翻译内容
  * @returns {Promise<Object>} 更新结果
  */
-export async function updateProductTranslation(admin, productGid, translations) {
-  const input = {
-    id: productGid,
-  };
+export async function updateProductTranslation(admin, productGid, translations, targetLocale) {
+  try {
+    console.log('开始注册产品翻译:', {
+      productGid,
+      targetLocale,
+      translations: Object.keys(translations).filter(key => translations[key])
+    });
 
-  // 添加翻译内容 - 使用正确的字段名
-  if (translations.titleTrans) {
-    input.title = translations.titleTrans;
-  }
-  
-  if (translations.descTrans) {
-    input.descriptionHtml = translations.descTrans;
-  }
+    // 第一步：获取可翻译内容和digest
+    const translatableResponse = await admin.graphql(TRANSLATABLE_RESOURCES_QUERY, {
+      variables: { resourceId: productGid }
+    });
 
-  if (translations.seoTitleTrans || translations.seoDescTrans) {
-    input.seo = {};
+    const translatableData = await translatableResponse.json();
+    
+    if (translatableData.errors) {
+      console.error('获取可翻译内容失败:', translatableData.errors);
+      throw new Error(`获取可翻译内容失败: ${JSON.stringify(translatableData.errors)}`);
+    }
+
+    const translatableContent = translatableData.data.translatableResource?.translatableContent || [];
+    console.log('获取到可翻译内容:', translatableContent.length, '个字段');
+
+    // 第二步：准备翻译输入
+    const translationInputs = [];
+
+    // 标题翻译
+    if (translations.titleTrans) {
+      const titleContent = translatableContent.find(content => content.key === 'title');
+      if (titleContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'title',
+          value: translations.titleTrans,
+          translatableContentDigest: titleContent.digest
+        });
+      }
+    }
+
+    // 描述翻译
+    if (translations.descTrans) {
+      const descContent = translatableContent.find(content => content.key === 'body_html');
+      if (descContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'body_html',
+          value: translations.descTrans,
+          translatableContentDigest: descContent.digest
+        });
+      }
+    }
+
+    // SEO标题翻译
     if (translations.seoTitleTrans) {
-      input.seo.title = translations.seoTitleTrans;
+      const seoTitleContent = translatableContent.find(content => content.key === 'meta_title');
+      if (seoTitleContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'meta_title',
+          value: translations.seoTitleTrans,
+          translatableContentDigest: seoTitleContent.digest
+        });
+      }
     }
+
+    // SEO描述翻译
     if (translations.seoDescTrans) {
-      input.seo.description = translations.seoDescTrans;
+      const seoDescContent = translatableContent.find(content => content.key === 'meta_description');
+      if (seoDescContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'meta_description',
+          value: translations.seoDescTrans,
+          translatableContentDigest: seoDescContent.digest
+        });
+      }
     }
+
+    if (translationInputs.length === 0) {
+      console.log('没有找到可翻译的内容，跳过翻译注册');
+      return { success: true, message: '没有可翻译的内容' };
+    }
+
+    console.log('准备注册', translationInputs.length, '个翻译');
+
+    // 第三步：注册翻译
+    const registerResponse = await admin.graphql(TRANSLATIONS_REGISTER_MUTATION, {
+      variables: {
+        resourceId: productGid,
+        translations: translationInputs
+      }
+    });
+
+    const registerData = await registerResponse.json();
+    
+    if (registerData.errors) {
+      console.error('注册翻译失败:', registerData.errors);
+      throw new Error(`注册翻译失败: ${JSON.stringify(registerData.errors)}`);
+    }
+
+    if (registerData.data.translationsRegister.userErrors.length > 0) {
+      console.error('翻译注册用户错误:', registerData.data.translationsRegister.userErrors);
+      throw new Error(`翻译注册错误: ${JSON.stringify(registerData.data.translationsRegister.userErrors)}`);
+    }
+
+    console.log('产品翻译注册成功:', {
+      resourceId: productGid,
+      locale: targetLocale,
+      translationsCount: registerData.data.translationsRegister.translations.length
+    });
+
+    return {
+      success: true,
+      translations: registerData.data.translationsRegister.translations
+    };
+
+  } catch (error) {
+    console.error('产品翻译注册过程中发生错误:', error);
+    throw error;
   }
-
-  console.log('更新产品翻译 - 输入参数:', JSON.stringify(input, null, 2));
-
-  const response = await admin.graphql(UPDATE_PRODUCT_MUTATION, {
-    variables: { input }
-  });
-
-  const data = await response.json();
-  
-  if (data.errors) {
-    console.error('GraphQL错误详情:', JSON.stringify(data.errors, null, 2));
-    throw new Error(`更新产品失败: ${JSON.stringify(data.errors)}`);
-  }
-
-  if (data.data.productUpdate.userErrors.length > 0) {
-    console.error('用户错误详情:', JSON.stringify(data.data.productUpdate.userErrors, null, 2));
-    throw new Error(`用户错误: ${JSON.stringify(data.data.productUpdate.userErrors)}`);
-  }
-
-  console.log('产品更新成功:', data.data.productUpdate.product.id);
-  return data.data.productUpdate.product;
 }
 
 /**
@@ -309,48 +379,124 @@ export async function updateProductTranslation(admin, productGid, translations) 
  * @param {Object} translations - 翻译内容
  * @returns {Promise<Object>} 更新结果
  */
-export async function updateCollectionTranslation(admin, collectionGid, translations) {
-  const input = {
-    id: collectionGid,
-  };
+export async function updateCollectionTranslation(admin, collectionGid, translations, targetLocale) {
+  try {
+    console.log('开始注册集合翻译:', {
+      collectionGid,
+      targetLocale,
+      translations: Object.keys(translations).filter(key => translations[key])
+    });
 
-  // 添加翻译内容 - 使用正确的字段名
-  if (translations.titleTrans) {
-    input.title = translations.titleTrans;
-  }
-  
-  if (translations.descTrans) {
-    input.descriptionHtml = translations.descTrans;
-  }
+    // 第一步：获取可翻译内容和digest
+    const translatableResponse = await admin.graphql(TRANSLATABLE_RESOURCES_QUERY, {
+      variables: { resourceId: collectionGid }
+    });
 
-  if (translations.seoTitleTrans || translations.seoDescTrans) {
-    input.seo = {};
+    const translatableData = await translatableResponse.json();
+    
+    if (translatableData.errors) {
+      console.error('获取可翻译内容失败:', translatableData.errors);
+      throw new Error(`获取可翻译内容失败: ${JSON.stringify(translatableData.errors)}`);
+    }
+
+    const translatableContent = translatableData.data.translatableResource?.translatableContent || [];
+    console.log('获取到可翻译内容:', translatableContent.length, '个字段');
+
+    // 第二步：准备翻译输入
+    const translationInputs = [];
+
+    // 标题翻译
+    if (translations.titleTrans) {
+      const titleContent = translatableContent.find(content => content.key === 'title');
+      if (titleContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'title',
+          value: translations.titleTrans,
+          translatableContentDigest: titleContent.digest
+        });
+      }
+    }
+
+    // 描述翻译
+    if (translations.descTrans) {
+      const descContent = translatableContent.find(content => content.key === 'body_html');
+      if (descContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'body_html',
+          value: translations.descTrans,
+          translatableContentDigest: descContent.digest
+        });
+      }
+    }
+
+    // SEO标题翻译
     if (translations.seoTitleTrans) {
-      input.seo.title = translations.seoTitleTrans;
+      const seoTitleContent = translatableContent.find(content => content.key === 'meta_title');
+      if (seoTitleContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'meta_title',
+          value: translations.seoTitleTrans,
+          translatableContentDigest: seoTitleContent.digest
+        });
+      }
     }
+
+    // SEO描述翻译
     if (translations.seoDescTrans) {
-      input.seo.description = translations.seoDescTrans;
+      const seoDescContent = translatableContent.find(content => content.key === 'meta_description');
+      if (seoDescContent) {
+        translationInputs.push({
+          locale: targetLocale,
+          key: 'meta_description',
+          value: translations.seoDescTrans,
+          translatableContentDigest: seoDescContent.digest
+        });
+      }
     }
+
+    if (translationInputs.length === 0) {
+      console.log('没有找到可翻译的内容，跳过翻译注册');
+      return { success: true, message: '没有可翻译的内容' };
+    }
+
+    console.log('准备注册', translationInputs.length, '个翻译');
+
+    // 第三步：注册翻译
+    const registerResponse = await admin.graphql(TRANSLATIONS_REGISTER_MUTATION, {
+      variables: {
+        resourceId: collectionGid,
+        translations: translationInputs
+      }
+    });
+
+    const registerData = await registerResponse.json();
+    
+    if (registerData.errors) {
+      console.error('注册翻译失败:', registerData.errors);
+      throw new Error(`注册翻译失败: ${JSON.stringify(registerData.errors)}`);
+    }
+
+    if (registerData.data.translationsRegister.userErrors.length > 0) {
+      console.error('翻译注册用户错误:', registerData.data.translationsRegister.userErrors);
+      throw new Error(`翻译注册错误: ${JSON.stringify(registerData.data.translationsRegister.userErrors)}`);
+    }
+
+    console.log('集合翻译注册成功:', {
+      resourceId: collectionGid,
+      locale: targetLocale,
+      translationsCount: registerData.data.translationsRegister.translations.length
+    });
+
+    return {
+      success: true,
+      translations: registerData.data.translationsRegister.translations
+    };
+
+  } catch (error) {
+    console.error('集合翻译注册过程中发生错误:', error);
+    throw error;
   }
-
-  console.log('更新集合翻译 - 输入参数:', JSON.stringify(input, null, 2));
-
-  const response = await admin.graphql(UPDATE_COLLECTION_MUTATION, {
-    variables: { input }
-  });
-
-  const data = await response.json();
-  
-  if (data.errors) {
-    console.error('GraphQL错误详情:', JSON.stringify(data.errors, null, 2));
-    throw new Error(`更新集合失败: ${JSON.stringify(data.errors)}`);
-  }
-
-  if (data.data.collectionUpdate.userErrors.length > 0) {
-    console.error('用户错误详情:', JSON.stringify(data.data.collectionUpdate.userErrors, null, 2));
-    throw new Error(`用户错误: ${JSON.stringify(data.data.collectionUpdate.userErrors)}`);
-  }
-
-  console.log('集合更新成功:', data.data.collectionUpdate.collection.id);
-  return data.data.collectionUpdate.collection;
 }

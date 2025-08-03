@@ -68,9 +68,9 @@ export const action = async ({ request }) => {
         // 更新到Shopify
         let updateResult;
         if (resource.resourceType === 'product') {
-          updateResult = await updateProductTranslation(admin, gid, translations);
+          updateResult = await updateProductTranslation(admin, gid, translations, targetLanguage);
         } else {
-          updateResult = await updateCollectionTranslation(admin, gid, translations);
+          updateResult = await updateCollectionTranslation(admin, gid, translations, targetLanguage);
         }
         
         // 更新资源状态为完成

@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server.js";
-import { getConfigInfo, config } from "../utils/config.server.js";
+import { getConfigInfo } from "../utils/config.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
 
 /**

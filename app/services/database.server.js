@@ -57,6 +57,7 @@ export async function saveResources(shopId, resources) {
       update: {
         title: resource.title,
         description: resource.description,
+        descriptionHtml: resource.descriptionHtml,
         seoTitle: resource.seoTitle,
         seoDescription: resource.seoDescription,
         status: 'pending'
@@ -67,6 +68,7 @@ export async function saveResources(shopId, resources) {
         resourceId: resource.id,
         title: resource.title,
         description: resource.description,
+        descriptionHtml: resource.descriptionHtml,
         seoTitle: resource.seoTitle,
         seoDescription: resource.seoDescription,
         status: 'pending'
