@@ -11,26 +11,26 @@ import { withErrorHandling } from "../utils/api-response.server.js";
  * 通用资源扫描API
  * 支持多种资源类型：PRODUCT, COLLECTION, ARTICLE, BLOG, PAGE, MENU, FILTER
  */
-export const action = withErrorHandling(async ({ request }) => {
-  // 验证Shopify应用认证
-  const { admin, session } = await authenticate.admin(request);
-  const shopDomain = session.shop;
+export const action = async ({ request }) => {
+  return withErrorHandling(async () => {
+    // 验证Shopify应用认证
+    const { admin, session } = await authenticate.admin(request);
+    const shopDomain = session.shop;
 
-  // 解析请求体
-  const body = await request.json();
-  const { resourceType } = body;
+    // 解析请求体
+    const body = await request.json();
+    const { resourceType } = body;
 
-  // 验证资源类型
-  if (!resourceType || !Object.values(RESOURCE_TYPES).includes(resourceType.toUpperCase())) {
-    return json({
-      success: false,
-      error: `不支持的资源类型: ${resourceType}。支持的类型: ${Object.values(RESOURCE_TYPES).join(', ')}`
-    }, { status: 400 });
-  }
+    // 验证资源类型
+    if (!resourceType || !Object.values(RESOURCE_TYPES).includes(resourceType.toUpperCase())) {
+      return json({
+        success: false,
+        error: `不支持的资源类型: ${resourceType}。支持的类型: ${Object.values(RESOURCE_TYPES).join(', ')}`
+      }, { status: 400 });
+    }
 
-  const normalizedResourceType = resourceType.toUpperCase();
-  
-  try {
+    const normalizedResourceType = resourceType.toUpperCase();
+    
     console.log(`开始扫描${normalizedResourceType}资源 - 店铺: ${shopDomain}`);
 
     // 确保店铺记录存在
@@ -66,12 +66,8 @@ export const action = withErrorHandling(async ({ request }) => {
       count: savedResources.length,
       resourceType: normalizedResourceType
     });
-
-  } catch (error) {
-    console.error(`${normalizedResourceType}资源扫描失败:`, error);
-    throw error; // withErrorHandling会处理这个错误
-  }
-});
+  }, `扫描${request.json ? '资源' : '资源'}`, request.headers.get("shopify-shop-domain") || "");
+};
 
 // 资源类型配置信息
 export const loader = async ({ request }) => {

@@ -1,4 +1,23 @@
 -- CreateTable
+CREATE TABLE "Session" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "state" TEXT NOT NULL,
+    "isOnline" BOOLEAN NOT NULL DEFAULT false,
+    "scope" TEXT,
+    "expires" DATETIME,
+    "accessToken" TEXT NOT NULL,
+    "userId" BIGINT,
+    "firstName" TEXT,
+    "lastName" TEXT,
+    "email" TEXT,
+    "accountOwner" BOOLEAN NOT NULL DEFAULT false,
+    "locale" TEXT,
+    "collaborator" BOOLEAN DEFAULT false,
+    "emailVerified" BOOLEAN DEFAULT false
+);
+
+-- CreateTable
 CREATE TABLE "Shop" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "domain" TEXT NOT NULL,
@@ -23,10 +42,16 @@ CREATE TABLE "Resource" (
     "shopId" TEXT NOT NULL,
     "resourceType" TEXT NOT NULL,
     "resourceId" TEXT NOT NULL,
+    "gid" TEXT NOT NULL DEFAULT '',
     "title" TEXT NOT NULL,
     "description" TEXT,
+    "descriptionHtml" TEXT,
+    "handle" TEXT,
     "seoTitle" TEXT,
     "seoDescription" TEXT,
+    "summary" TEXT,
+    "label" TEXT,
+    "contentFields" JSONB,
     "status" TEXT NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
@@ -41,8 +66,12 @@ CREATE TABLE "Translation" (
     "language" TEXT NOT NULL,
     "titleTrans" TEXT,
     "descTrans" TEXT,
+    "handleTrans" TEXT,
+    "summaryTrans" TEXT,
+    "labelTrans" TEXT,
     "seoTitleTrans" TEXT,
     "seoDescTrans" TEXT,
+    "translationFields" JSONB,
     "status" TEXT NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,

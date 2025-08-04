@@ -3,6 +3,7 @@
  */
 
 import { RESOURCE_TYPES, FIELD_MAPPINGS } from './app/services/shopify-graphql.server.js';
+import { PrismaClient } from '@prisma/client';
 
 console.log('🧪 测试新的资源类型配置');
 
@@ -25,7 +26,6 @@ console.log('\n✅ 配置测试完成！');
 
 // 测试数据库模型兼容性
 console.log('\n🗄️ 测试数据库模型...');
-import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 

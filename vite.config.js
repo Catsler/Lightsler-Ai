@@ -39,15 +39,35 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host],
+    allowedHosts: [host, "localhost", "*.trycloudflare.com"],
     cors: {
+      origin: true,
+      credentials: true,
       preflightContinue: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
     port: Number(process.env.PORT || 3000),
     hmr: hmrConfig,
     fs: {
       // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
       allow: ["app", "node_modules"],
+    },
+    proxy: {
+      // 代理Shopify CDN请求，避免被浏览器扩展拦截
+      "/shopifycloud": {
+        target: "https://cdn.shopify.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/shopifycloud/, ""),
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('Sending Request to the Target:', req.method, req.url);
+          });
+        }
+      }
     },
   },
   plugins: [

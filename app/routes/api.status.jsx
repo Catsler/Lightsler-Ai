@@ -1,6 +1,7 @@
 import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, getAllResources, getTranslationStats } from "../services/database.server.js";
 import { getJobStatus, getQueueStats } from "../services/queue.server.js";
+import { getTranslationServiceStatus, getTranslationStats as getTranslationServiceStats } from "../services/translation.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
 
 /**
@@ -21,6 +22,10 @@ export const loader = async ({ request }) => {
     // 获取队列统计
     const queueStats = await getQueueStats();
     
+    // 获取翻译服务状态和统计
+    const translationServiceStatus = await getTranslationServiceStatus();
+    const translationServiceStats = getTranslationServiceStats();
+    
     // 获取资源列表
     const resources = await getAllResources(shop.id);
     
@@ -32,6 +37,10 @@ export const loader = async ({ request }) => {
       stats: {
         database: dbStats,
         queue: queueStats
+      },
+      translationService: {
+        ...translationServiceStatus,
+        stats: translationServiceStats
       },
       resources: resources.map(r => ({
         id: r.id,
@@ -45,8 +54,8 @@ export const loader = async ({ request }) => {
       }))
     }, "状态查询成功");
     
-  }, "获取状态", request.headers.get("shopify-shop-domain") || "");
-};
+  }, "获取状态", request.headers.get("shopify-shop-domain") || "", { silent: true });
+};;
 
 // POST请求：查询特定任务状态
 export const action = async ({ request }) => {

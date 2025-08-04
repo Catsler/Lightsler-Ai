@@ -66,8 +66,8 @@ export const config = {
     batchSize: getEnvVar('TRANSLATION_BATCH_SIZE', 10, 'number'),
     delayMs: getEnvVar('TRANSLATION_DELAY_MS', 1000, 'number'),
     maxRetries: getEnvVar('TRANSLATION_MAX_RETRIES', 3, 'number'),
-    maxChunkSize: getEnvVar('MAX_CHUNK_SIZE', 1500, 'number'), // 最大分块大小
-    longTextThreshold: getEnvVar('LONG_TEXT_THRESHOLD', 2000, 'number'), // 长文本阈值
+    maxChunkSize: getEnvVar('MAX_CHUNK_SIZE', 1000, 'number'), // 最大分块大小 - 减小以确保翻译完整
+    longTextThreshold: getEnvVar('LONG_TEXT_THRESHOLD', 1500, 'number'), // 长文本阈值 - 更早触发分块
   },
   
   // 队列配置

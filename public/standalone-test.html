@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>翻译应用 - 独立测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .warning-banner {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .info-banner {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn-primary {
+            background-color: #007cba;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #005a8b;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+        }
+        .logs {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+        }
+        .log-success {
+            color: #28a745;
+        }
+        .log-error {
+            color: #dc3545;
+        }
+        .log-info {
+            color: #17a2b8;
+        }
+        .debug-info {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .debug-info code {
+            background: #e9ecef;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 翻译应用 - 独立测试页面</h1>
+        
+        <div class="warning-banner">
+            <strong>⚠️ 注意：</strong>这是一个独立的测试页面，不需要Shopify认证。可以直接在浏览器中打开测试。
+        </div>
+        
+        <div class="info-banner">
+            <strong>💡 提示：</strong>如果主应用遇到 "Failed to fetch" 错误，请：
+            <ol style="margin: 10px 0 0 20px;">
+                <li>禁用所有浏览器扩展（特别是广告拦截器）</li>
+                <li>使用Chrome隐身模式（Ctrl/Cmd + Shift + N）</li>
+                <li>清除浏览器缓存</li>
+            </ol>
+        </div>
+
+        <div class="form-group">
+            <label for="language">目标语言</label>
+            <select id="language">
+                <option value="zh-CN">Chinese (Simplified)</option>
+                <option value="zh-TW">Chinese (Traditional)</option>
+                <option value="en">English</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="es">Spanish</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="resourceType">资源类型</label>
+            <select id="resourceType">
+                <option value="PRODUCT">产品</option>
+                <option value="COLLECTION">产品集合</option>
+                <option value="PAGE">页面</option>
+            </select>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-secondary" onclick="testScan()">🔍 测试扫描</button>
+            <button class="btn-primary" onclick="testTranslate()">🔄 测试翻译</button>
+            <button class="btn-success" onclick="testAPI()">🌐 测试API连接</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>总资源数</h3>
+                <div class="number" id="totalResources">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>待翻译</h3>
+                <div class="number" id="pendingResources" style="color: #dc3545;">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>已完成</h3>
+                <div class="number" id="completedResources" style="color: #28a745;">0</div>
+            </div>
+        </div>
+
+        <h3>操作日志</h3>
+        <div class="logs" id="logs">
+            <div class="log-entry log-info">等待操作...</div>
+        </div>
+
+        <div class="debug-info">
+            <h3>调试信息</h3>
+            <p><strong>当前URL:</strong> <code id="currentUrl"></code></p>
+            <p><strong>浏览器:</strong> <code id="userAgent"></code></p>
+            <p><strong>时间:</strong> <code id="currentTime"></code></p>
+            <p><strong>选择状态:</strong> 语言=<code id="selectedLang">zh-CN</code>, 类型=<code id="selectedType">PRODUCT</code></p>
+        </div>
+    </div>
+
+    <script>
+        // 初始化
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('userAgent').textContent = navigator.userAgent;
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        // 更新选择状态
+        document.getElementById('language').addEventListener('change', updateSelection);
+        document.getElementById('resourceType').addEventListener('change', updateSelection);
+
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString();
+        }
+
+        function updateSelection() {
+            const lang = document.getElementById('language').value;
+            const type = document.getElementById('resourceType').value;
+            document.getElementById('selectedLang').textContent = lang;
+            document.getElementById('selectedType').textContent = type;
+            addLog(`选择已更新: 语言=${lang}, 类型=${type}`, 'info');
+        }
+
+        function addLog(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.insertBefore(entry, logs.firstChild);
+            
+            // 保持最多10条日志
+            while (logs.children.length > 10) {
+                logs.removeChild(logs.lastChild);
+            }
+        }
+
+        function updateStats(total, pending, completed) {
+            document.getElementById('totalResources').textContent = total;
+            document.getElementById('pendingResources').textContent = pending;
+            document.getElementById('completedResources').textContent = completed;
+        }
+
+        async function testScan() {
+            addLog('🔍 开始扫描测试...', 'info');
+            
+            try {
+                // 模拟API调用
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 模拟成功
+                const newTotal = Math.floor(Math.random() * 50) + 10;
+                updateStats(newTotal, newTotal, 0);
+                addLog(`✅ 扫描完成！发现 ${newTotal} 个资源`, 'success');
+            } catch (error) {
+                addLog(`❌ 扫描失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testTranslate() {
+            const total = parseInt(document.getElementById('totalResources').textContent);
+            if (total === 0) {
+                addLog('⚠️ 请先执行扫描', 'error');
+                return;
+            }
+
+            const lang = document.getElementById('language').value;
+            addLog(`🔄 开始翻译到 ${lang}...`, 'info');
+            
+            try {
+                // 模拟API调用
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // 模拟成功
+                updateStats(total, 0, total);
+                addLog(`✅ 翻译完成！已翻译 ${total} 个资源`, 'success');
+            } catch (error) {
+                addLog(`❌ 翻译失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testAPI() {
+            addLog('🌐 测试API连接...', 'info');
+            
+            try {
+                const response = await fetch('/api/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    addLog('✅ API连接正常', 'success');
+                    console.log('API响应:', data);
+                } else {
+                    addLog(`❌ API返回错误: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ API连接失败: ${error.message}`, 'error');
+                addLog('💡 提示: 这可能是由于浏览器扩展拦截了请求', 'info');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -11,146 +11,144 @@ import {
   Banner,
   DataTable,
   Badge,
-  Stack,
-  Spinner
+  BlockStack,
+  InlineStack,
+  Spinner,
+  TextField
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server.js";
+import { getAllResources } from "../services/database.server.js";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
   
-  // 获取支持的资源类型
-  const resourceTypes = [
-    { label: '产品 (PRODUCT)', value: 'PRODUCT' },
-    { label: '产品集合 (COLLECTION)', value: 'COLLECTION' },
-    { label: '博客文章 (ARTICLE)', value: 'ARTICLE' },
-    { label: '博客 (BLOG)', value: 'BLOG' },
-    { label: '页面 (PAGE)', value: 'PAGE' },
-    { label: '菜单 (MENU)', value: 'MENU' },
-    { label: '链接 (LINK)', value: 'LINK' },
-    { label: '过滤器 (FILTER)', value: 'FILTER' }
-  ];
-
-  return json({ resourceTypes });
+  // 获取所有已扫描的资源用于测试
+  try {
+    const resources = await getAllResources();
+    return json({ resources: resources || [] });
+  } catch (error) {
+    console.error('获取资源失败:', error);
+    return json({ resources: [] });
+  }
 };
 
-export default function TestResources() {
-  const { resourceTypes } = useLoaderData();
-  const scanFetcher = useFetcher();
-  const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
-  const [scanResults, setScanResults] = useState(null);
+// 页面翻译调试测试组件
+function PageTranslationDebug() {
+  const [resourceId, setResourceId] = useState('');
+  const [debugResult, setDebugResult] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleResourceTypeChange = useCallback((value) => {
-    setSelectedResourceType(value);
-    setScanResults(null);
-  }, []);
+  const handleDebug = async () => {
+    if (!resourceId.trim()) {
+      alert('请输入资源ID');
+      return;
+    }
 
-  const handleScanResources = useCallback(() => {
-    setScanResults(null);
-    scanFetcher.submit(
-      { resourceType: selectedResourceType },
-      {
-        method: "POST",
-        action: "/api/scan-resources",
-        encType: "application/json",
-      }
-    );
-  }, [selectedResourceType, scanFetcher]);
-
-  // 处理扫描结果
-  const isScanning = scanFetcher.state === 'submitting';
-  const scanResult = scanFetcher.data;
-
-  // 构建数据表格行
-  const tableRows = scanResult?.resources ? scanResult.resources.map(resource => [
-    resource.id,
-    resource.title || '无标题',
-    resource.resourceType,
-    resource.handle || '无',
-    resource.seoTitle || '无',
-    resource.status === 'pending' ? <Badge status="attention">待翻译</Badge> : <Badge status="success">已完成</Badge>
-  ]) : [];
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/debug-translation?resourceId=${encodeURIComponent(resourceId)}`);
+      const result = await response.json();
+      setDebugResult(result);
+    } catch (error) {
+      console.error('调试失败:', error);
+      alert('调试失败: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <Page title="资源扫描测试">
+    <Card>
+      <Text variant="headingMd" as="h2">页面翻译调试工具</Text>
+      <div style={{ marginTop: '1rem' }}>
+        <TextField
+          label="页面资源ID (例如: gid://shopify/Page/12345)"
+          value={resourceId}
+          onChange={setResourceId}
+          placeholder="输入完整的GID"
+        />
+        <div style={{ marginTop: '1rem' }}>
+          <Button
+            primary
+            onClick={handleDebug}
+            loading={isLoading}
+          >
+            调试页面翻译字段
+          </Button>
+        </div>
+      </div>
+      
+      {debugResult && (
+        <div style={{ marginTop: '2rem' }}>
+          <Text variant="headingMd" as="h3">调试结果</Text>
+          <div style={{ marginTop: '1rem', padding: '1rem', background: '#f6f6f7', borderRadius: '4px' }}>
+            <pre style={{ fontSize: '12px', overflow: 'auto' }}>
+              {JSON.stringify(debugResult, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function TestResources() {
+  const { resources } = useLoaderData();
+  const [selectedResource, setSelectedResource] = useState(null);
+
+  return (
+    <Page title="资源测试">
       <Layout>
         <Layout.Section>
-          <Card sectioned>
-            <Stack vertical>
-              <Text variant="headingMd">选择资源类型进行扫描</Text>
-              
-              <Select
-                label="资源类型"
-                options={resourceTypes}
-                value={selectedResourceType}
-                onChange={handleResourceTypeChange}
-              />
-
-              <Button
-                primary
-                onClick={handleScanResources}
-                loading={isScanning}
-                disabled={isScanning}
-              >
-                {isScanning ? '正在扫描...' : `扫描${selectedResourceType}资源`}
-              </Button>
-            </Stack>
+          <Card>
+            <Text variant="headingMd" as="h2">扫描到的资源</Text>
+            <div style={{ marginTop: '1rem' }}>
+              {resources.length === 0 ? (
+                <Text>暂无资源数据，请先扫描资源</Text>
+              ) : (
+                <div>
+                  <Text>共找到 {resources.length} 个资源</Text>
+                  <div style={{ marginTop: '1rem' }}>
+                    {resources.slice(0, 10).map(resource => (
+                      <div key={resource.id} style={{ 
+                        padding: '1rem', 
+                        border: '1px solid #e1e3e5', 
+                        marginBottom: '0.5rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        backgroundColor: selectedResource?.id === resource.id ? '#f6f6f7' : 'white'
+                      }} onClick={() => setSelectedResource(resource)}>
+                        <Text variant="headingSm" as="h3">{resource.title}</Text>
+                        <Text variant="bodyMd" color="subdued">
+                          类型: {resource.resourceType} | ID: {resource.id} | GID: {resource.gid}
+                        </Text>
+                        {resource.description && (
+                          <Text variant="bodyMd">
+                            描述: {resource.description.substring(0, 100)}...
+                          </Text>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </Card>
         </Layout.Section>
+        
+        <Layout.Section>
+          <PageTranslationDebug />
+        </Layout.Section>
 
-        {isScanning && (
+        {selectedResource && (
           <Layout.Section>
-            <Card sectioned>
-              <Stack alignment="center">
-                <Spinner accessibilityLabel="正在扫描资源" size="small" />
-                <Text>正在扫描{selectedResourceType}资源，请稍候...</Text>
-              </Stack>
-            </Card>
-          </Layout.Section>
-        )}
-
-        {scanResult && (
-          <Layout.Section>
-            <Card sectioned>
-              {scanResult.success ? (
-                <Stack vertical>
-                  <Banner status="success">
-                    <p>{scanResult.message}</p>
-                  </Banner>
-
-                  {scanResult.resources && scanResult.resources.length > 0 && (
-                    <>
-                      <Text variant="headingMd">
-                        扫描结果 ({scanResult.count} 个资源)
-                      </Text>
-                      
-                      <DataTable
-                        columnContentTypes={[
-                          'text',
-                          'text', 
-                          'text',
-                          'text',
-                          'text',
-                          'text'
-                        ]}
-                        headings={[
-                          'ID',
-                          '标题',
-                          '类型',
-                          'Handle',
-                          'SEO标题',
-                          '状态'
-                        ]}
-                        rows={tableRows}
-                      />
-                    </>
-                  )}
-                </Stack>
-              ) : (
-                <Banner status="critical">
-                  <p>扫描失败: {scanResult.error}</p>
-                </Banner>
-              )}
+            <Card>
+              <Text variant="headingMd" as="h2">选中资源详情</Text>
+              <div style={{ marginTop: '1rem', padding: '1rem', background: '#f6f6f7', borderRadius: '4px' }}>
+                <pre style={{ fontSize: '12px', overflow: 'auto' }}>
+                  {JSON.stringify(selectedResource, null, 2)}
+                </pre>
+              </div>
             </Card>
           </Layout.Section>
         )}

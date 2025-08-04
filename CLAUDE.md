@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 这是一个Shopify翻译应用，用于自动翻译店铺的产品和集合内容。应用基于Remix框架构建，集成了Shopify GraphQL API和GPT翻译服务。
 
+### 项目关键特性
+- **多资源类型支持**: 支持产品、集合、页面、文章、博客、菜单、链接、过滤器等Shopify资源的翻译
+- **批量处理**: 支持同步和异步（通过Redis队列）批量翻译
+- **富文本支持**: 保留HTML格式、图片、视频等富媒体内容
+- **SEO优化**: 支持SEO标题和描述的翻译
+- **嵌入式应用**: 在Shopify Admin中以嵌入式模式运行
+
 ## 常用开发命令
 
 ### 开发和构建
@@ -123,10 +130,15 @@ app/
 
 ### 核心数据表
 - **Session** - Shopify会话存储
-- **Shop** - 店铺信息
-- **Resource** - 待翻译资源（产品/集合）
+- **Shop** - 店铺信息（包含域名、访问令牌等）
+- **Resource** - 待翻译资源
+  - 支持的资源类型：product, collection, article, blog, page, menu, link, filter
+  - 包含原始内容和富文本内容（descriptionHtml）
+  - 使用contentFields字段存储特定资源类型的额外字段
 - **Translation** - 翻译结果记录
-- **Language** - 支持的语言列表
+  - 每个资源的每种语言都有独立记录
+  - 使用translationFields存储特定类型的翻译字段
+- **Language** - 支持的语言列表（包含语言代码和名称）
 
 ### 数据库操作
 ```bash
@@ -147,3 +159,21 @@ npx prisma reset     # 重置数据库（删除所有数据）
    - 测试翻译功能
 5. 检查TypeScript类型错误（IDE自动检查）
 6. 如果添加新的Shopify权限，运行 `npm run deploy` 更新配置
+
+## 常见问题排查
+
+### 认证问题
+- 如果遇到认证循环，检查应用权限是否已更新：`npm run deploy`
+- 确保环境变量SHOPIFY_API_KEY和SHOPIFY_API_SECRET正确配置
+
+### 翻译API问题
+- 检查GPT_API_KEY是否配置
+- 检查GPT_API_URL是否可访问（默认：https://api-gpt-ge.apifox.cn）
+
+### 数据库问题
+- 数据库表不存在：运行 `npm run setup`
+- 需要重置数据库：`npx prisma migrate reset`
+
+### Redis连接问题
+- 确保Redis服务已启动：`brew services start redis`
+- 如果Redis不可用，系统会自动降级到内存队列

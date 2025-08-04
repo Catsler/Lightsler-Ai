@@ -1,0 +1,10 @@
+=== 测试Page资源翻译修复 ===
+
+1. 扫描Page资源...
+扫描结果: {
+  "success": false,
+  "message": "扫描资源失败: HTTP 410 Gone",
+  "error": "HTTP 410 Gone",
+  "timestamp": "2025-08-04T09:20:54.154Z"
+}
+扫描失败: HTTP 410 Gone

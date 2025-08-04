@@ -1,0 +1,102 @@
+=== 直接测试Page资源翻译（带style标签保护） ===
+
+店铺: lightsler-ai.myshopify.com
+
+1. 扫描Page资源...
+开始获取PAGE类型的可翻译资源
+执行GraphQL查询 - 尝试: 1/3
+成功获取 2 个PAGE资源
+[PAGE调试] 资源 gid://shopify/Page/117716713661 的可翻译字段: [ 'title', 'body_html', 'handle' ]
+[PAGE调试] body_html字段内容: <ol>
+<li>Remember to insert loose end of tree straps into the elastic keeper
+<div style="text-align:...
+[PAGE调试] 资源 gid://shopify/Page/117722939581 的可翻译字段: [ 'title', 'body_html', 'handle', 'meta_title', 'meta_description' ]
+[PAGE调试] body_html字段内容: <div class="flex max-w-full flex-col flex-grow">
+<div data-message-author-role="assistant" data-mess...
+总共获取 2 个PAGE资源
+扫描完成: 找到 2 个Page资源
+资源已保存到数据库
+
+2. Page资源信息:
+- 标题: Set Up Precaution
+- ID: 117716713661
+- 内容长度: 1708
+- 包含style标签: false
+
+3. 执行翻译到日语...
+正在翻译文本: 17字符 -> 日语, max_tokens: 1500
+开始长文本翻译: 1708 字符 -> 日语
+开始HTML保护，原始长度: 1708
+保护图片: __PROTECTED_IMG_0__
+保护图片: __PROTECTED_IMG_1__
+保护图片: __PROTECTED_IMG_2__
+保护图片: __PROTECTED_IMG_3__
+HTML保护完成: 原始1708字符 -> 保护后1024字符, 保护了4个元素
+文本包含 1 个段落
+处理第 1 段，长度: 1024
+长段落分割为 7 个句子
+保存块 1: 919 字符
+文本已分割为 2 个块，每块最大 1000 字符
+
+========== 翻译第 1/2 块 ==========
+块内容预览: <ol>
+<li>Remember to insert loose end of tree straps into the elastic keeper
+<div style="text-align:...
+块长度: 919 字符
+正在翻译文本: 919字符 -> 日语, max_tokens: 2757
+翻译可能被截断，未以完整句子结尾
+✅ 第1块翻译成功
+译文预览: <ol>
+<li>ツリーストラップの緩い端をエラスティックキーパーに挿入することを忘れないでください。
+<div style="text-align: center;">__PROTECTED_IMG...
+等待 1000ms 后继续下一块...
+
+========== 翻译第 2/2 块 ==========
+块内容预览: Remove hard objects from your pockets that might go through your clothing and rip the hammock....
+块长度: 94 字符
+正在翻译文本: 94字符 -> 日语, max_tokens: 1500
+✅ 第2块翻译成功
+译文预览: ポケットから硬い物を取り出してください。それが衣服を通り抜けてハンモックを破る可能性があります。...
+开始HTML恢复，待恢复占位符: 4个
+恢复占位符: __PROTECTED_IMG_0__ -> 内容长度207
+恢复占位符: __PROTECTED_IMG_1__ -> 内容长度166
+恢复占位符: __PROTECTED_IMG_2__ -> 内容长度162
+恢复占位符: __PROTECTED_IMG_3__ -> 内容长度225
+HTML恢复完成: 最终长度1343字符
+
+========== 长文本翻译完成 ==========
+原文长度: 1708 字符
+译文长度: 1343 字符
+总块数: 2
+成功块数: 2
+翻译描述使用字段: description (来自Page.content或body字段)
+原始内容长度: 1708字符
+正在翻译URL handle: "set up precaution" -> 日语
+URL handle翻译完成: "set-up-precaution" -> "予防措置設定"
+翻译URL handle: "set-up-precaution" -> "予防措置設定"
+
+4. 翻译结果:
+- 状态: undefined
+- 标题翻译: 予防措置の設定
+- 内容翻译长度: 1343
+
+5. HTML保护检查:
+- 翻译后包含style标签: false
+- 翻译后包含script标签: false
+- 包含日文字符: true
+- 日文字符数量: 1
+- 纯文本预览: ツリーストラップの緩い端をエラスティックキーパーに挿入することを忘れないでください。
+
+
+
+7歳未満の子供は、大人の監督の下で使用してください。
+ハンモックを使用する際は、座るか横になることができます。ハンモックの上で立とうとしないでください。非常に危険です。
+
+
+
+
+地面からハンモックの底までの推奨距離は15〜50cmです。
+
+
+
+吊り下げサスペンションのすべての部品は、極端な使用で時間とともに...

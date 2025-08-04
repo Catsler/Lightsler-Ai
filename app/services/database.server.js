@@ -48,6 +48,7 @@ export async function saveResources(shopId, resources) {
   for (const resource of resources) {
     // 构建更新和创建的数据对象
     const resourceData = {
+      gid: resource.gid,
       title: resource.title,
       description: resource.description,
       descriptionHtml: resource.descriptionHtml,

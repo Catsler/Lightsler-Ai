@@ -61,6 +61,7 @@ model Resource {
   shopId       String
   resourceType String   // product, collection, article, blog, page, menu, link, filter
   resourceId   String   // Shopify资源ID
+  gid          String   @default("") // Shopify GraphQL ID (gid://shopify/Product/123)
   title        String
   description  String?  // 纯文本描述（无HTML）
   descriptionHtml String? // 富文本描述（包含HTML、视频等）

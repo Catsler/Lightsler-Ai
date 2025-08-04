@@ -1,7 +1,7 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
 import { translateResource } from './translation.server.js';
-import { updateProductTranslation, updateCollectionTranslation } from './shopify-graphql.server.js';
+import { updateResourceTranslation } from './shopify-graphql.server.js';
 import { saveTranslation, updateResourceStatus, prisma } from './database.server.js';
 // import { authenticate } from '../shopify.server.js'; // 只在需要时导入
 import { config } from '../utils/config.server.js';
@@ -86,8 +86,8 @@ if (translationQueue) {
       await saveTranslation(resourceId, shopId, language, translations);
       job.progress(70);
       
-      // 构建Shopify GID
-      const gid = `gid://shopify/${resource.resourceType === 'product' ? 'Product' : 'Collection'}/${resource.resourceId}`;
+      // 使用保存的GID
+      const gid = resource.gid;
       
       // 重新创建admin客户端（从会话信息）
       const shop = await prisma.shop.findUnique({
@@ -136,13 +136,14 @@ if (translationQueue) {
         }
       };
       
-      // 更新到Shopify
-      let updateResult;
-      if (resource.resourceType === 'product') {
-        updateResult = await updateProductTranslation(adminGraphQL, gid, translations, language);
-      } else {
-        updateResult = await updateCollectionTranslation(adminGraphQL, gid, translations, language);
-      }
+      // 更新到Shopify - 使用通用函数
+      const updateResult = await updateResourceTranslation(
+        adminGraphQL, 
+        gid, 
+        translations, 
+        language,
+        resource.resourceType.toUpperCase()
+      );
       job.progress(90);
       
       // 更新资源状态为完成
