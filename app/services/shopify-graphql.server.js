@@ -328,8 +328,10 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
     
     for (const edge of productEdges) {
       const product = edge.node;
+      const productId = product.id.replace('gid://shopify/Product/', '');
       products.push({
-        id: product.id.replace('gid://shopify/Product/', ''),
+        id: productId,
+        originalId: productId, // 添加originalId字段
         gid: product.id,
         title: product.title,
         description: product.description || '',
@@ -409,8 +411,10 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
     
     for (const edge of collectionEdges) {
       const collection = edge.node;
+      const collectionId = collection.id.replace('gid://shopify/Collection/', '');
       collections.push({
-        id: collection.id.replace('gid://shopify/Collection/', ''),
+        id: collectionId,
+        originalId: collectionId, // 添加originalId字段
         gid: collection.id,
         title: collection.title,
         description: collection.description || '',
@@ -587,6 +591,7 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
       // 根据资源类型构建特定字段
       const resourceData = {
         id: numericId,
+        originalId: numericId, // 添加originalId字段
         gid: resourceId,
         resourceType: resourceType.toLowerCase(),
         title: content.title || '',
@@ -664,9 +669,21 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
       const dynamicContent = {};
       const translatableFields = [];
       
-      // 查找包含名称信息的字段
-      let resourceTitle = null;
-      let resourceName = null;
+      // 定义标题字段的优先级规则
+      const TITLE_KEY_PRIORITIES = [
+        { pattern: /^title$/i, priority: 1 },           // 精确匹配 title
+        { pattern: /^heading$/i, priority: 2 },         // 精确匹配 heading
+        { pattern: /^name$/i, priority: 3 },            // 精确匹配 name
+        { pattern: /\.title$/i, priority: 4 },          // 以.title结尾（如page.title）
+        { pattern: /^subheading$/i, priority: 5 },      // subheading
+        { pattern: /title/i, priority: 6 },             // 包含title
+        { pattern: /heading/i, priority: 7 },           // 包含heading
+        { pattern: /name/i, priority: 8 },              // 包含name
+      ];
+      
+      // 使用优先级系统查找最合适的标题
+      let bestTitle = null;
+      let bestPriority = Infinity;
       
       for (const item of resource.translatableContent) {
         dynamicContent[item.key] = {
@@ -680,12 +697,13 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
           value: item.value
         });
         
-        // 尝试识别名称字段
-        const keyLower = item.key.toLowerCase();
-        if (keyLower.includes('title') || keyLower === 'title') {
-          resourceTitle = item.value;
-        } else if (keyLower.includes('name') || keyLower === 'name') {
-          resourceName = item.value;
+        // 检查是否是更好的标题字段
+        for (const rule of TITLE_KEY_PRIORITIES) {
+          if (rule.pattern.test(item.key) && rule.priority < bestPriority) {
+            bestTitle = item.value;
+            bestPriority = rule.priority;
+            break; // 找到匹配就跳出内层循环
+          }
         }
       }
       
@@ -696,18 +714,27 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
       const lastIdPart = rawLastIdPart.split('?')[0].split('#')[0]; // 移除查询参数和锚点
       
       // 构建更有意义的标题
-      let displayTitle = resourceTitle || resourceName;
+      let displayTitle = bestTitle;
       
       if (!displayTitle) {
         // 如果没有找到标题或名称，尝试从ID解析
         // 例如：gid://shopify/OnlineStoreThemeJsonTemplate/blog-posts-FNwr3q
         // 提取 "blog-posts" 部分
         if (lastIdPart.includes('-')) {
-          // 提取破折号前的部分作为名称，并转换为更友好的格式
-          const namePart = lastIdPart.split('-').slice(0, -1).join(' ');
-          displayTitle = namePart.split(/[-_]/).map(word => 
-            word.charAt(0).toUpperCase() + word.slice(1)
-          ).join(' ');
+          // 移除最后的随机ID部分（如-FNwr3q）
+          let cleanId = lastIdPart;
+          
+          // 检查是否有类似 -XXXXX 的随机后缀（5个或更多字符）
+          const randomSuffixMatch = lastIdPart.match(/^(.+)-[A-Za-z0-9]{5,}$/);
+          if (randomSuffixMatch) {
+            cleanId = randomSuffixMatch[1];
+          }
+          
+          // 将连字符转换为空格，并首字母大写
+          displayTitle = cleanId
+            .split('-')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
         } else {
           // 使用资源类型的友好名称
           const typeMap = {
@@ -731,7 +758,9 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
       // 生成文件友好的ID，基于displayTitle而不是handle
       let fileId = displayTitle
         .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '-')  // 替换非字母数字和中文字符为连字符
+        .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, '')  // 移除特殊字符，保留字母、数字、中文和空格
+        .trim()  // 移除首尾空格
+        .replace(/\s+/g, '-')  // 空格转换为连字符
         .replace(/-+/g, '-')  // 合并多个连字符
         .replace(/^-|-$/g, '');  // 移除开头和结尾的连字符
       
@@ -806,8 +835,10 @@ export async function fetchProductOptions(admin, maxRetries = 3) {
         content[item.key] = item.value;
       }
       
+      const resourceId = resource.resourceId.split('/').pop();
       const resourceData = {
-        id: resource.resourceId.split('/').pop(),
+        id: resourceId,
+        originalId: resourceId, // 添加originalId字段
         gid: resource.resourceId,
         resourceType: 'product_option',
         title: content.name || '',
@@ -861,8 +892,10 @@ export async function fetchSellingPlans(admin, maxRetries = 3) {
         content[item.key] = item.value;
       }
       
+      const resourceId = resource.resourceId.split('/').pop();
       const resourceData = {
-        id: resource.resourceId.split('/').pop(),
+        id: resourceId,
+        originalId: resourceId, // 添加originalId字段
         gid: resource.resourceId,
         resourceType: 'selling_plan',
         title: content.name || '',
@@ -912,8 +945,10 @@ export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
       content[item.key] = item.value;
     }
     
+    const resourceId = resource.resourceId.split('/').pop();
     const resourceData = {
-      id: resource.resourceId.split('/').pop(),
+      id: resourceId,
+      originalId: resourceId, // 添加originalId字段
       gid: resource.resourceId,
       resourceType: resourceType.toLowerCase(),
       title: content.title || content.name || '店铺信息',
