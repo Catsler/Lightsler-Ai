@@ -42,11 +42,13 @@ npm run env             # 管理环境变量
 
 ### 测试和调试
 ```bash
-node test-setup.js      # 测试应用配置
-node simple-test.js     # 运行简单测试
-node check-status.js    # 检查应用状态
-npm run dev             # 开发模式（自动监听文件变化）
-open http://localhost:3000/app  # 打开应用界面
+node test-setup.js          # 测试应用配置
+node simple-test.js         # 运行简单测试
+node check-status.js        # 检查应用状态
+node debug-translation-issue.js  # 调试翻译问题
+node final-validation-test.js    # 最终验证测试
+npm run dev                 # 开发模式（自动监听文件变化）
+open http://localhost:3000/app    # 打开应用界面
 ```
 
 ### Redis操作（可选队列功能）
@@ -64,7 +66,7 @@ redis-cli                # 进入Redis命令行
 - **前端**: React (v18.2.0) + Shopify Polaris (v12.0.0)
 - **队列**: Bull + Redis/IORedis (可选)
 - **API**: Shopify GraphQL Admin API (2025-07) + GPT翻译API
-- **构建工具**: Vite (v6.2.2) + TypeScript (v5.2.2)
+- **构建工具**: Vite (v5.4.8) + TypeScript (v5.2.2)
 
 ### 核心目录结构
 ```
@@ -75,7 +77,13 @@ app/
 │   ├── shopify-graphql.server.js # Shopify API操作
 │   ├── database.server.js        # 数据库操作
 │   └── queue.server.js           # 任务队列
-└── utils/               # 工具函数
+├── utils/               # 工具函数
+│   ├── api.server.js           # API工具
+│   ├── config.server.js        # 配置管理
+│   ├── error-handler.server.js # 错误处理
+│   └── logger.server.js        # 日志工具
+├── components/          # React组件
+└── shopify.server.js    # Shopify核心配置
 ```
 
 ### 数据流程

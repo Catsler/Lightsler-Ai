@@ -2,6 +2,10 @@
  * 环境变量配置和验证工具
  */
 
+// 加载环境变量文件
+import dotenv from 'dotenv';
+dotenv.config();
+
 /**
  * 获取环境变量，支持默认值和类型转换
  * @param {string} key - 环境变量键名

@@ -3,7 +3,7 @@
 client_id = "8102af9807fd9df0b322a44f500a1d0e"
 name = "Lightsler Ai"
 handle = "lightsler-ai"
-application_url = "https://recreational-tradition-surprising-moldova.trycloudflare.com"
+application_url = "https://richardson-nonprofit-llp-lamps.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-07"
 scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
 
 [auth]
-redirect_urls = ["https://recreational-tradition-surprising-moldova.trycloudflare.com/auth/callback", "https://recreational-tradition-surprising-moldova.trycloudflare.com/auth/shopify/callback", "https://recreational-tradition-surprising-moldova.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://richardson-nonprofit-llp-lamps.trycloudflare.com/auth/callback", "https://richardson-nonprofit-llp-lamps.trycloudflare.com/auth/shopify/callback", "https://richardson-nonprofit-llp-lamps.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

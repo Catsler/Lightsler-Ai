@@ -70,7 +70,7 @@ export const RESOURCE_FIELD_MAPPINGS = {
   [RESOURCE_TYPES.COLLECTION]: ['title', 'body_html', 'handle', 'meta_title', 'meta_description'],
   [RESOURCE_TYPES.ARTICLE]: ['title', 'body_html', 'handle', 'summary', 'meta_title', 'meta_description'],
   [RESOURCE_TYPES.BLOG]: ['title', 'handle', 'meta_title', 'meta_description'],
-  [RESOURCE_TYPES.PAGE]: ['title', 'body', 'handle', 'meta_title', 'meta_description'],
+  [RESOURCE_TYPES.PAGE]: ['title', 'body_html', 'handle', 'meta_title', 'meta_description'], // 修复：统一使用body_html与翻译字段映射保持一致
   [RESOURCE_TYPES.MENU]: ['title'],
   [RESOURCE_TYPES.LINK]: ['title'],
   [RESOURCE_TYPES.FILTER]: ['label']
