@@ -2,7 +2,11 @@ import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, saveResources } from "../services/database.server.js";
 import { 
-  fetchResourcesByType, 
+  fetchResourcesByType,
+  fetchThemeResources,
+  fetchProductOptions,
+  fetchSellingPlans,
+  fetchShopInfo,
   RESOURCE_TYPES 
 } from "../services/shopify-graphql.server.js";
 import { withErrorHandling } from "../utils/api-response.server.js";
@@ -36,8 +40,29 @@ export const action = async ({ request }) => {
     // 确保店铺记录存在
     const shop = await getOrCreateShop(shopDomain, session.accessToken);
 
-    // 使用通用函数获取资源
-    const resources = await fetchResourcesByType(admin, normalizedResourceType);
+    // 根据资源类型使用相应的获取函数
+    let resources = [];
+    
+    // Theme相关资源
+    if (normalizedResourceType.startsWith('ONLINE_STORE_THEME')) {
+      resources = await fetchThemeResources(admin, normalizedResourceType);
+    } 
+    // 产品选项和选项值
+    else if (normalizedResourceType === 'PRODUCT_OPTION' || normalizedResourceType === 'PRODUCT_OPTION_VALUE') {
+      resources = await fetchProductOptions(admin);
+    }
+    // 销售计划
+    else if (normalizedResourceType === 'SELLING_PLAN' || normalizedResourceType === 'SELLING_PLAN_GROUP') {
+      resources = await fetchSellingPlans(admin);
+    }
+    // 店铺信息和政策
+    else if (normalizedResourceType === 'SHOP' || normalizedResourceType === 'SHOP_POLICY') {
+      resources = await fetchShopInfo(admin, normalizedResourceType);
+    }
+    // 其他现有资源类型
+    else {
+      resources = await fetchResourcesByType(admin, normalizedResourceType);
+    }
     
     if (resources.length === 0) {
       return json({

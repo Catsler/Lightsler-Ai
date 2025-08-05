@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server.js";
-import { translateResourceWithLogging, getTranslationStats, translationLogger } from "../services/translation.server.js";
+import { translateResourceWithLogging, translateThemeResource, getTranslationStats, translationLogger } from "../services/translation.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
 import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
@@ -67,8 +67,33 @@ export const action = async ({ request }) => {
         // 更新资源状态为处理中
         await updateResourceStatus(resource.id, 'processing');
         
-        // 翻译资源内容（带详细日志）
-        const translations = await translateResourceWithLogging(resource, targetLanguage);
+        // 翻译资源内容（根据资源类型选择合适的翻译函数）
+        let translations;
+        
+        // Theme相关资源和其他新资源类型使用专门的翻译函数
+        const themeResourceTypes = [
+          'ONLINE_STORE_THEME',
+          'ONLINE_STORE_THEME_APP_EMBED',
+          'ONLINE_STORE_THEME_JSON_TEMPLATE',
+          'ONLINE_STORE_THEME_LOCALE_CONTENT',
+          'ONLINE_STORE_THEME_SECTION_GROUP',
+          'ONLINE_STORE_THEME_SETTINGS_CATEGORY',
+          'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS',
+          'PRODUCT_OPTION',
+          'PRODUCT_OPTION_VALUE',
+          'SELLING_PLAN',
+          'SELLING_PLAN_GROUP',
+          'SHOP',
+          'SHOP_POLICY'
+        ];
+        
+        if (themeResourceTypes.includes(resource.resourceType)) {
+          console.log(`使用Theme资源翻译函数处理: ${resource.resourceType}`);
+          translations = await translateThemeResource(resource, targetLanguage);
+        } else {
+          // 使用标准翻译函数
+          translations = await translateResourceWithLogging(resource, targetLanguage);
+        }
         
         // 保存翻译结果到数据库
         await saveTranslation(resource.id, shop.id, targetLanguage, translations);

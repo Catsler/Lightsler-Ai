@@ -60,6 +60,7 @@ function Index() {
 
   // 资源类型选项
   const resourceTypeOptions = useMemo(() => [
+    // 现有资源类型
     { label: '产品', value: 'PRODUCT' },
     { label: '产品集合', value: 'COLLECTION' },
     { label: '博客文章', value: 'ARTICLE' },
@@ -67,8 +68,30 @@ function Index() {
     { label: '页面', value: 'PAGE' },
     { label: '菜单', value: 'MENU' },
     { label: '链接', value: 'LINK' },
-    { label: '过滤器', value: 'FILTER' }
-  ], []);
+    { label: '过滤器', value: 'FILTER' },
+    
+    // A. Theme相关资源
+    { label: '--- 主题设置 ---', value: '', disabled: true },
+    { label: '主题', value: 'ONLINE_STORE_THEME' },
+    { label: '应用嵌入', value: 'ONLINE_STORE_THEME_APP_EMBED' },
+    { label: 'JSON模板', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
+    { label: '本地化内容', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
+    { label: '区块组', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
+    { label: '主题设置分类', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
+    { label: '静态区块', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
+    
+    // B. 产品扩展
+    { label: '--- 产品扩展 ---', value: '', disabled: true },
+    { label: '产品选项', value: 'PRODUCT_OPTION' },
+    { label: '产品选项值', value: 'PRODUCT_OPTION_VALUE' },
+    { label: '销售计划', value: 'SELLING_PLAN' },
+    { label: '销售计划组', value: 'SELLING_PLAN_GROUP' },
+    
+    // C. 店铺配置
+    { label: '--- 店铺配置 ---', value: '', disabled: true },
+    { label: '店铺信息', value: 'SHOP' },
+    { label: '店铺政策', value: 'SHOP_POLICY' }
+  ], []);;
 
   // 加载状态
   const isScanning = scanProductsFetcher.state === 'submitting' || 

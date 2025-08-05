@@ -47,8 +47,15 @@ node simple-test.js         # 运行简单测试
 node check-status.js        # 检查应用状态
 node debug-translation-issue.js  # 调试翻译问题
 node final-validation-test.js    # 最终验证测试
+node test-new-resources.js   # 测试新资源类型支持
 npm run dev                 # 开发模式（自动监听文件变化）
 open http://localhost:3000/app    # 打开应用界面
+```
+
+### 脚本工具
+```bash
+node scripts/init-languages.js   # 初始化语言列表
+node scripts/reset-database.js   # 重置数据库（清除所有数据）
 ```
 
 ### Redis操作（可选队列功能）
@@ -95,16 +102,26 @@ app/
 ### API端点
 - `POST /api/scan-products` - 扫描产品
 - `POST /api/scan-collections` - 扫描集合  
+- `POST /api/scan-resources` - 扫描所有支持的资源类型
 - `POST /api/translate` - 同步翻译
 - `POST /api/translate-queue` - 异步翻译（需要Redis）
 - `GET /api/status` - 获取状态信息
 - `GET /api/config` - 获取配置信息
 - `POST /api/clear` - 清理数据
+- `GET /api/translation-logs` - 获取翻译日志
+- `POST /api/check-translation` - 检查翻译状态
 
 ### 测试页面
 - `/app` - 主应用界面（嵌入式）
-- `/test/translation` - 翻译功能测试页面
-- 通过 `open http://localhost:3000/app` 访问
+- `/app/simple` - 简单版本的应用界面
+- `/app/debug` - 调试界面
+- `/test/translation-fix` - 翻译功能测试页面
+- `/test/basic-ui` - 基础UI测试
+- `/test/resources` - 资源类型测试
+- `/test/check-translation` - 翻译验证测试
+- `/debug/seo-fields` - SEO字段调试
+- `/debug/translation-test` - 翻译服务调试
+- 通过 `open http://localhost:3000/app` 访问主界面
 
 ## 开发注意事项
 
@@ -152,7 +169,7 @@ app/
 ```bash
 npx prisma studio    # 打开数据库管理界面
 npx prisma db push   # 推送schema变更（开发环境）
-npx prisma reset     # 重置数据库（删除所有数据）
+npx prisma migrate reset     # 重置数据库（删除所有数据）
 ```
 
 ## 任务完成检查
@@ -185,3 +202,33 @@ npx prisma reset     # 重置数据库（删除所有数据）
 ### Redis连接问题
 - 确保Redis服务已启动：`brew services start redis`
 - 如果Redis不可用，系统会自动降级到内存队列
+
+## 翻译功能详解
+
+### 支持的资源类型映射
+基于Shopify资源分类系统：
+1. **产品类资源** (Product Resources)
+   - product - 产品
+   - collection - 集合
+   - filter - 筛选器（集合过滤条件）
+
+2. **内容类资源** (Content Resources)
+   - article - 文章
+   - blog - 博客
+   - page - 页面
+
+3. **导航类资源** (Navigation Resources)
+   - menu - 菜单
+   - link - 链接
+
+### 富文本内容处理
+- 自动识别并保留HTML标签
+- 保护图片、视频等媒体元素不被翻译
+- 支持复杂的嵌套HTML结构
+- 处理特殊字符和转义
+
+### 翻译队列系统
+- 同步模式：适合少量资源的即时翻译
+- 异步模式：通过Redis/Bull处理大批量翻译任务
+- 自动重试机制：失败的翻译任务会自动重试
+- 进度跟踪：实时查看翻译进度和状态

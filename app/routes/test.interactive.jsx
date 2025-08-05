@@ -1,4 +1,9 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { 
+  UILogger, 
+  usePerformanceMonitor,
+  useErrorRecovery 
+} from "../utils/ui-helpers.js";
 import {
   Page,
   Layout,
@@ -33,38 +38,47 @@ export default function InteractiveTest() {
     checkboxWorking: null
   });
 
-  // 选项数据
-  const languageOptions = [
+  // 性能监控和错误恢复
+  const { renderCount } = usePerformanceMonitor('InteractiveTest');
+  const { hasError, errorMessage, reportError, recover } = useErrorRecovery();
+
+  // 使用useMemo稳定选项数组，避免不必要的重新渲染
+  const languageOptions = useMemo(() => [
     { label: 'Chinese (Simplified)', value: 'zh-CN' },
     { label: 'English', value: 'en' },
     { label: 'Japanese', value: 'ja' },
     { label: 'German', value: 'de' },
     { label: 'French', value: 'fr' },
     { label: 'Spanish', value: 'es' }
-  ];
+  ], []);
 
-  const typeOptions = [
+  const typeOptions = useMemo(() => [
     { label: 'Product (产品)', value: 'PRODUCT' },
     { label: 'Collection (集合)', value: 'COLLECTION' },
     { label: 'Page (页面)', value: 'PAGE' },
     { label: 'Article (文章)', value: 'ARTICLE' }
-  ];
+  ], []);
 
-  // 添加日志的函数
+  // 添加日志的函数 - 使用直接try-catch
   const addLog = useCallback((message, type = 'info') => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = {
-      id: Date.now(),
-      timestamp,
-      message,
-      type
-    };
-    
-    setInteractionLogs(prev => [logEntry, ...prev.slice(0, 19)]); // 保留最近20条
-    console.log(`[${timestamp}] ${message}`);
-  }, []);
+    try {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = {
+        id: Date.now(),
+        timestamp,
+        message,
+        type
+      };
+      
+      setInteractionLogs(prev => [logEntry, ...prev.slice(0, 19)]); // 保留最近20条
+      UILogger.info(`[交互测试] ${message}`, 'InteractiveTest', { type });
+    } catch (error) {
+      console.error('添加日志失败:', error);
+      reportError(error);
+    }
+  }, [reportError]);
 
-  // 语言选择处理
+  // 语言选择处理 - 使用直接try-catch
   const handleLanguageChange = useCallback((value) => {
     try {
       setSelectedLanguage(value);
@@ -74,10 +88,11 @@ export default function InteractiveTest() {
     } catch (error) {
       addLog(`❌ 语言选择失败: ${error.message}`, 'error');
       setTestResults(prev => ({ ...prev, selectWorking: false }));
+      reportError(error);
     }
-  }, [addLog, languageOptions]);
+  }, [addLog, languageOptions, reportError]);
 
-  // 类型选择处理
+  // 类型选择处理 - 使用直接try-catch
   const handleTypeChange = useCallback((value) => {
     try {
       setSelectedType(value);
@@ -87,10 +102,11 @@ export default function InteractiveTest() {
     } catch (error) {
       addLog(`❌ 类型选择失败: ${error.message}`, 'error');
       setTestResults(prev => ({ ...prev, selectWorking: false }));
+      reportError(error);
     }
-  }, [addLog, typeOptions]);
+  }, [addLog, typeOptions, reportError]);
 
-  // 按钮点击处理
+  // 按钮点击处理 - 使用直接try-catch
   const handleButtonClick = useCallback(() => {
     try {
       setClickCount(prev => prev + 1);
@@ -99,10 +115,11 @@ export default function InteractiveTest() {
     } catch (error) {
       addLog(`❌ 按钮点击失败: ${error.message}`, 'error');
       setTestResults(prev => ({ ...prev, buttonWorking: false }));
+      reportError(error);
     }
-  }, [addLog, clickCount]);
+  }, [addLog, clickCount, reportError]);
 
-  // 文本输入处理
+  // 文本输入处理 - 使用直接try-catch
   const handleTextChange = useCallback((value) => {
     try {
       setTextValue(value);
@@ -111,10 +128,11 @@ export default function InteractiveTest() {
     } catch (error) {
       addLog(`❌ 文本输入失败: ${error.message}`, 'error');
       setTestResults(prev => ({ ...prev, textFieldWorking: false }));
+      reportError(error);
     }
-  }, [addLog]);
+  }, [addLog, reportError]);
 
-  // 复选框处理
+  // 复选框处理 - 使用直接try-catch
   const handleCheckboxChange = useCallback((checked) => {
     try {
       setCheckboxValue(checked);
@@ -123,31 +141,37 @@ export default function InteractiveTest() {
     } catch (error) {
       addLog(`❌ 复选框操作失败: ${error.message}`, 'error');
       setTestResults(prev => ({ ...prev, checkboxWorking: false }));
+      reportError(error);
     }
-  }, [addLog]);
+  }, [addLog, reportError]);
 
-  // 清空日志
+  // 清空日志 - 使用直接try-catch
   const clearLogs = useCallback(() => {
-    setInteractionLogs([]);
-    addLog('🗑️ 日志已清空');
-  }, [addLog]);
-
-  // 运行所有测试
-  const runAllTests = useCallback(async () => {
-    addLog('🧪 开始运行自动化测试...', 'info');
-    
-    // 重置测试结果
-    setTestResults({
-      selectWorking: null,
-      buttonWorking: null,
-      textFieldWorking: null,
-      checkboxWorking: null
-    });
-
-    // 测试延迟函数
-    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
     try {
+      setInteractionLogs([]);
+      addLog('🗑️ 日志已清空');
+    } catch (error) {
+      console.error('清空日志失败:', error);
+      reportError(error);
+    }
+  }, [addLog, reportError]);
+
+  // 运行所有测试 - 使用直接try-catch
+  const runAllTests = useCallback(async () => {
+    try {
+      addLog('🧪 开始运行自动化测试...', 'info');
+      
+      // 重置测试结果
+      setTestResults({
+        selectWorking: null,
+        buttonWorking: null,
+        textFieldWorking: null,
+        checkboxWorking: null
+      });
+
+      // 测试延迟函数
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
       // 测试语言选择
       await delay(500);
       handleLanguageChange('en');
@@ -188,11 +212,11 @@ export default function InteractiveTest() {
 
       await delay(1000);
       addLog('✅ 自动化测试完成', 'success');
-
     } catch (error) {
       addLog(`❌ 自动化测试失败: ${error.message}`, 'error');
+      reportError(error);
     }
-  }, [handleLanguageChange, handleTypeChange, handleButtonClick, handleTextChange, handleCheckboxChange, addLog]);
+  }, [handleLanguageChange, handleTypeChange, handleButtonClick, handleTextChange, handleCheckboxChange, addLog, reportError]);
 
   // 获取测试状态徽章
   const getTestStatusBadge = (status) => {
@@ -207,9 +231,45 @@ export default function InteractiveTest() {
     addLog('💡 请手动测试各个组件，或点击"运行自动测试"', 'info');
   }, [addLog]);
 
+  // 错误恢复界面
+  if (hasError) {
+    return (
+      <Page title="交互测试页面 - 错误恢复">
+        <Layout>
+          <Layout.Section>
+            <Banner title="UI交互错误" tone="critical">
+              <BlockStack gap="200">
+                <Text>检测到UI交互错误: {errorMessage}</Text>
+                <InlineStack gap="200">
+                  <Button onClick={recover} variant="primary">
+                    🔄 恢复测试页面
+                  </Button>
+                  <Button onClick={() => window.location.reload()} variant="secondary">
+                    🔃 强制刷新页面
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Banner>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
+
   return (
     <Page title="交互功能测试页面">
       <Layout>
+        {/* 性能监控信息 */}
+        {process.env.NODE_ENV === 'development' && (
+          <Layout.Section>
+            <Banner tone="info">
+              <Text variant="bodySm">
+                🔧 开发模式 | 渲染次数: {renderCount} | 错误监控: 已启用
+              </Text>
+            </Banner>
+          </Layout.Section>
+        )}
+        
         {/* 测试状态概览 */}
         <Layout.Section>
           <Banner 

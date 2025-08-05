@@ -6,6 +6,7 @@
 
 // 资源类型配置
 export const RESOURCE_TYPES = {
+  // 现有资源类型
   PRODUCT: 'PRODUCT',
   COLLECTION: 'COLLECTION', 
   ARTICLE: 'ARTICLE',
@@ -13,8 +14,27 @@ export const RESOURCE_TYPES = {
   PAGE: 'PAGE',
   MENU: 'MENU',
   LINK: 'LINK',
-  FILTER: 'FILTER'
-};
+  FILTER: 'FILTER',
+  
+  // A. Theme相关资源 (7个)
+  ONLINE_STORE_THEME: 'ONLINE_STORE_THEME',
+  ONLINE_STORE_THEME_APP_EMBED: 'ONLINE_STORE_THEME_APP_EMBED',
+  ONLINE_STORE_THEME_JSON_TEMPLATE: 'ONLINE_STORE_THEME_JSON_TEMPLATE',
+  ONLINE_STORE_THEME_LOCALE_CONTENT: 'ONLINE_STORE_THEME_LOCALE_CONTENT',
+  ONLINE_STORE_THEME_SECTION_GROUP: 'ONLINE_STORE_THEME_SECTION_GROUP',
+  ONLINE_STORE_THEME_SETTINGS_CATEGORY: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY',
+  ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS',
+  
+  // B. 产品相关资源 (4个)
+  PRODUCT_OPTION: 'PRODUCT_OPTION',
+  PRODUCT_OPTION_VALUE: 'PRODUCT_OPTION_VALUE',
+  SELLING_PLAN: 'SELLING_PLAN',
+  SELLING_PLAN_GROUP: 'SELLING_PLAN_GROUP',
+  
+  // C. 店铺设置相关 (2个)
+  SHOP: 'SHOP',
+  SHOP_POLICY: 'SHOP_POLICY'
+};;
 
 // 字段映射配置 - 定义翻译字段到GraphQL字段的映射
 export const FIELD_MAPPINGS = {
@@ -62,6 +82,73 @@ export const FIELD_MAPPINGS = {
   [RESOURCE_TYPES.FILTER]: {
     labelTrans: 'label'
   }
+};
+// 新增资源类型的字段映射
+export const EXTENDED_FIELD_MAPPINGS = {
+  // A. Theme相关资源 - 动态字段，需要在运行时获取
+  [RESOURCE_TYPES.ONLINE_STORE_THEME]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_APP_EMBED]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_JSON_TEMPLATE]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_LOCALE_CONTENT]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_SECTION_GROUP]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_SETTINGS_CATEGORY]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  [RESOURCE_TYPES.ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS]: {
+    // 动态字段，基于theme data
+    dynamic: true
+  },
+  
+  // B. 产品相关资源
+  [RESOURCE_TYPES.PRODUCT_OPTION]: {
+    nameTrans: 'name'
+  },
+  [RESOURCE_TYPES.PRODUCT_OPTION_VALUE]: {
+    nameTrans: 'name'
+  },
+  [RESOURCE_TYPES.SELLING_PLAN]: {
+    nameTrans: 'name',
+    descriptionTrans: 'description'
+  },
+  [RESOURCE_TYPES.SELLING_PLAN_GROUP]: {
+    nameTrans: 'name',
+    descriptionTrans: 'description',
+    optionsTitleTrans: 'options.title'
+  },
+  
+  // C. 店铺设置相关
+  [RESOURCE_TYPES.SHOP]: {
+    nameTrans: 'name',
+    descriptionTrans: 'description',
+    announcementTrans: 'announcement'
+  },
+  [RESOURCE_TYPES.SHOP_POLICY]: {
+    // 店铺政策有多种类型
+    titleTrans: 'title',
+    bodyTrans: 'body'
+  }
+};
+
+// 合并所有字段映射
+export const ALL_FIELD_MAPPINGS = {
+  ...FIELD_MAPPINGS,
+  ...EXTENDED_FIELD_MAPPINGS
 };
 
 // 资源类型到可翻译字段的映射配置
@@ -542,6 +629,245 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
   return resources;
 }
 
+// 获取Theme相关资源
+export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
+  const resources = [];
+  let cursor = null;
+  let hasNextPage = true;
+
+  console.log(`开始获取Theme类型 ${resourceType} 的可翻译资源`);
+
+  while (hasNextPage) {
+    const data = await executeGraphQLWithRetry(
+      admin, 
+      TRANSLATABLE_RESOURCES_BY_TYPE_QUERY, 
+      { 
+        resourceType: resourceType,
+        first: 50,
+        after: cursor 
+      }, 
+      maxRetries
+    );
+
+    if (!data.data || !data.data.translatableResources) {
+      throw new Error('Theme资源GraphQL响应数据格式异常');
+    }
+
+    const edges = data.data.translatableResources.edges;
+    console.log(`成功获取 ${edges.length} 个${resourceType}资源`);
+    
+    for (const edge of edges) {
+      const resource = edge.node;
+      const resourceId = resource.resourceId;
+      
+      // Theme资源有动态字段，需要动态构建
+      const dynamicContent = {};
+      const translatableFields = [];
+      
+      for (const item of resource.translatableContent) {
+        dynamicContent[item.key] = {
+          value: item.value,
+          digest: item.digest,
+          locale: item.locale
+        };
+        translatableFields.push({
+          key: item.key,
+          label: item.key.split('.').pop(), // 简化的标签
+          value: item.value
+        });
+      }
+      
+      const resourceData = {
+        id: resourceId.split('/').pop(),
+        gid: resourceId,
+        resourceType: resourceType.toLowerCase(),
+        title: `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`,
+        description: `${translatableFields.length} 个可翻译字段`,
+        // Theme特定字段
+        dynamicFields: dynamicContent,
+        translatableFields: translatableFields,
+        translatableContent: resource.translatableContent
+      };
+
+      resources.push(resourceData);
+    }
+
+    hasNextPage = data.data.translatableResources.pageInfo.hasNextPage;
+    cursor = data.data.translatableResources.pageInfo.endCursor;
+  }
+
+  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  return resources;
+}
+
+// 获取产品选项和选项值
+export async function fetchProductOptions(admin, maxRetries = 3) {
+  const resources = [];
+  let cursor = null;
+  let hasNextPage = true;
+
+  console.log('开始获取产品选项资源');
+
+  while (hasNextPage) {
+    const data = await executeGraphQLWithRetry(
+      admin, 
+      TRANSLATABLE_RESOURCES_BY_TYPE_QUERY, 
+      { 
+        resourceType: RESOURCE_TYPES.PRODUCT_OPTION,
+        first: 50,
+        after: cursor 
+      }, 
+      maxRetries
+    );
+
+    if (!data.data || !data.data.translatableResources) {
+      throw new Error('产品选项GraphQL响应数据格式异常');
+    }
+
+    const edges = data.data.translatableResources.edges;
+    
+    for (const edge of edges) {
+      const resource = edge.node;
+      const content = {};
+      
+      for (const item of resource.translatableContent) {
+        content[item.key] = item.value;
+      }
+      
+      const resourceData = {
+        id: resource.resourceId.split('/').pop(),
+        gid: resource.resourceId,
+        resourceType: 'product_option',
+        title: content.name || '',
+        description: '产品选项',
+        name: content.name || '',
+        translatableContent: resource.translatableContent
+      };
+
+      resources.push(resourceData);
+    }
+
+    hasNextPage = data.data.translatableResources.pageInfo.hasNextPage;
+    cursor = data.data.translatableResources.pageInfo.endCursor;
+  }
+
+  console.log(`总共获取 ${resources.length} 个产品选项`);
+  return resources;
+}
+
+// 获取销售计划
+export async function fetchSellingPlans(admin, maxRetries = 3) {
+  const resources = [];
+  let cursor = null;
+  let hasNextPage = true;
+
+  console.log('开始获取销售计划资源');
+
+  while (hasNextPage) {
+    const data = await executeGraphQLWithRetry(
+      admin, 
+      TRANSLATABLE_RESOURCES_BY_TYPE_QUERY, 
+      { 
+        resourceType: RESOURCE_TYPES.SELLING_PLAN,
+        first: 50,
+        after: cursor 
+      }, 
+      maxRetries
+    );
+
+    if (!data.data || !data.data.translatableResources) {
+      throw new Error('销售计划GraphQL响应数据格式异常');
+    }
+
+    const edges = data.data.translatableResources.edges;
+    
+    for (const edge of edges) {
+      const resource = edge.node;
+      const content = {};
+      
+      for (const item of resource.translatableContent) {
+        content[item.key] = item.value;
+      }
+      
+      const resourceData = {
+        id: resource.resourceId.split('/').pop(),
+        gid: resource.resourceId,
+        resourceType: 'selling_plan',
+        title: content.name || '',
+        description: content.description || '',
+        name: content.name || '',
+        translatableContent: resource.translatableContent
+      };
+
+      resources.push(resourceData);
+    }
+
+    hasNextPage = data.data.translatableResources.pageInfo.hasNextPage;
+    cursor = data.data.translatableResources.pageInfo.endCursor;
+  }
+
+  console.log(`总共获取 ${resources.length} 个销售计划`);
+  return resources;
+}
+
+// 获取店铺信息和政策
+export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
+  const resources = [];
+  
+  console.log(`开始获取店铺资源: ${resourceType}`);
+
+  const data = await executeGraphQLWithRetry(
+    admin, 
+    TRANSLATABLE_RESOURCES_BY_TYPE_QUERY, 
+    { 
+      resourceType: resourceType,
+      first: 50
+    }, 
+    maxRetries
+  );
+
+  if (!data.data || !data.data.translatableResources) {
+    throw new Error('店铺资源GraphQL响应数据格式异常');
+  }
+
+  const edges = data.data.translatableResources.edges;
+  
+  for (const edge of edges) {
+    const resource = edge.node;
+    const content = {};
+    
+    for (const item of resource.translatableContent) {
+      content[item.key] = item.value;
+    }
+    
+    const resourceData = {
+      id: resource.resourceId.split('/').pop(),
+      gid: resource.resourceId,
+      resourceType: resourceType.toLowerCase(),
+      title: content.title || content.name || '店铺信息',
+      description: content.body || content.description || '',
+      translatableContent: resource.translatableContent
+    };
+
+    // 特定字段处理
+    if (resourceType === RESOURCE_TYPES.SHOP) {
+      resourceData.name = content.name || '';
+      resourceData.announcement = content.announcement || '';
+    } else if (resourceType === RESOURCE_TYPES.SHOP_POLICY) {
+      resourceData.body = content.body || '';
+      resourceData.policyType = resource.resourceId.includes('RefundPolicy') ? 'refund' :
+                               resource.resourceId.includes('PrivacyPolicy') ? 'privacy' :
+                               resource.resourceId.includes('TermsOfService') ? 'terms' :
+                               resource.resourceId.includes('ShippingPolicy') ? 'shipping' : 'other';
+    }
+
+    resources.push(resourceData);
+  }
+
+  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  return resources;
+}
+
 /**
  * 通用翻译注册函数
  * @param {Object} admin - Shopify Admin API客户端
@@ -554,11 +880,28 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
 export async function updateResourceTranslation(admin, resourceGid, translations, targetLocale, resourceType) {
   try {
     // 如果传入的是资源类型字符串，获取对应的字段映射
-    const fieldMapping = typeof resourceType === 'string' 
-      ? FIELD_MAPPINGS[resourceType] 
+    let fieldMapping = typeof resourceType === 'string' 
+      ? (ALL_FIELD_MAPPINGS[resourceType] || FIELD_MAPPINGS[resourceType])
       : resourceType;
       
-    if (!fieldMapping) {
+    // 检查是否为动态字段资源（Theme相关）
+    if (fieldMapping && fieldMapping.dynamic) {
+      console.log(`🎨 检测到动态字段资源类型: ${resourceType}`);
+      // 对于动态字段资源，从translationFields构建映射
+      if (translations.translationFields) {
+        fieldMapping = {};
+        // 将translationFields中的每个字段添加到映射
+        for (const [key, value] of Object.entries(translations.translationFields)) {
+          fieldMapping[key] = key; // 动态字段直接使用相同的key
+        }
+        console.log('🔧 动态构建的字段映射:', fieldMapping);
+      } else {
+        console.log('⚠️ 动态字段资源缺少translationFields');
+        return { success: true, message: '动态字段资源缺少翻译内容' };
+      }
+    }
+      
+    if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
       throw new Error(`不支持的资源类型或无效的字段映射: ${resourceType}`);
     }
     
@@ -597,7 +940,9 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     console.log('🗺️ 字段映射配置:', fieldMapping);
     console.log('📥 收到的翻译数据:', Object.keys(translations).filter(key => translations[key]));
     
+    // 处理标准字段翻译
     for (const [translationKey, contentKey] of Object.entries(fieldMapping)) {
+      // 先检查标准字段
       if (translations[translationKey]) {
         console.log(`🔍 处理字段映射: ${translationKey} -> ${contentKey}`);
         const content = translatableContent.find(item => item.key === contentKey);
@@ -617,6 +962,31 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         } else {
           console.log(`❌ 警告：未找到对应的可翻译内容，字段key: "${contentKey}"`);
           console.log(`   可用的字段keys: [${translatableContent.map(item => `"${item.key}"`).join(', ')}]`);
+        }
+      }
+    }
+    
+    // 特别处理translationFields中的动态字段
+    if (translations.translationFields) {
+      console.log('🎯 处理动态字段翻译...');
+      for (const [fieldKey, fieldValue] of Object.entries(translations.translationFields)) {
+        console.log(`🔍 处理动态字段: ${fieldKey}`);
+        const content = translatableContent.find(item => item.key === fieldKey);
+        if (content) {
+          const translationInput = {
+            locale: targetLocale,
+            key: fieldKey,
+            value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
+            translatableContentDigest: content.digest
+          };
+          translationInputs.push(translationInput);
+          console.log(`✅ 成功添加动态字段翻译:`, {
+            key: fieldKey,
+            valueType: typeof fieldValue,
+            valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
+          });
+        } else {
+          console.log(`⚠️ 动态字段未找到可翻译内容: "${fieldKey}"`);
         }
       }
     }
