@@ -60,7 +60,8 @@ model Resource {
   id           String   @id @default(cuid())
   shopId       String
   resourceType String   // product, collection, article, blog, page, menu, link, filter
-  resourceId   String   // Shopify资源ID
+  resourceId   String   // Shopify资源ID（现在用于友好的文件名）
+  originalResourceId String? // 原始Shopify资源ID（用于API调用）
   gid          String   @default("") // Shopify GraphQL ID (gid://shopify/Product/123)
   title        String
   description  String?  // 纯文本描述（无HTML）

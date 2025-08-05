@@ -664,6 +664,10 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
       const dynamicContent = {};
       const translatableFields = [];
       
+      // 查找包含名称信息的字段
+      let resourceTitle = null;
+      let resourceName = null;
+      
       for (const item of resource.translatableContent) {
         dynamicContent[item.key] = {
           value: item.value,
@@ -675,13 +679,79 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
           label: item.key.split('.').pop(), // 简化的标签
           value: item.value
         });
+        
+        // 尝试识别名称字段
+        const keyLower = item.key.toLowerCase();
+        if (keyLower.includes('title') || keyLower === 'title') {
+          resourceTitle = item.value;
+        } else if (keyLower.includes('name') || keyLower === 'name') {
+          resourceName = item.value;
+        }
+      }
+      
+      // 从resourceId中提取信息
+      const idParts = resourceId.split('/');
+      const lastIdPart = idParts[idParts.length - 1];
+      
+      // 构建更有意义的标题
+      let displayTitle = resourceTitle || resourceName;
+      
+      if (!displayTitle) {
+        // 如果没有找到标题或名称，尝试从ID解析
+        // 例如：gid://shopify/OnlineStoreThemeJsonTemplate/blog-posts-FNwr3q
+        // 提取 "blog-posts" 部分
+        if (lastIdPart.includes('-')) {
+          // 提取破折号前的部分作为名称，并转换为更友好的格式
+          const namePart = lastIdPart.split('-').slice(0, -1).join(' ');
+          displayTitle = namePart.split(/[-_]/).map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ');
+        } else {
+          // 使用资源类型的友好名称
+          const typeMap = {
+            'ONLINE_STORE_THEME': '主题',
+            'ONLINE_STORE_THEME_APP_EMBED': '应用嵌入',
+            'ONLINE_STORE_THEME_JSON_TEMPLATE': 'JSON模板',
+            'ONLINE_STORE_THEME_LOCALE_CONTENT': '本地化内容',
+            'ONLINE_STORE_THEME_SECTION_GROUP': '区块组',
+            'ONLINE_STORE_THEME_SETTINGS_CATEGORY': '主题设置分类',
+            'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': '静态区块'
+          };
+          displayTitle = typeMap[resourceType] || `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`;
+          
+          // 如果有ID信息，添加到标题中
+          if (lastIdPart && lastIdPart !== resourceId) {
+            displayTitle += ` - ${lastIdPart}`;
+          }
+        }
+      }
+      
+      // 生成文件友好的ID，基于displayTitle而不是handle
+      let fileId = displayTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '-')  // 替换非字母数字和中文字符为连字符
+        .replace(/-+/g, '-')  // 合并多个连字符
+        .replace(/^-|-$/g, '');  // 移除开头和结尾的连字符
+      
+      // 如果处理后为空或太短，使用清理后的lastIdPart
+      if (!fileId || fileId.length < 2) {
+        // 清理lastIdPart，移除查询参数和特殊字符
+        const cleanedLastPart = lastIdPart
+          .split('?')[0]  // 移除查询参数
+          .split('#')[0]  // 移除锚点
+          .replace(/[^a-z0-9.-]/gi, '-')  // 清理特殊字符
+          .replace(/-+/g, '-')  // 合并连字符
+          .replace(/^-|-$/g, '');  // 移除首尾连字符
+        
+        fileId = cleanedLastPart || 'theme-resource';
       }
       
       const resourceData = {
-        id: resourceId.split('/').pop(),
+        id: fileId,  // 使用基于标题的友好ID
+        originalId: lastIdPart,  // 保留原始ID用于内部引用
         gid: resourceId,
         resourceType: resourceType.toLowerCase(),
-        title: `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`,
+        title: displayTitle,
         description: `${translatableFields.length} 个可翻译字段`,
         // Theme特定字段
         dynamicFields: dynamicContent,
