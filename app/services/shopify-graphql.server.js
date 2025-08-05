@@ -691,7 +691,9 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
       
       // 从resourceId中提取信息
       const idParts = resourceId.split('/');
-      const lastIdPart = idParts[idParts.length - 1];
+      // 提取最后部分并清理查询参数
+      const rawLastIdPart = idParts[idParts.length - 1];
+      const lastIdPart = rawLastIdPart.split('?')[0].split('#')[0]; // 移除查询参数和锚点
       
       // 构建更有意义的标题
       let displayTitle = resourceTitle || resourceName;
