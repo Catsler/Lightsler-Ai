@@ -700,86 +700,147 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
         // 检查是否是更好的标题字段
         for (const rule of TITLE_KEY_PRIORITIES) {
           if (rule.pattern.test(item.key) && rule.priority < bestPriority) {
-            bestTitle = item.value;
-            bestPriority = rule.priority;
-            break; // 找到匹配就跳出内层循环
+            // 排除Liquid模板变量（包含{{和}}的内容）
+            const value = item.value;
+            if (value && typeof value === 'string' && !value.includes('{{') && !value.includes('}}')) {
+              bestTitle = value;
+              bestPriority = rule.priority;
+              break; // 找到匹配就跳出内层循环
+            }
           }
         }
       }
       
       // 从resourceId中提取信息
       const idParts = resourceId.split('/');
-      // 提取最后部分并清理查询参数
-      const rawLastIdPart = idParts[idParts.length - 1];
-      const lastIdPart = rawLastIdPart.split('?')[0].split('#')[0]; // 移除查询参数和锚点
+      let rawLastIdPart = idParts[idParts.length - 1];
       
-      // 构建更有意义的标题
+      // 立即清理查询参数和锚点
+      const cleanedId = rawLastIdPart.split('?')[0].split('#')[0];
+      
+      // 初始化变量
+      // 对于Theme资源，优先使用文件名作为标题
       let displayTitle = bestTitle;
+      let fileId = cleanedId; // 使用清理后的ID作为默认fileId
+      let filePath = null;
       
-      if (!displayTitle) {
-        // 如果没有找到标题或名称，尝试从ID解析
-        // 例如：gid://shopify/OnlineStoreThemeJsonTemplate/blog-posts-FNwr3q
-        // 提取 "blog-posts" 部分
-        if (lastIdPart.includes('-')) {
-          // 移除最后的随机ID部分（如-FNwr3q）
-          let cleanId = lastIdPart;
-          
-          // 检查是否有类似 -XXXXX 的随机后缀（5个或更多字符）
-          const randomSuffixMatch = lastIdPart.match(/^(.+)-[A-Za-z0-9]{5,}$/);
-          if (randomSuffixMatch) {
-            cleanId = randomSuffixMatch[1];
+      // 对于Theme JSON Template，不使用从内容中提取的标题
+      if (resourceType === 'ONLINE_STORE_THEME_JSON_TEMPLATE' && bestTitle && bestTitle.includes('{{')) {
+        displayTitle = null; // 清除包含Liquid变量的标题
+        bestTitle = null;
+      }
+      
+      // 检查是否是标准的Theme文件格式（type.name）
+      const themeFilePattern = /^(product|products?|page|collection|collections?|article|articles?|blog|blogs?|password|index|cart|search|404|gift_card|customers?|account|activate_account|addresses|login|order|register|reset_password)\.(.+)$/i;
+      const themeMatch = cleanedId.match(themeFilePattern);
+      
+      if (themeMatch) {
+        // 处理标准Theme文件格式（如 product.1-tent, page.affiliate）
+        const [, fileType, fileName] = themeMatch;
+        
+        // 基于文件名生成标题（优先使用文件名，而不是内容中的标题）
+        displayTitle = fileName
+          .replace(/[-_]/g, ' ')
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        displayTitle = `${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${displayTitle}`;
+        
+        // 使用原始的清理后ID作为fileId（保持原格式）
+        fileId = cleanedId;
+        
+      } else if (cleanedId.includes('/')) {
+        // 处理包含路径的资源ID（如 templates/index, sections/header）
+        filePath = cleanedId;
+        
+        // 生成友好的显示标题
+        const pathParts = filePath.split('/');
+        const fileName = pathParts[pathParts.length - 1];
+        const directory = pathParts.slice(0, -1).join('/');
+        
+        // 格式化文件名作为标题（优先使用文件路径）
+        displayTitle = fileName
+          .replace(/[-_]/g, ' ')
+          .replace(/\.(json|liquid)$/i, '')
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        
+        if (directory) {
+          displayTitle = `${directory.charAt(0).toUpperCase() + directory.slice(1)}: ${displayTitle}`;
+        }
+        
+        // 使用原始路径作为文件ID（规范化）
+        fileId = filePath
+          .replace(/\.(json|liquid)$/i, '')
+          .replace(/[^a-z0-9\/\-_\.]/gi, '-')
+          .replace(/\/+/g, '.')  // 将路径分隔符转换为点
+          .toLowerCase();
+      } else {
+        // 处理其他情况（没有匹配标准格式或路径格式）
+        // 对于Theme资源，始终基于ID生成标题，而不使用内容中的标题
+        if (!displayTitle || resourceType.startsWith('ONLINE_STORE_THEME')) {
+          // 如果没有找到标题或名称，尝试从ID解析
+          if (cleanedId.includes('-')) {
+            // 移除最后的随机ID部分（如-FNwr3q）
+            let cleanId = cleanedId;
+            
+            // 检查是否有类似 -XXXXX 的随机后缀（5个或更多字符）
+            const randomSuffixMatch = cleanedId.match(/^(.+)-[A-Za-z0-9]{5,}$/);
+            if (randomSuffixMatch) {
+              cleanId = randomSuffixMatch[1];
+            }
+            
+            // 将连字符转换为空格，并首字母大写
+            displayTitle = cleanId
+              .split('-')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ');
+          } else {
+            // 使用资源类型的友好名称
+            const typeMap = {
+              'ONLINE_STORE_THEME': '主题',
+              'ONLINE_STORE_THEME_APP_EMBED': '应用嵌入',
+              'ONLINE_STORE_THEME_JSON_TEMPLATE': 'JSON模板',
+              'ONLINE_STORE_THEME_LOCALE_CONTENT': '本地化内容',
+              'ONLINE_STORE_THEME_SECTION_GROUP': '区块组',
+              'ONLINE_STORE_THEME_SETTINGS_CATEGORY': '主题设置分类',
+              'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': '静态区块'
+            };
+            displayTitle = typeMap[resourceType] || `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`;
+            
+            // 如果有ID信息，添加到标题中
+            if (cleanedId && cleanedId !== resourceId) {
+              displayTitle += ` - ${cleanedId}`;
+            }
           }
-          
-          // 将连字符转换为空格，并首字母大写
-          displayTitle = cleanId
-            .split('-')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-        } else {
-          // 使用资源类型的友好名称
-          const typeMap = {
-            'ONLINE_STORE_THEME': '主题',
-            'ONLINE_STORE_THEME_APP_EMBED': '应用嵌入',
-            'ONLINE_STORE_THEME_JSON_TEMPLATE': 'JSON模板',
-            'ONLINE_STORE_THEME_LOCALE_CONTENT': '本地化内容',
-            'ONLINE_STORE_THEME_SECTION_GROUP': '区块组',
-            'ONLINE_STORE_THEME_SETTINGS_CATEGORY': '主题设置分类',
-            'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': '静态区块'
-          };
-          displayTitle = typeMap[resourceType] || `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`;
-          
-          // 如果有ID信息，添加到标题中
-          if (lastIdPart && lastIdPart !== resourceId) {
-            displayTitle += ` - ${lastIdPart}`;
+        }
+        
+        // 如果fileId还没有被设置或需要重新生成
+        if (fileId === cleanedId && cleanedId.includes('-')) {
+          // 对于包含随机后缀的ID，尝试清理
+          const randomSuffixMatch = cleanedId.match(/^(.+)-[A-Za-z0-9]{5,}$/);
+          if (randomSuffixMatch) {
+            fileId = randomSuffixMatch[1];
           }
         }
       }
       
-      // 生成文件友好的ID，基于displayTitle而不是handle
-      let fileId = displayTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, '')  // 移除特殊字符，保留字母、数字、中文和空格
-        .trim()  // 移除首尾空格
-        .replace(/\s+/g, '-')  // 空格转换为连字符
-        .replace(/-+/g, '-')  // 合并多个连字符
-        .replace(/^-|-$/g, '');  // 移除开头和结尾的连字符
-      
-      // 如果处理后为空或太短，使用清理后的lastIdPart
+      // 如果处理后为空或太短，使用清理后的ID
       if (!fileId || fileId.length < 2) {
-        // 清理lastIdPart，移除查询参数和特殊字符
-        const cleanedLastPart = lastIdPart
-          .split('?')[0]  // 移除查询参数
-          .split('#')[0]  // 移除锚点
-          .replace(/[^a-z0-9.-]/gi, '-')  // 清理特殊字符
+        // 使用cleanedId作为fileId，保留点号作为分隔符
+        const cleanedFileId = cleanedId
+          .replace(/[^a-z0-9.-]/gi, '-')  // 清理特殊字符，保留点号
           .replace(/-+/g, '-')  // 合并连字符
           .replace(/^-|-$/g, '');  // 移除首尾连字符
         
-        fileId = cleanedLastPart || 'theme-resource';
+        fileId = cleanedFileId || 'theme-resource';
       }
       
       const resourceData = {
-        id: fileId,  // 使用基于标题的友好ID
-        originalId: lastIdPart,  // 保留原始ID用于内部引用
+        id: fileId,  // 使用清理后的fileId（如 product.1-tent）
+        // 不再使用 originalId，因为数据库中没有对应字段
+        filePath: filePath || cleanedId,  // 使用文件路径或清理后的ID
         gid: resourceId,
         resourceType: resourceType.toLowerCase(),
         title: displayTitle,

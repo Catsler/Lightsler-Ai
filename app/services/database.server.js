@@ -58,10 +58,7 @@ export async function saveResources(shopId, resources) {
       summary: resource.summary || null,
       label: resource.label || null,
       contentFields: resource.contentFields || null,
-      // 为主题资源添加原始ID支持
-      ...(resource.originalId && { 
-        originalResourceId: resource.originalId  // 存储原始ID用于API调用
-      }),
+      // 移除originalId字段，数据库中没有对应字段
       status: 'pending'
     };
 

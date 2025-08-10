@@ -4,231 +4,223 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-这是一个Shopify翻译应用，用于自动翻译店铺的产品和集合内容。应用基于Remix框架构建，集成了Shopify GraphQL API和GPT翻译服务。
+Shopify多语言翻译应用，用于自动翻译店铺的各种资源内容。基于Remix框架构建，集成Shopify GraphQL API (2025-07版本) 和GPT翻译服务。
 
-### 项目关键特性
-- **多资源类型支持**: 支持产品、集合、页面、文章、博客、菜单、链接、过滤器等Shopify资源的翻译
-- **批量处理**: 支持同步和异步（通过Redis队列）批量翻译
-- **富文本支持**: 保留HTML格式、图片、视频等富媒体内容
-- **SEO优化**: 支持SEO标题和描述的翻译
-- **嵌入式应用**: 在Shopify Admin中以嵌入式模式运行
+### 核心功能
+- **多资源类型支持**: 产品、集合、页面、文章、博客、菜单、链接、过滤器等8种Shopify资源类型
+- **批量翻译**: 支持同步模式和异步队列模式（Redis/内存降级）
+- **富文本处理**: 智能保留HTML标签、图片、视频等富媒体元素
+- **SEO优化**: 支持SEO标题和描述的独立翻译
+- **嵌入式应用**: 在Shopify Admin中运行，完全集成Shopify生态
+- **错误日志系统**: 完整的错误追踪、分析和导出功能
 
 ## 常用开发命令
 
-### 开发和构建
+### 快速启动
 ```bash
-npm run dev          # 启动开发服务器（通过Shopify CLI）
-npm run build        # 构建生产版本
-npm run start        # 启动生产服务器
-npm run setup        # 设置项目（生成Prisma + 数据库迁移）
-npm run lint         # 运行ESLint代码检查
+npm install          # 安装依赖
+npm run setup        # 初始化数据库（生成Prisma客户端 + 迁移）
+npm run dev          # 启动开发服务器（Shopify CLI）
 ```
 
-### 数据库操作
+### 开发调试
+```bash
+npm run dev          # 启动开发服务器（通过Shopify CLI，自动处理隧道和认证）
+npm run build        # 构建生产版本
+npm run lint         # 运行ESLint检查
+npm run start        # 运行生产服务器（需先build）
+node check-status.js # 检查应用运行状态（配置、数据库、队列）
+node simple-test.js  # 基础功能测试（无需Shopify环境）
+```
+
+### 数据库管理
 ```bash
 npx prisma generate      # 生成Prisma客户端
-npx prisma migrate dev   # 运行数据库迁移（开发环境）
+npx prisma migrate dev   # 创建/运行数据库迁移
 npx prisma studio        # 打开数据库管理界面
+npx prisma migrate reset # 重置数据库（清除所有数据）
 ```
 
-### Shopify CLI操作
+### Shopify部署
 ```bash
-npm run config:link      # 链接Shopify配置
-npm run deploy          # 部署应用到Shopify
-npm run generate        # 生成Shopify扩展
-npm run config:use      # 选择Shopify配置
-npm run env             # 管理环境变量
+npm run deploy       # 部署应用到Shopify（更新权限、webhook等配置）
+npm run config:link  # 链接Shopify配置
+npm run config:use   # 选择Shopify配置
 ```
 
-### 测试和调试
+### 测试脚本
 ```bash
-node test-setup.js          # 测试应用配置
-node simple-test.js         # 运行简单测试
-node check-status.js        # 检查应用状态
-node debug-translation-issue.js  # 调试翻译问题
-node final-validation-test.js    # 最终验证测试
-node test-new-resources.js   # 测试新资源类型支持
-npm run dev                 # 开发模式（自动监听文件变化）
-open http://localhost:3000/app    # 打开应用界面
-```
-
-### 脚本工具
-```bash
+node simple-test.js              # 基础功能测试
+node test-new-resources.js       # 测试新资源类型
 node scripts/init-languages.js   # 初始化语言列表
-node scripts/reset-database.js   # 重置数据库（清除所有数据）
 ```
 
-### Redis操作（可选队列功能）
+### Redis队列（可选）
 ```bash
-brew services start redis  # 启动Redis（macOS）
-brew services stop redis   # 停止Redis（macOS）
+brew services start redis  # 启动Redis服务（macOS）
 redis-cli ping            # 测试Redis连接
-redis-cli                # 进入Redis命令行
 ```
 
 ## 项目架构
 
 ### 技术栈
-- **后端**: Node.js (>=18.20) + Remix (v2.16.1) + Prisma + SQLite
-- **前端**: React (v18.2.0) + Shopify Polaris (v12.0.0)
-- **队列**: Bull + Redis/IORedis (可选)
-- **API**: Shopify GraphQL Admin API (2025-07) + GPT翻译API
-- **构建工具**: Vite (v5.4.8) + TypeScript (v5.2.2)
+- **框架**: Remix v2.16.1 + React v18.2.0
+- **UI组件**: Shopify Polaris v12.27.0
+- **数据库**: SQLite + Prisma ORM v6.2.1
+- **队列系统**: Bull + Redis/IORedis（可选，自动降级到内存队列）
+- **API版本**: Shopify GraphQL Admin API 2025-07
+- **构建工具**: Vite v5.4.8
+- **Node版本**: >=18.20
 
 ### 核心目录结构
 ```
 app/
-├── routes/              # Remix路由（页面和API）
+├── routes/              # Remix路由和页面
+│   ├── api.*.jsx       # API端点
+│   ├── app.*.jsx       # 应用页面（嵌入式）
+│   ├── test.*.jsx      # 测试页面
+│   └── debug.*.jsx     # 调试页面
 ├── services/            # 业务逻辑服务
-│   ├── translation.server.js     # 翻译服务
-│   ├── shopify-graphql.server.js # Shopify API操作
+│   ├── translation.server.js     # 翻译核心服务
+│   ├── shopify-graphql.server.js # Shopify API封装
 │   ├── database.server.js        # 数据库操作
-│   └── queue.server.js           # 任务队列
+│   ├── queue.server.js           # Redis队列服务
+│   ├── memory-queue.server.js    # 内存队列降级方案
+│   └── error-logging.server.js   # 错误日志服务
 ├── utils/               # 工具函数
-│   ├── api.server.js           # API工具
-│   ├── config.server.js        # 配置管理
-│   ├── error-handler.server.js # 错误处理
-│   └── logger.server.js        # 日志工具
+│   ├── api.server.js             # API工具函数
+│   ├── api-response.server.js    # API响应标准化
+│   ├── config.server.js          # 配置管理
+│   ├── error-handler.server.js   # 错误处理
+│   ├── error-logger.server.js    # 错误记录器
+│   ├── error-analyzer.server.js  # 错误分析器
+│   ├── logger.server.js          # 日志记录
+│   ├── translation-common.server.js # 翻译通用函数
+│   └── language-detector.js      # 语言检测工具
 ├── components/          # React组件
-└── shopify.server.js    # Shopify核心配置
+├── shopify.server.js    # Shopify应用配置
+└── db.server.js         # Prisma客户端单例
 ```
 
 ### 数据流程
-1. **资源扫描**: 通过GraphQL API获取产品/集合数据
-2. **数据存储**: 使用Prisma将资源保存到SQLite
-3. **翻译处理**: 调用GPT API翻译内容
-4. **结果同步**: 通过GraphQL API更新Shopify店铺
+1. **资源扫描**: 通过GraphQL API批量获取Shopify资源
+2. **数据存储**: 使用Prisma ORM存储到SQLite数据库
+3. **翻译处理**: 调用GPT API进行智能翻译
+4. **结果同步**: 通过GraphQL Mutation更新Shopify店铺
 
-### API端点
-- `POST /api/scan-products` - 扫描产品
-- `POST /api/scan-collections` - 扫描集合  
+### 主要API端点
 - `POST /api/scan-resources` - 扫描所有支持的资源类型
-- `POST /api/translate` - 同步翻译
-- `POST /api/translate-queue` - 异步翻译（需要Redis）
-- `GET /api/status` - 获取状态信息
-- `GET /api/config` - 获取配置信息
-- `POST /api/clear` - 清理数据
-- `GET /api/translation-logs` - 获取翻译日志
-- `POST /api/check-translation` - 检查翻译状态
+- `POST /api/translate` - 同步翻译（即时返回）
+- `POST /api/translate-queue` - 异步翻译（队列处理）
+- `GET /api/status` - 获取系统状态和统计
+- `POST /api/clear` - 清理数据（资源/队列/全部）
+- `GET /api/translation-logs` - 查看翻译日志
+- `POST /api/check-translation` - 检查特定资源翻译状态
+- `GET /api/error-logs` - 查看错误日志
+- `GET /api/error-stats` - 获取错误统计
+- `GET /api/error-export` - 导出错误日志
 
-### 测试页面
-- `/app` - 主应用界面（嵌入式）
-- `/app/simple` - 简单版本的应用界面
-- `/app/debug` - 调试界面
-- `/test/translation-fix` - 翻译功能测试页面
-- `/test/basic-ui` - 基础UI测试
-- `/test/resources` - 资源类型测试
-- `/test/check-translation` - 翻译验证测试
-- `/debug/seo-fields` - SEO字段调试
-- `/debug/translation-test` - 翻译服务调试
-- 通过 `open http://localhost:3000/app` 访问主界面
+## 环境变量配置
 
-## 开发注意事项
+### 必需配置
+```bash
+SHOPIFY_API_KEY=xxx        # Shopify应用API密钥
+SHOPIFY_API_SECRET=xxx     # Shopify应用密钥
+GPT_API_KEY=xxx           # GPT翻译API密钥
+```
 
-### 环境变量
-确保配置以下必需的环境变量：
-- `SHOPIFY_API_KEY` - Shopify应用API密钥
-- `SHOPIFY_API_SECRET` - Shopify应用密钥
-- `GPT_API_URL` - GPT翻译API地址（默认：https://api-gpt-ge.apifox.cn）
-- `GPT_API_KEY` - GPT翻译API密钥（推荐）
-- `REDIS_URL` - Redis连接URL（可选，用于任务队列）
-- `DATABASE_URL` - 数据库连接URL（默认：file:dev.sqlite）
+### 可选配置
+```bash
+GPT_API_URL=https://api.cursorai.art/v1  # GPT API地址（有默认值）
+REDIS_URL=redis://localhost:6379         # Redis连接（可选，自动降级）
+DATABASE_URL=file:dev.sqlite             # 数据库路径（有默认值）
+QUEUE_CONCURRENCY=5                      # 队列并发数（默认5）
+```
+
+## 数据模型
+
+### 核心数据表
+- **Session**: Shopify会话管理
+- **Shop**: 店铺信息和访问令牌
+- **Resource**: 待翻译资源
+  - resourceType: 资源类型标识
+  - gid: Shopify GraphQL ID
+  - descriptionHtml: 富文本内容
+  - contentFields: JSON字段存储特定类型数据
+- **Translation**: 翻译结果
+  - 每个资源+语言组合一条记录
+  - translationFields: JSON字段存储额外翻译内容
+- **Language**: 支持的语言配置
+- **ErrorLog**: 错误日志记录
+  - 包含错误类型、消息、堆栈、上下文等信息
+
+## 开发规范
 
 ### 代码风格
 - 使用2个空格缩进
-- 服务端文件使用 `.server.js` 后缀
-- 遵循ESLint和Prettier配置
+- 服务端文件命名: `*.server.js`
+- 遵循项目ESLint配置
 - 注释使用中文
 
-### Shopify集成
-- 应用使用嵌入式模式运行在Shopify Admin中
-- 认证通过 `shopify.authenticate.admin()` 处理
-- 使用 `@shopify/polaris` 组件保持UI一致性
-- GraphQL API版本：2025-07
+### Shopify集成要点
+- 认证: 使用 `shopify.authenticate.admin()` 获取admin和session
+- UI组件: 使用Shopify Polaris保持一致性
+- GraphQL: 使用2025-07版本API
+- 嵌入式模式: 应用在Shopify Admin内运行
+- 权限范围: 在shopify.app.toml中配置scopes
 
 ### 错误处理
-- 所有API路由使用 `withErrorHandling` 包装器
-- 翻译失败会记录到数据库并返回详细错误信息
-- Redis连接失败会自动降级到内存队列
+- API路由统一使用 `withErrorHandling` 包装
+- 详细记录错误日志到数据库
+- Redis失败自动降级到内存队列
+- 错误分析工具自动分类和统计
 
-## 数据模型结构
+## 翻译系统详解
 
-### 核心数据表
-- **Session** - Shopify会话存储
-- **Shop** - 店铺信息（包含域名、访问令牌等）
-- **Resource** - 待翻译资源
-  - 支持的资源类型：product, collection, article, blog, page, menu, link, filter
-  - 包含原始内容和富文本内容（descriptionHtml）
-  - 使用contentFields字段存储特定资源类型的额外字段
-- **Translation** - 翻译结果记录
-  - 每个资源的每种语言都有独立记录
-  - 使用translationFields存储特定类型的翻译字段
-- **Language** - 支持的语言列表（包含语言代码和名称）
+### 资源类型分类
+1. **产品类**: product, collection, filter
+2. **内容类**: article, blog, page  
+3. **导航类**: menu, link
 
-### 数据库操作
+### 富文本处理策略
+- HTML标签自动识别和保留
+- 媒体元素（图片/视频）保护
+- 特殊字符正确转义
+- 嵌套结构完整性维护
+
+### 队列系统特性
+- **同步模式**: 少量资源即时处理
+- **异步模式**: 大批量后台处理
+- **自动降级**: Redis不可用时使用内存队列
+- **失败重试**: 自动重试机制（最多3次）
+- **进度跟踪**: 实时任务状态查询
+
+## 故障排查
+
+### 认证循环问题
 ```bash
-npx prisma studio    # 打开数据库管理界面
-npx prisma db push   # 推送schema变更（开发环境）
-npx prisma migrate reset     # 重置数据库（删除所有数据）
+npm run deploy  # 更新应用权限配置
 ```
 
-## 任务完成检查
+### 数据库错误
+```bash
+npm run setup           # 初始化数据库
+npx prisma migrate dev  # 应用迁移
+```
 
-完成开发任务后，请执行以下检查：
-1. 运行 `npm run lint` 确保代码质量
-2. 运行 `npm run build` 确保构建成功
-3. 如修改数据模型，运行 `npx prisma migrate dev`
-4. 测试相关功能是否正常工作：
-   - 通过 `/app` 访问主界面
-   - 测试扫描功能
-   - 测试翻译功能
-5. 检查TypeScript类型错误（IDE自动检查）
-6. 如果添加新的Shopify权限，运行 `npm run deploy` 更新配置
-
-## 常见问题排查
-
-### 认证问题
-- 如果遇到认证循环，检查应用权限是否已更新：`npm run deploy`
-- 确保环境变量SHOPIFY_API_KEY和SHOPIFY_API_SECRET正确配置
+### Redis连接失败
+系统会自动降级到内存队列，无需手动干预
 
 ### 翻译API问题
-- 检查GPT_API_KEY是否配置
-- 检查GPT_API_URL是否可访问（默认：https://api-gpt-ge.apifox.cn）
+- 确认GPT_API_KEY已配置
+- 检查GPT_API_URL可访问性
+- 查看 `/api/translation-logs` 获取详细错误
+- 查看 `/app/error-logs` 页面分析错误模式
 
-### 数据库问题
-- 数据库表不存在：运行 `npm run setup`
-- 需要重置数据库：`npx prisma migrate reset`
+## 开发完成检查清单
 
-### Redis连接问题
-- 确保Redis服务已启动：`brew services start redis`
-- 如果Redis不可用，系统会自动降级到内存队列
-
-## 翻译功能详解
-
-### 支持的资源类型映射
-基于Shopify资源分类系统：
-1. **产品类资源** (Product Resources)
-   - product - 产品
-   - collection - 集合
-   - filter - 筛选器（集合过滤条件）
-
-2. **内容类资源** (Content Resources)
-   - article - 文章
-   - blog - 博客
-   - page - 页面
-
-3. **导航类资源** (Navigation Resources)
-   - menu - 菜单
-   - link - 链接
-
-### 富文本内容处理
-- 自动识别并保留HTML标签
-- 保护图片、视频等媒体元素不被翻译
-- 支持复杂的嵌套HTML结构
-- 处理特殊字符和转义
-
-### 翻译队列系统
-- 同步模式：适合少量资源的即时翻译
-- 异步模式：通过Redis/Bull处理大批量翻译任务
-- 自动重试机制：失败的翻译任务会自动重试
-- 进度跟踪：实时查看翻译进度和状态
+1. ✅ 运行 `npm run lint` 无错误
+2. ✅ 运行 `npm run build` 构建成功
+3. ✅ 数据模型变更后运行 `npx prisma migrate dev`
+4. ✅ 功能测试通过（扫描、翻译、状态查询）
+5. ✅ 新增Shopify权限后运行 `npm run deploy`
