@@ -53,6 +53,7 @@ function Index() {
   const [logs, setLogs] = useState([]);
   const [appBridgeError, setAppBridgeError] = useState(false);
   const [lastServiceError, setLastServiceError] = useState(null);
+  const [clearCache, setClearCache] = useState(false);
   
   // 智能轮询状态管理
   const [pollInterval, setPollInterval] = useState(60000); // 默认60秒
@@ -265,11 +266,12 @@ function Index() {
       }
       
       const resourceIds = selectedResources.length > 0 ? selectedResources : [];
-      addLog(`🔄 开始翻译到 ${selectedLanguage}...`, 'info');
+      addLog(`🔄 开始翻译到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
       
       translateFetcher.submit({
         language: selectedLanguage,
-        resourceIds: JSON.stringify(resourceIds)
+        resourceIds: JSON.stringify(resourceIds),
+        clearCache: clearCache.toString()
       }, { 
         method: 'POST', 
         action: '/api/translate' 
@@ -279,7 +281,7 @@ function Index() {
       addLog('❌ 翻译失败，请检查网络连接', 'error');
       setAppBridgeError(true);
     }
-  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher]);
+  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache]);
 
   // 清空数据
   const clearData = useCallback(() => {
@@ -441,6 +443,15 @@ function Index() {
                     </Box>
                   </InlineStack>
                   
+                  <Box>
+                    <Checkbox
+                      label="清除缓存并重新翻译"
+                      checked={clearCache}
+                      onChange={setClearCache}
+                      helpText="勾选后将删除现有翻译并重新生成（仅影响选中的资源）"
+                    />
+                  </Box>
+                  
                   <InlineStack gap="200">
                     <Button 
                       onClick={scanSelectedResourceType} 
@@ -470,6 +481,13 @@ function Index() {
                       disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
                     >
                       开始翻译
+                    </Button>
+                    <Button 
+                      url="/app/sync"
+                      variant="primary"
+                      tone="success"
+                    >
+                      同步管理
                     </Button>
                     <Button 
                       onClick={clearData} 

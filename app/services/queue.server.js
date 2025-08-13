@@ -22,6 +22,9 @@ const redisConfig = config.redis.url ? config.redis.url : {
 
 // 创建Redis连接
 let redis;
+let redisConnectionAttempts = 0;
+const MAX_REDIS_ATTEMPTS = 3;
+
 try {
   if (config.redis.enabled && (config.redis.url || config.redis.host)) {
     const redisOptions = typeof redisConfig === 'string' ? redisConfig : {
@@ -30,15 +33,42 @@ try {
       maxRetriesPerRequest: 1,
       retryDelayOnFailover: 100,
       connectTimeout: 1000,
+      enableOfflineQueue: false, // 防止命令在离线时排队
+      reconnectOnError: (err) => {
+        // 只在特定错误时重连
+        const targetErrors = ['READONLY', 'ECONNRESET', 'EPIPE'];
+        if (targetErrors.some(e => err.message.includes(e))) {
+          redisConnectionAttempts++;
+          if (redisConnectionAttempts >= MAX_REDIS_ATTEMPTS) {
+            console.warn(`Redis重连失败${MAX_REDIS_ATTEMPTS}次，切换到内存模式`);
+            return false; // 停止重连
+          }
+          return true; // 重连
+        }
+        return false;
+      }
     };
     redis = new Redis(redisOptions);
     
-    // 静默处理连接错误
+    // 处理连接错误
     redis.on('error', (error) => {
-      if (!redis._isConnected) {
+      // 忽略常见的非致命错误
+      const ignorableErrors = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
+      if (ignorableErrors.some(e => error.message.includes(e))) {
+        console.debug('Redis连接临时中断:', error.message);
+        return;
+      }
+      
+      if (!redis._isConnected && redisConnectionAttempts >= MAX_REDIS_ATTEMPTS) {
         console.warn('Redis连接失败，切换到内存模式');
         redis = null;
       }
+    });
+    
+    // 成功连接后重置计数器
+    redis.on('connect', () => {
+      redisConnectionAttempts = 0;
+      console.log('Redis连接成功');
     });
   } else {
     console.log('Redis未配置，将使用内存模式');

@@ -96,6 +96,10 @@ model Translation {
   seoDescTrans String?
   translationFields Json? // 存储其他类型特定的翻译字段
   status     String   // pending, completed, failed
+  syncStatus String   @default("pending") // pending, syncing, synced, failed
+  syncedAt   DateTime? // 同步到Shopify的时间
+  syncError  String?   // 同步失败的错误信息
+  syncBatch  Int?      // 批次号，用于追踪
   resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())

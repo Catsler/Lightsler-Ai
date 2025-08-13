@@ -845,10 +845,12 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
         resourceType: resourceType.toLowerCase(),
         title: displayTitle,
         description: `${translatableFields.length} 个可翻译字段`,
-        // Theme特定字段
-        dynamicFields: dynamicContent,
-        translatableFields: translatableFields,
-        translatableContent: resource.translatableContent
+        // 将Theme特定字段存储在contentFields中
+        contentFields: {
+          dynamicFields: dynamicContent,
+          translatableFields: translatableFields,
+          translatableContent: resource.translatableContent
+        }
       };
 
       resources.push(resourceData);
@@ -1056,7 +1058,15 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     if (fieldMapping && fieldMapping.dynamic) {
       console.log(`🎨 检测到动态字段资源类型: ${resourceType}`);
       // 对于动态字段资源，从translationFields构建映射
-      if (translations.translationFields) {
+      if (translations.translationFields && typeof translations.translationFields === 'object') {
+        const translationFieldsKeys = Object.keys(translations.translationFields);
+        if (translationFieldsKeys.length === 0) {
+          console.warn('⚠️ Theme资源translationFields为空，可能是contentFields数据缺失');
+          return { 
+            success: false, 
+            message: 'Theme资源翻译字段为空，请确认资源已正确扫描并包含contentFields数据' 
+          };
+        }
         fieldMapping = {};
         // 将translationFields中的每个字段添加到映射
         for (const [key, value] of Object.entries(translations.translationFields)) {
@@ -1065,7 +1075,10 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         console.log('🔧 动态构建的字段映射:', fieldMapping);
       } else {
         console.log('⚠️ 动态字段资源缺少translationFields');
-        return { success: true, message: '动态字段资源缺少翻译内容' };
+        return { 
+          success: false, 
+          message: '动态字段资源缺少翻译内容，请重新扫描Theme资源' 
+        };
       }
     }
       
@@ -1137,24 +1150,87 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     // 特别处理translationFields中的动态字段
     if (translations.translationFields) {
       console.log('🎯 处理动态字段翻译...');
-      for (const [fieldKey, fieldValue] of Object.entries(translations.translationFields)) {
-        console.log(`🔍 处理动态字段: ${fieldKey}`);
-        const content = translatableContent.find(item => item.key === fieldKey);
-        if (content) {
-          const translationInput = {
-            locale: targetLocale,
-            key: fieldKey,
-            value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
-            translatableContentDigest: content.digest
-          };
-          translationInputs.push(translationInput);
-          console.log(`✅ 成功添加动态字段翻译:`, {
-            key: fieldKey,
-            valueType: typeof fieldValue,
-            valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
-          });
-        } else {
-          console.log(`⚠️ 动态字段未找到可翻译内容: "${fieldKey}"`);
+      
+      // 检查是否是Theme资源的嵌套结构（包含dynamicFields）
+      if (translations.translationFields.dynamicFields) {
+        console.log('📦 检测到Theme资源的dynamicFields结构');
+        
+        // 处理Theme资源的dynamicFields
+        for (const [fieldKey, fieldData] of Object.entries(translations.translationFields.dynamicFields)) {
+          console.log(`🔍 处理Theme动态字段: ${fieldKey}`);
+          const content = translatableContent.find(item => item.key === fieldKey);
+          
+          if (content && fieldData) {
+            // 提取value（可能是字符串或对象中的value属性）
+            const fieldValue = fieldData.value || fieldData;
+            
+            const translationInput = {
+              locale: targetLocale,
+              key: fieldKey,
+              value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
+              translatableContentDigest: fieldData.digest || content.digest
+            };
+            translationInputs.push(translationInput);
+            console.log(`✅ 成功添加Theme动态字段翻译:`, {
+              key: fieldKey,
+              valueType: typeof fieldValue,
+              hasDigest: !!fieldData.digest,
+              valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
+            });
+          } else {
+            console.log(`⚠️ Theme动态字段未找到可翻译内容: "${fieldKey}"`);
+          }
+        }
+      }
+      
+      // 处理Theme资源的translatableFields（如果存在）
+      if (translations.translationFields.translatableFields && Array.isArray(translations.translationFields.translatableFields)) {
+        console.log('📦 检测到Theme资源的translatableFields数组');
+        
+        for (const field of translations.translationFields.translatableFields) {
+          if (field.key && field.value) {
+            const content = translatableContent.find(item => item.key === field.key);
+            
+            if (content) {
+              const translationInput = {
+                locale: targetLocale,
+                key: field.key,
+                value: field.value,
+                translatableContentDigest: field.digest || content.digest
+              };
+              translationInputs.push(translationInput);
+              console.log(`✅ 成功添加Theme translatable字段:`, {
+                key: field.key,
+                valuePreview: field.value.substring(0, 50) + '...'
+              });
+            }
+          }
+        }
+      }
+      
+      // 处理普通的translationFields（非Theme资源）
+      const isThemeResource = translations.translationFields.dynamicFields || translations.translationFields.translatableFields;
+      if (!isThemeResource) {
+        console.log('📝 处理标准translationFields结构');
+        for (const [fieldKey, fieldValue] of Object.entries(translations.translationFields)) {
+          console.log(`🔍 处理标准动态字段: ${fieldKey}`);
+          const content = translatableContent.find(item => item.key === fieldKey);
+          if (content) {
+            const translationInput = {
+              locale: targetLocale,
+              key: fieldKey,
+              value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
+              translatableContentDigest: content.digest
+            };
+            translationInputs.push(translationInput);
+            console.log(`✅ 成功添加标准动态字段翻译:`, {
+              key: fieldKey,
+              valueType: typeof fieldValue,
+              valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
+            });
+          } else {
+            console.log(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
+          }
         }
       }
     }
@@ -1175,29 +1251,77 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     console.log(`🎯 准备注册 ${translationInputs.length} 个翻译`);
     console.log('📤 翻译输入详情:', JSON.stringify(translationInputs, null, 2));
 
-    // 第三步：注册翻译
+    // 第三步：注册翻译（分批处理）
     console.log('💾 第三步：注册翻译到Shopify...');
-    const registerData = await executeGraphQLWithRetry(
-      admin,
-      TRANSLATIONS_REGISTER_MUTATION,
-      {
-        resourceId: resourceGid,
-        translations: translationInputs
-      }
-    );
-
-    console.log('📊 翻译注册响应:', JSON.stringify(registerData, null, 2));
-
-    if (registerData.data.translationsRegister.userErrors.length > 0) {
-      console.error('❌ 翻译注册用户错误:', registerData.data.translationsRegister.userErrors);
-      throw new Error(`翻译注册错误: ${JSON.stringify(registerData.data.translationsRegister.userErrors)}`);
+    
+    // 分批处理大量翻译字段
+    const BATCH_SIZE = 80; // 每批最多80个字段，留有安全余量
+    const allTranslations = [];
+    const errors = [];
+    
+    // 将翻译输入分成多批
+    const chunks = [];
+    for (let i = 0; i < translationInputs.length; i += BATCH_SIZE) {
+      chunks.push(translationInputs.slice(i, i + BATCH_SIZE));
     }
-
-    console.log('🎉 资源翻译注册成功:', {
+    
+    console.log(`📦 将 ${translationInputs.length} 个翻译分成 ${chunks.length} 批处理，每批最多 ${BATCH_SIZE} 个`);
+    
+    // 逐批提交
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      console.log(`🚀 处理第 ${i + 1}/${chunks.length} 批，包含 ${chunk.length} 个翻译`);
+      
+      try {
+        const registerData = await executeGraphQLWithRetry(
+          admin,
+          TRANSLATIONS_REGISTER_MUTATION,
+          {
+            resourceId: resourceGid,
+            translations: chunk
+          }
+        );
+        
+        console.log(`📊 第 ${i + 1} 批翻译注册响应:`, JSON.stringify(registerData, null, 2));
+        
+        if (registerData.data.translationsRegister.userErrors.length > 0) {
+          console.error(`❌ 第 ${i + 1} 批翻译注册用户错误:`, registerData.data.translationsRegister.userErrors);
+          errors.push({
+            batch: i + 1,
+            errors: registerData.data.translationsRegister.userErrors
+          });
+        } else {
+          allTranslations.push(...(registerData.data.translationsRegister.translations || []));
+          console.log(`✅ 第 ${i + 1} 批翻译注册成功，已注册 ${registerData.data.translationsRegister.translations?.length || 0} 个翻译`);
+        }
+      } catch (error) {
+        console.error(`❌ 第 ${i + 1} 批翻译注册失败:`, error);
+        errors.push({
+          batch: i + 1,
+          error: error.message
+        });
+        // 继续处理下一批，不中断整个流程
+      }
+    }
+    
+    // 检查是否有错误
+    if (errors.length > 0) {
+      console.error('❌ 部分批次翻译注册失败:', errors);
+      // 如果所有批次都失败，抛出错误
+      if (errors.length === chunks.length) {
+        throw new Error(`所有批次翻译注册失败: ${JSON.stringify(errors)}`);
+      }
+      // 部分成功，返回成功的结果
+      console.warn(`⚠️ ${errors.length}/${chunks.length} 批次失败，但 ${allTranslations.length} 个翻译成功注册`);
+    }
+    
+    console.log('🎉 资源翻译注册完成:', {
       resourceId: resourceGid,
       locale: targetLocale,
-      translationsCount: registerData.data.translationsRegister.translations.length,
-      successfulTranslations: registerData.data.translationsRegister.translations.map(t => ({
+      totalBatches: chunks.length,
+      successfulBatches: chunks.length - errors.length,
+      totalTranslations: allTranslations.length,
+      successfulTranslations: allTranslations.map(t => ({
         key: t.key,
         locale: t.locale
       }))
@@ -1205,10 +1329,12 @@ export async function updateResourceTranslation(admin, resourceGid, translations
 
     return {
       success: true,
-      translations: registerData.data.translationsRegister.translations,
+      translations: allTranslations,
       details: {
         processedInputs: translationInputs.length,
-        successfulRegistrations: registerData.data.translationsRegister.translations.length
+        successfulRegistrations: allTranslations.length,
+        totalBatches: chunks.length,
+        failedBatches: errors.length
       }
     };
 
@@ -1235,6 +1361,20 @@ export async function updateTranslationByType(admin, resourceGid, translations, 
   }
   
   return await updateResourceTranslation(admin, resourceGid, translations, targetLocale, fieldMapping);
+}
+
+/**
+ * 批量更新资源翻译（用于同步服务）
+ * 与 updateTranslationByType 功能相同，但名称更明确
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} resourceGid - 资源GID
+ * @param {Object} translations - 翻译内容
+ * @param {string} targetLocale - 目标语言
+ * @param {string} resourceType - 资源类型
+ * @returns {Promise<Object>} 注册结果
+ */
+export async function updateResourceTranslationBatch(admin, resourceGid, translations, targetLocale, resourceType) {
+  return await updateTranslationByType(admin, resourceGid, translations, targetLocale, resourceType);
 }
 
 /**

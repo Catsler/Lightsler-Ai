@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server.js";
-import { translateResourceWithLogging, translateThemeResource, getTranslationStats, translationLogger } from "../services/translation.server.js";
+import { translateResourceWithLogging, getTranslationStats, translationLogger } from "../services/translation.server.js";
+import { translateThemeResource } from "../services/theme-translation.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
 import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
@@ -12,7 +13,8 @@ export const action = async ({ request }) => {
     // 参数验证
     const params = {
       language: formData.get("language") || "zh-CN",
-      resourceIds: formData.get("resourceIds") || "[]"
+      resourceIds: formData.get("resourceIds") || "[]",
+      clearCache: formData.get("clearCache") === "true"
     };
     
     const validationErrors = validateRequiredParams(params, ['language']);
@@ -21,6 +23,7 @@ export const action = async ({ request }) => {
     }
     
     const targetLanguage = params.language;
+    const clearCache = params.clearCache;
     let resourceIds;
     try {
       resourceIds = JSON.parse(params.resourceIds);
@@ -50,7 +53,8 @@ export const action = async ({ request }) => {
     console.log('翻译请求详情:', {
       targetLanguage,
       selectedResourceIds: resourceIds,
-      foundResources: resourcesToTranslate.map(r => ({ id: r.id, title: r.title, status: r.status }))
+      foundResources: resourcesToTranslate.map(r => ({ id: r.id, title: r.title, status: r.status })),
+      clearCache
     });
     
     if (resourcesToTranslate.length === 0) {
@@ -58,6 +62,21 @@ export const action = async ({ request }) => {
         results: [],
         stats: { total: 0, success: 0, failure: 0 }
       }, "没有找到需要翻译的资源");
+    }
+    
+    // 如果需要清除缓存，先删除现有的翻译记录
+    if (clearCache) {
+      console.log('清除缓存：删除现有翻译记录');
+      const { deleteTranslations } = await import("../services/database.server.js");
+      
+      for (const resource of resourcesToTranslate) {
+        try {
+          await deleteTranslations(resource.id, targetLanguage);
+          console.log(`已清除资源 ${resource.id} 的 ${targetLanguage} 翻译缓存`);
+        } catch (error) {
+          console.error(`清除资源 ${resource.id} 缓存失败:`, error);
+        }
+      }
     }
     
     const results = [];

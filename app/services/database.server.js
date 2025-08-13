@@ -140,7 +140,8 @@ export async function saveTranslation(resourceId, shopId, language, translations
     seoTitleTrans: translations.seoTitleTrans || null,
     seoDescTrans: translations.seoDescTrans || null,
     translationFields: translations.translationFields || null,
-    status: 'completed'
+    status: 'completed',
+    syncStatus: 'pending' // 新翻译默认为待同步状态
   };
 
   return await prisma.translation.upsert({
@@ -201,6 +202,22 @@ export async function getTranslationStats(shopId) {
     completedResources,
     totalTranslations
   };
+}
+
+/**
+ * 删除特定资源的翻译记录
+ * @param {string} resourceId - 资源ID
+ * @param {string} language - 语言代码（可选）
+ * @returns {Promise<void>}
+ */
+export async function deleteTranslations(resourceId, language = null) {
+  const where = { resourceId };
+  
+  if (language) {
+    where.language = language;
+  }
+  
+  await prisma.translation.deleteMany({ where });
 }
 
 /**

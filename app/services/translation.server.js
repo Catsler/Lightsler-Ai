@@ -116,25 +116,53 @@ function isTechnicalTerm(word) {
 // 语言特定的断句规则
 const SEGMENTATION_RULES = {
   'zh-CN': {
-    // 中文：按词语单位断句，使用标准连字符
+    // 中文：按词语单位断句，每个词作为独立语义单元
     segmentLength: 1,
     connector: '-',
-    wordPattern: /[\u4e00-\u9fff]+|[a-zA-Z]+\d*|[0-9]+/g
+    // 改进的正则：更好地识别中文词汇、英文单词、数字组合
+    wordPattern: /[\u4e00-\u9fff]{1,4}|[a-zA-Z]+(?:\s+[a-zA-Z]+)*\d*|[0-9]+[a-zA-Z]*|\d{4}/g
   },
   'ja': {
-    // 日文：按词汇单位，使用标准连字符
+    // 日文：按词汇单位，品牌在前功能在后
     segmentLength: 1,
     connector: '-',
-    wordPattern: /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]+|[a-zA-Z]+\d*|[0-9]+/g
+    // 改进的正则：识别日文词汇、片假名外来语、汉字词
+    wordPattern: /[\u3040-\u309f]+|[\u30a0-\u30ff]+|[\u4e00-\u9fff]+|[a-zA-Z]+(?:\s+[a-zA-Z]+)*\d*|[0-9]+/g
   },
   'ko': {
-    // 韩文：按词汇单位，使用标准连字符
+    // 韩文：按词汇单位，保持自然语序
     segmentLength: 1,
     connector: '-',
-    wordPattern: /[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]+|[a-zA-Z]+\d*|[0-9]+/g
+    // 改进的正则：识别韩文音节组合、汉字词
+    wordPattern: /[\uac00-\ud7af]+|[\u1100-\u11ff]+|[\u3130-\u318f]+|[\ua960-\ua97f]+|[\ud7b0-\ud7ff]+|[a-zA-Z]+(?:\s+[a-zA-Z]+)*\d*|[0-9]+/g
+  },
+  'en': {
+    // 英文：按单词单位，每个词作为语义单元
+    segmentLength: 1,
+    connector: '-',
+    // 识别完整单词、缩写、数字组合
+    wordPattern: /\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b|\b\d+[a-zA-Z]*\b|\b[A-Z]{2,}\b/g
+  },
+  'es': {
+    // 西班牙语：类似英文处理
+    segmentLength: 1,
+    connector: '-',
+    wordPattern: /\b[a-zA-ZáéíóúñÁÉÍÓÚÑ]+\b|\b\d+[a-zA-Z]*\b/g
+  },
+  'fr': {
+    // 法语：处理特殊字符
+    segmentLength: 1,
+    connector: '-',
+    wordPattern: /\b[a-zA-ZàâäæçéèêëïîôùûüÿœÀÂÄÆÇÉÈÊËÏÎÔÙÛÜŸŒ]+\b|\b\d+[a-zA-Z]*\b/g
+  },
+  'de': {
+    // 德语：处理复合词和特殊字符
+    segmentLength: 1,
+    connector: '-',
+    wordPattern: /\b[a-zA-ZäöüßÄÖÜ]+\b|\b\d+[a-zA-Z]*\b/g
   },
   'default': {
-    // 其他语言：按单词单位，每个词作为语义单元
+    // 其他语言：通用处理
     segmentLength: 1,
     connector: '-',
     wordPattern: /\b\w+\b/g
@@ -150,31 +178,40 @@ function cleanTranslationResult(text, targetLang) {
   
   // 移除常见的翻译乱码和无意义字符
   let cleaned = text
-    .replace(/[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af.-]/g, ' ') // 保留基本字符
+    .replace(/[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u00c0-\u017f\u0100-\u024f\u1e00-\u1eff.-]/g, ' ') // 保留基本字符和扩展拉丁字符
     .replace(/\s+/g, ' ') // 合并多个空格
     .trim();
   
+  // 检测并移除可能的乱码模式
+  // 移除单独的无意义字符或数字
+  cleaned = cleaned.replace(/\b[a-z]\b/gi, ' '); // 移除单独的字母
+  cleaned = cleaned.replace(/\b\d{1,2}\b/g, ' '); // 移除单独的1-2位数字（保留年份等）
+  
   // 按语言特定规则清理
   if (targetLang === 'zh-CN') {
-    // 中文：移除常见冗余词
+    // 中文：移除常见冗余词和虚词
     cleaned = cleaned
-      .replace(/\b(的|了|是|在|有|和|与|或|等|及|以及|还有|另外|此外|包括|含有|具有|拥有|带有)\b/g, ' ')
-      .replace(/\b(产品|商品|物品|用品|设备|装置|系列|款式|型号|规格)\b/g, ' ');
+      .replace(/\b(的|了|是|在|有|和|与|或|等|及|以及|还有|另外|此外|包括|含有|具有|拥有|带有|所有|全部|整个|各种|多种|某些|一些|这个|那个|这些|那些)\b/g, ' ')
+      .replace(/\b(产品|商品|物品|用品|设备|装置|系列|款式|型号|规格|类型|种类|品种|版本|样式)\b/g, ' ')
+      .replace(/\b(新款|新品|新型|最新|全新|正品|原装|正版|官方|专用|通用|适用|专业|高级|优质|精品|特价|促销|热销|畅销)\b/g, ' ');
   } else if (targetLang === 'ja') {
-    // 日文：移除常见助词和冗余词
+    // 日文：移除常见助词、冗余词和形式名词
     cleaned = cleaned
-      .replace(/\b(の|が|を|に|で|と|は|へ|から|まで|より|など|や|か|も|で|として|について|における|による|によって)\b/g, ' ')
-      .replace(/\b(製品|商品|アイテム|用品|機器|装置|シリーズ|モデル|タイプ|スタイル)\b/g, ' ');
+      .replace(/\b(の|が|を|に|で|と|は|へ|から|まで|より|など|や|か|も|で|として|について|における|による|によって|のための|ための|もの|こと|ところ)\b/g, ' ')
+      .replace(/\b(製品|商品|アイテム|用品|機器|装置|シリーズ|モデル|タイプ|スタイル|バージョン|エディション)\b/g, ' ')
+      .replace(/\b(新しい|新品|新型|最新|全新|正品|オリジナル|公式|専用|汎用|適用|専門|高級|優良|特価|セール|人気|売れ筋)\b/g, ' ');
   } else if (targetLang === 'ko') {
     // 韩文：移除常见助词和冗余词
     cleaned = cleaned
-      .replace(/\b(의|이|가|을|를|에|에서|와|과|로|으로|부터|까지|보다|등|나|도|만|라서|하고|그리고)\b/g, ' ')
-      .replace(/\b(제품|상품|용품|기기|장치|시리즈|모델|타입|스타일)\b/g, ' ');
+      .replace(/\b(의|이|가|을|를|에|에서|와|과|로|으로|부터|까지|보다|등|나|도|만|라서|하고|그리고|또는|혹은|및|그리고|또한|역시)\b/g, ' ')
+      .replace(/\b(제품|상품|용품|기기|장치|시리즈|모델|타입|스타일|버전|에디션)\b/g, ' ')
+      .replace(/\b(새로운|신품|신형|최신|정품|오리지널|공식|전용|범용|적용|전문|고급|우수|특가|세일|인기|베스트)\b/g, ' ');
   } else {
-    // 英文及其他语言：移除常见冗余词
+    // 英文及其他语言：移除常见冗余词、冠词、介词等
     cleaned = cleaned
-      .replace(/\b(the|a|an|and|or|of|for|with|in|on|at|by|from|to|is|are|was|were|be|been|being|have|has|had|do|does|did|will|would|could|should|may|might|can|must|shall)\b/gi, ' ')
-      .replace(/\b(product|item|goods|equipment|device|series|collection|style|type|model|version|edition)\b/gi, ' ');
+      .replace(/\b(the|a|an|and|or|of|for|with|in|on|at|by|from|to|as|is|are|was|were|be|been|being|have|has|had|do|does|did|will|would|could|should|may|might|can|must|shall|very|really|quite|rather|too|so|such|more|most|much|many|some|any|all|each|every|this|that|these|those)\b/gi, ' ')
+      .replace(/\b(product|products|item|items|goods|equipment|device|devices|series|collection|style|styles|type|types|model|models|version|versions|edition|editions|set|sets|kit|kits|pack|packs|bundle|bundles)\b/gi, ' ')
+      .replace(/\b(new|newest|latest|original|official|genuine|authentic|professional|premium|quality|special|sale|hot|best|top|super|ultra|mega|extra)\b/gi, ' ');
   }
   
   // 最终清理
@@ -197,7 +234,7 @@ function normalizeHandle(text) {
   
   return text
     .toLowerCase()
-    // 保留字母、数字、中日韩文字符，以及少数安全标点
+    // 保留字母、数字、中日韩文字符、扩展拉丁字符，以及少数安全标点
     .replace(/[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u00c0-\u017f\u0100-\u024f\u1e00-\u1eff.-]/g, ' ')
     // 替换各种空白字符为标准空格
     .replace(/[\s\u00a0\u2000-\u200b\u202f\u3000\ufeff]+/g, ' ')
@@ -205,16 +242,19 @@ function normalizeHandle(text) {
     .replace(/\.{2,}/g, '.')
     // 移除孤立的点号（前后都是空格的点）
     .replace(/\s+\.\s+/g, ' ')
-    // 空格替换为连字符
-    .replace(/\s+/g, '-')
+    // 确保使用连字符作为唯一分词符
+    // 空格、下划线、多个连字符都统一替换为单个连字符
+    .replace(/[\s_]+/g, '-')
     // 合并多个连字符
     .replace(/-{2,}/g, '-')
     // 清理开头和结尾的连字符或点号
-    .replace(/^[-.\s]+|[-.\s]+$/g, '')
-    // 确保不会过长
-    .substring(0, 50)
+    .replace(/^[-.]+|[-.]+$/g, '')
+    // 确保不会过长（URL友好）
+    .substring(0, 60)
     // 再次清理结尾可能产生的连字符
-    .replace(/[-.\s]+$/, '');
+    .replace(/[-.]+$/, '')
+    // 最终检查：如果结果太短或为空，返回一个基于时间戳的默认值
+    || 'untitled-' + Date.now().toString(36).slice(-6);
 }
 
 // 检查是否为品牌词
@@ -246,13 +286,21 @@ function isBrandWord(word) {
 function intelligentSegmentation(text, targetLang) {
   const rules = SEGMENTATION_RULES[targetLang] || SEGMENTATION_RULES['default'];
   
-  // 品牌词和专有名词列表（保持不变）
-  const brandWords = /\b(?:apple|iphone|ipad|macbook|nike|adidas|samsung|google|microsoft|facebook|amazon|tesla|bmw|mercedes|audi|toyota|honda|sony|canon|nikon|starbucks|mcdonald|cocacola|pepsi|visa|mastercard|paypal)\b/gi;
+  // 扩展的品牌词和专有名词列表（保持不变）
+  // 包含更多科技、时尚、汽车、食品等行业品牌
+  const brandWords = /\b(?:apple|iphone|ipad|macbook|imac|airpods|nike|adidas|puma|reebok|under\s?armour|samsung|galaxy|google|pixel|chrome|microsoft|windows|office|xbox|facebook|meta|instagram|whatsapp|amazon|aws|tesla|model\s?[sxy3]|bmw|mercedes|benz|audi|toyota|honda|mazda|ford|chevrolet|volkswagen|porsche|ferrari|lamborghini|rolex|omega|cartier|tiffany|gucci|prada|louis\s?vuitton|lv|chanel|hermes|burberry|versace|armani|dior|balenciaga|zara|h&m|uniqlo|gap|levis|sony|playstation|ps[45]|canon|nikon|fujifilm|gopro|dji|bose|jbl|beats|starbucks|mcdonald|kfc|subway|coca\s?cola|pepsi|nestle|visa|mastercard|paypal|stripe|shopify|wordpress|adobe|photoshop|netflix|spotify|youtube|tiktok|linkedin|twitter|reddit|alibaba|taobao|tmall|jd|baidu|tencent|wechat|qq|huawei|xiaomi|oppo|vivo|oneplus|lenovo|dell|hp|asus|acer|intel|amd|nvidia|qualcomm|bluetooth|wifi|usb|hdmi|4k|5g|ai|ml|vr|ar|nft|crypto|bitcoin|ethereum|java|python|javascript|react|vue|angular|node|docker|kubernetes|aws|azure|gcp)\b/gi;
   
   // 提取所有词汇单元
   let words = text.match(rules.wordPattern) || [];
   
-  // 过滤空字符和清理
+  // 保护品牌词 - 确保品牌词不被分割
+  const protectedText = text.replace(brandWords, (match) => match.replace(/\s+/g, '_'));
+  words = protectedText.match(rules.wordPattern) || [];
+  
+  // 还原品牌词中的下划线
+  words = words.map(word => word.replace(/_/g, ' '));
+  
+  // 过滤和清理
   words = words
     .map(word => word.trim())
     .filter(word => word.length > 0)
@@ -262,17 +310,35 @@ function intelligentSegmentation(text, targetLang) {
              !/^[^\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]*$/.test(word);
     });
   
-  // 去重相邻重复词汇
+  // 智能去重 - 保留语义不同的词
   const uniqueWords = [];
-  for (let i = 0; i < words.length; i++) {
-    if (i === 0 || words[i].toLowerCase() !== words[i-1].toLowerCase()) {
-      uniqueWords.push(words[i]);
+  const seenWords = new Set();
+  
+  for (let word of words) {
+    const normalizedWord = word.toLowerCase();
+    // 如果是品牌词，总是保留
+    if (brandWords.test(word)) {
+      uniqueWords.push(word);
+    } else if (!seenWords.has(normalizedWord)) {
+      seenWords.add(normalizedWord);
+      uniqueWords.push(word);
     }
+  }
+  
+  // 根据目标语言调整词序
+  let finalWords = uniqueWords;
+  
+  // 某些语言可能需要调整词序以符合自然语序
+  if (targetLang === 'ja' || targetLang === 'ko') {
+    // 日韩语言：品牌/产品名通常在前，描述在后
+    const brands = finalWords.filter(w => brandWords.test(w));
+    const others = finalWords.filter(w => !brandWords.test(w));
+    finalWords = [...brands, ...others];
   }
   
   // 限制词汇数量，避免过长的URL
   const maxWords = targetLang === 'zh-CN' || targetLang === 'ja' || targetLang === 'ko' ? 4 : 5;
-  const finalWords = uniqueWords.slice(0, maxWords);
+  finalWords = finalWords.slice(0, maxWords);
   
   return finalWords.join(rules.connector);
 }
@@ -301,23 +367,38 @@ export async function translateUrlHandle(handle, targetLang, retryCount = 0) {
     const timeoutId = setTimeout(() => controller.abort(), config.translation.timeout);
     
     // 构建专门的URL handle翻译提示词
-    const systemPrompt = `你是专业的URL handle翻译专家。请将用户输入的文本翻译成${getLanguageName(targetLang)}，生成URL友好的标识符。
+    const systemPrompt = `你是专业的URL handle翻译和语义分析专家。请将用户输入的文本翻译成${getLanguageName(targetLang)}，生成URL友好的标识符。
 
 核心原则：
-1. 【品牌保护】品牌名、专有名词、产品型号保持英文不译（如：Apple、Nike、iPhone、MacBook、Galaxy等）
-2. 【语义单元】每个词汇作为独立语义单元，按目标语言自然语序排列
-3. 【避免冗余】去除重复词汇、填充词、无意义修饰词
-4. 【关键词优先】保留核心关键词，删除冗余描述
-5. 【字符净化】避免产生乱码、特殊符号、无意义字符
+1. 【品牌保护】品牌名、专有名词、产品型号保持原文不译（如：Apple、Nike、iPhone、Model 3、PS5等）
+2. 【语义单元】每个词必须是独立的、有明确含义的语义单元，避免无意义的单字或片段
+3. 【自然语序】按${getLanguageName(targetLang)}的自然语序排列词汇，确保符合目标语言习惯
+4. 【避免冗余】去除所有重复词汇、填充词、无意义修饰词、助词、介词等
+5. 【关键词优先】只保留最核心的3-5个关键词，删除所有冗余描述
+6. 【字符净化】避免产生乱码、特殊符号、无意义字符、单独的字母或数字
 
-翻译指南：
-- 最多3-5个关键词汇，每个词表达核心概念
-- 按${getLanguageName(targetLang)}自然语序排列
-- 保持商务专业性，适合URL使用
-- 结果简洁有力，突出产品特征
-- 只返回最终翻译结果，无额外解释
+翻译规则：
+- 每个词都必须有独立的语义价值，能够单独传达意义
+- ${targetLang === 'zh-CN' ? '中文：提取核心名词和动词，去除"的、了、是、在、有"等虚词' : ''}
+- ${targetLang === 'ja' ? '日文：品牌在前，功能描述在后，去除助词"の、が、を、に、で"等' : ''}
+- ${targetLang === 'ko' ? '韩文：保持自然语序，去除助词"의、이、가、을、를"等' : ''}
+- ${targetLang.startsWith('en') ? '英文：去除冠词、介词、连词，只保留名词和关键形容词' : ''}
+- 结果必须简洁有力，突出产品/内容的核心特征
+- 只返回最终的关键词序列，用空格分隔，无需任何解释
 
-品牌词典：Apple|iPhone|iPad|MacBook|Samsung|Galaxy|Nike|Adidas|Sony|Canon|BMW|Mercedes|Audi|Toyota|Google|Microsoft|Amazon|Tesla|Starbucks|McDonald|Coca-Cola|Pepsi|Visa|PayPal等保持不变。`;
+品牌词典（保持不变）：
+Apple|iPhone|iPad|MacBook|iMac|AirPods|Samsung|Galaxy|Nike|Adidas|Puma|Reebok|Under Armour|
+Sony|PlayStation|PS4|PS5|Canon|Nikon|Fujifilm|GoPro|DJI|BMW|Mercedes|Benz|Audi|Toyota|Honda|
+Google|Microsoft|Amazon|Tesla|Model S|Model 3|Model X|Model Y|Facebook|Meta|Instagram|WhatsApp|
+Starbucks|McDonald|KFC|Coca-Cola|Pepsi|Visa|MasterCard|PayPal|Shopify|
+Gucci|Prada|Louis Vuitton|LV|Chanel|Hermes|Burberry|Versace|Armani|Dior|Balenciaga|
+Rolex|Omega|Cartier|Tiffany|Zara|H&M|Uniqlo|Gap|Levis|
+Intel|AMD|NVIDIA|Qualcomm|Bluetooth|WiFi|USB|HDMI|4K|5G|AI|ML|VR|AR|NFT等。
+
+示例（仅供参考，实际翻译需根据语义）：
+- "Apple iPhone 15 Pro Max Case" → "${targetLang === 'zh-CN' ? 'Apple iPhone 15 Pro Max 手机壳' : targetLang === 'ja' ? 'Apple iPhone 15 Pro Max ケース' : 'Apple iPhone 15 Pro Max Case'}"
+- "Nike Running Shoes for Men" → "${targetLang === 'zh-CN' ? 'Nike 男士 跑鞋' : targetLang === 'ja' ? 'Nike メンズ ランニング シューズ' : 'Nike Mens Running Shoes'}"
+- "Wireless Bluetooth Headphones" → "${targetLang === 'zh-CN' ? '无线 蓝牙 耳机' : targetLang === 'ja' ? 'ワイヤレス Bluetooth ヘッドホン' : 'Wireless Bluetooth Headphones'}"`;
     
     try {
       console.log(`正在翻译URL handle: "${normalizedHandle}" -> ${getLanguageName(targetLang)}`);
@@ -1246,9 +1327,26 @@ export async function translateResourceWithLogging(resource, targetLang) {
     };
     
     Object.entries(translations).forEach(([key, value]) => {
-      if (value && value.trim()) {
-        translationStats.fieldsTranslated++;
-        translationStats.translatedCharacters += value.length;
+      // 处理不同类型的值
+      if (value) {
+        if (typeof value === 'string') {
+          // 字符串类型的翻译
+          if (value.trim()) {
+            translationStats.fieldsTranslated++;
+            translationStats.translatedCharacters += value.length;
+          } else {
+            translationStats.fieldsSkipped++;
+          }
+        } else if (typeof value === 'object') {
+          // 对象类型的翻译（如Theme资源的translationFields）
+          translationStats.fieldsTranslated++;
+          // 计算对象中的字符数
+          const jsonStr = JSON.stringify(value);
+          translationStats.translatedCharacters += jsonStr.length;
+        } else {
+          // 其他类型
+          translationStats.fieldsTranslated++;
+        }
       } else {
         translationStats.fieldsSkipped++;
       }
@@ -1264,7 +1362,19 @@ export async function translateResourceWithLogging(resource, targetLang) {
       resource.seoDescription
     ].filter(Boolean).join(' ');
     
-    const translatedText = Object.values(translations).filter(Boolean).join(' ');
+    const translatedText = Object.values(translations)
+      .filter(Boolean)
+      .map(value => {
+        // 处理不同类型的值
+        if (typeof value === 'string') {
+          return value;
+        } else if (typeof value === 'object') {
+          return JSON.stringify(value);
+        } else {
+          return String(value);
+        }
+      })
+      .join(' ');
     
     translationStats.totalCharacters = originalText.length;
     const isActuallyTranslated = originalText !== translatedText && translatedText.length > 0;
@@ -1277,10 +1387,25 @@ export async function translateResourceWithLogging(resource, targetLang) {
       stats: translationStats,
       translations: Object.keys(translations).reduce((acc, key) => {
         if (translations[key]) {
-          acc[key] = {
-            length: translations[key].length,
-            preview: translations[key].substring(0, 100) + (translations[key].length > 100 ? '...' : '')
-          };
+          const value = translations[key];
+          if (typeof value === 'string') {
+            acc[key] = {
+              length: value.length,
+              preview: value.substring(0, 100) + (value.length > 100 ? '...' : '')
+            };
+          } else if (typeof value === 'object') {
+            const jsonStr = JSON.stringify(value);
+            acc[key] = {
+              length: jsonStr.length,
+              preview: jsonStr.substring(0, 100) + (jsonStr.length > 100 ? '...' : ''),
+              type: 'object'
+            };
+          } else {
+            acc[key] = {
+              value: value,
+              type: typeof value
+            };
+          }
         }
         return acc;
       }, {})
@@ -2526,7 +2651,7 @@ async function processHtmlSpecialElements(htmlContent, targetLang) {
   return processedContent;
 }
 
-async function postProcessTranslation(translatedText, targetLang, originalText = '') {
+export async function postProcessTranslation(translatedText, targetLang, originalText = '') {
   // 只对中文目标语言进行英文残留检查
   if (targetLang !== 'zh-CN' && targetLang !== 'zh-TW') {
     return translatedText;
@@ -3276,7 +3401,26 @@ function checkHtmlStructureIntegrity(original, translated) {
   }
 }
 
+/**
+ * 判断是否为Theme资源
+ * @param {string} resourceType - 资源类型
+ * @returns {boolean} 是否为Theme资源
+ */
+function isThemeResource(resourceType) {
+  if (!resourceType) return false;
+  const type = resourceType.toUpperCase();
+  return type.startsWith('ONLINE_STORE_THEME');
+}
+
 export async function translateResource(resource, targetLang) {
+  // 检查是否为Theme资源，如果是则使用独立的Theme翻译逻辑
+  if (isThemeResource(resource.resourceType)) {
+    console.log(`[翻译服务] 检测到Theme资源，使用专用翻译逻辑: ${resource.resourceType}`);
+    const { translateThemeResource } = await import('./theme-translation.server.js');
+    return translateThemeResource(resource, targetLang);
+  }
+  
+  // 以下是原有的非Theme资源翻译逻辑
   const translated = {
     titleTrans: null,
     descTrans: null,
@@ -3506,7 +3650,9 @@ export async function translateResource(resource, targetLang) {
  * @param {string} targetLang - 目标语言
  * @returns {Promise<Object>} 翻译结果
  */
-export async function translateThemeResource(resource, targetLang) {
+// 注释掉原有的translateThemeResource函数，已移至theme-translation.server.js
+/*
+// export async function translateThemeResource(resource, targetLang) {
   const translated = {
     titleTrans: null,
     descTrans: null,
@@ -3650,13 +3796,14 @@ export async function translateThemeResource(resource, targetLang) {
 
   return translated;
 }
+*/
 
-/**
- * 递归翻译Theme JSON数据中的文本内容
- * @param {Object} data - JSON数据
- * @param {string} targetLang - 目标语言
- * @returns {Promise<Object>} 翻译后的JSON数据
- */
+// 注释掉原有的translateThemeJsonData函数，已移至theme-translation.server.js
+/*
+// 递归翻译Theme JSON数据中的文本内容
+// @param {Object} data - JSON数据
+// @param {string} targetLang - 目标语言
+// @returns {Promise<Object>} 翻译后的JSON数据
 async function translateThemeJsonData(data, targetLang) {
   if (!data || typeof data !== 'object') {
     return data;
@@ -3696,3 +3843,4 @@ async function translateThemeJsonData(data, targetLang) {
 
   return translated;
 }
+*/
