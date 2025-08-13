@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持8+种资源类型的批量翻译，包含富文本处理、SEO优化和队列系统。
+Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持15+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。
 
 ### 技术栈
 - **框架**: Remix v2.16.1 + React v18.2.0
@@ -73,7 +73,7 @@ app/
 - **产品类**: product, collection, filter, product_option, product_option_value
 - **内容类**: article, blog, page  
 - **导航类**: menu, link
-- **主题类**: online_store_theme及其相关资源
+- **主题类**: online_store_theme, online_store_theme_file, online_store_theme_asset, online_store_theme_template, online_store_theme_section, online_store_theme_block, online_store_theme_snippet
 - **其他**: selling_plan, shop, shop_policy
 
 ### 数据流程
@@ -97,15 +97,16 @@ app/
 - **Resource**: 待翻译资源
   - resourceType: 资源类型
   - gid: GraphQL ID
+  - resourceId: 友好文件名ID
+  - originalResourceId: 原始Shopify资源ID
   - descriptionHtml: 富文本内容
-  - contentFields: JSON扩展字段
+  - contentFields: JSON扩展字段（Theme资源的动态字段）
 - **Translation**: 翻译结果
   - 每个资源+语言组合一条记录
   - syncStatus: pending/syncing/synced/failed
   - translationFields: JSON扩展字段
 - **Language**: 支持的语言配置
-
-注意：ErrorLog表在代码中使用但未在schema中定义
+- **ErrorLog**: 完整的错误日志系统（含指纹分组、影响评估）
 
 ## 开发规范
 
@@ -136,19 +137,28 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 ## 关键特性
 
 ### 富文本处理
-- HTML标签自动保留
+- HTML标签自动保留（protectHtmlTags/restoreHtmlTags）
 - 媒体元素（图片/视频）保护
 - 品牌词不翻译（BRAND_WORDS词库）
+- 智能分块处理长文本（intelligentChunkText）
 
 ### 队列系统
 - Redis不可用时自动降级到内存队列
 - 支持批量处理和进度跟踪
 - 失败自动重试（最多3次）
+- 并发控制（QUEUE_CONCURRENCY）
 
 ### Shopify集成
 - 嵌入式运行在Shopify Admin内
 - 权限配置在 `shopify.app.toml`
 - 支持webhook处理
+- GraphQL批量操作优化
+
+### Theme资源处理
+- 动态字段提取（dynamicFields）
+- 智能文件名解析（product.tent → Product: Tent）
+- JSON模板内容处理
+- 保持原始资源ID用于API调用
 
 ## 故障排查
 
@@ -163,3 +173,53 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 - ✅ `npm run build` 构建成功
 - ✅ 数据模型变更后运行 `npx prisma migrate dev`
 - ✅ 新增Shopify权限后运行 `npm run deploy`
+
+## 重要函数和模块
+
+### 翻译服务 (translation.server.js)
+- `translateResourceWithLogging`: 主入口，含日志记录
+- `translateTextEnhanced`: 增强型文本翻译（处理HTML和品牌词）
+- `translateUrlHandle`: URL slug翻译优化
+- `validateTranslation`: 翻译质量验证
+- `TranslationLogger`: 翻译日志管理类
+
+### GraphQL服务 (shopify-graphql.server.js)
+- `fetchResourcesForTranslation`: 获取需翻译资源
+- `fetchThemeResources`: Theme资源特殊处理
+- `syncTranslationsToShopify`: 批量同步到Shopify
+- `RESOURCE_TYPES`: 资源类型配置对象
+
+### 错误处理 (error-handler.server.js)
+- `TranslationError`: 自定义错误类
+- `withErrorHandling`: 路由错误包装器
+- `captureError`: 错误记录和分析
+
+## 测试和调试
+
+### 测试页面路由
+- `/test/*` - 各种功能测试页面
+- `/debug/*` - 调试信息页面
+- `/app` - 主应用界面
+
+### 开发时常用命令
+```bash
+# 开发服务器（带Shopify隧道）
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
+
+# 查看数据库
+npx prisma studio
+
+# 检查应用状态
+node check-status.js
+
+# 清理缓存和重置
+npx prisma migrate reset
+```
+
+## 注意事项
+
+1. **Theme资源**: 使用动态字段，需要特殊处理contentFields
+2. **翻译质量**: 关注HTML结构完整性和品牌词保护
+3. **性能优化**: 大批量翻译使用队列系统
+4. **错误恢复**: ErrorLog表提供详细错误追踪
+5. **开发环境**: 需要设置NODE_TLS_REJECT_UNAUTHORIZED=0绕过SSL验证
