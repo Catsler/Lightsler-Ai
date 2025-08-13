@@ -1,9 +1,11 @@
 /**
  * 翻译服务错误处理工具
  * 提供统一的错误处理、重试机制和自定义错误类
+ * 增强版：集成错误收集系统
  */
 
 import { config } from './config.server.js';
+import { collectError, ERROR_TYPES } from '../services/error-collector.server.js';
 
 /**
  * 翻译服务自定义错误类
@@ -118,10 +120,15 @@ export class TimeoutError extends TranslationError {
  * 错误分类器 - 将原始错误分类为特定错误类型
  * @param {Error} error - 原始错误
  * @param {Object} context - 错误上下文，用于提供更多信息
+ * @param {boolean} collectToDatabase - 是否收集到数据库
  * @returns {TranslationError} 分类后的错误
  */
-export function classifyError(error, context = {}) {
+export function classifyError(error, context = {}, collectToDatabase = true) {
   if (error instanceof TranslationError) {
+    // 如果需要收集到数据库
+    if (collectToDatabase) {
+      collectErrorToDatabase(error, context);
+    }
     return error;
   }
 
@@ -186,10 +193,17 @@ export function classifyError(error, context = {}) {
   }
 
   // 默认翻译错误
-  return new TranslationError(message, {
+  const translationError = new TranslationError(message, {
     context: errorContext,
     originalError: error
   });
+  
+  // 收集错误到数据库
+  if (collectToDatabase) {
+    collectErrorToDatabase(translationError, context);
+  }
+  
+  return translationError;
 }
 
 /**
@@ -406,4 +420,57 @@ export class ErrorCollector {
     this.errors = [];
     this.warnings = [];
   }
+}
+
+/**
+ * 收集错误到数据库（异步，不阻塞主流程）
+ * @param {Error} error - 错误对象
+ * @param {Object} context - 错误上下文
+ */
+function collectErrorToDatabase(error, context = {}) {
+  // 异步收集错误，不等待结果
+  Promise.resolve().then(async () => {
+    try {
+      // 确定错误类型
+      let errorType = ERROR_TYPES.SYSTEM;
+      
+      if (error instanceof APIError) {
+        errorType = ERROR_TYPES.API;
+      } else if (error instanceof ValidationError) {
+        errorType = ERROR_TYPES.VALIDATION;
+      } else if (error instanceof NetworkError) {
+        errorType = ERROR_TYPES.NETWORK;
+      } else if (error instanceof TimeoutError) {
+        errorType = ERROR_TYPES.NETWORK;
+      } else if (error instanceof ConfigError) {
+        errorType = ERROR_TYPES.SYSTEM;
+      } else if (error.category === 'TRANSLATION') {
+        errorType = ERROR_TYPES.TRANSLATION;
+      }
+      
+      // 准备错误数据
+      const errorData = {
+        errorType,
+        errorCategory: error.category || 'ERROR',
+        errorCode: error.code || 'UNKNOWN',
+        message: error.message,
+        stack: error.stack,
+        stackTrace: error.stack,
+        retryable: error.retryable || false,
+        statusCode: error.statusCode || null,
+        ...error.context
+      };
+      
+      // 收集错误
+      await collectError(errorData, {
+        ...context,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+      });
+      
+    } catch (collectError) {
+      // 收集错误本身失败，只记录日志，不影响主流程
+      console.error('错误收集失败:', collectError);
+    }
+  });
 }

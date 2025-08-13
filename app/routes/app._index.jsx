@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
   Page,
@@ -16,6 +16,27 @@ import {
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
+
+// 添加全局错误监听
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    console.error('[Global Error]', {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error?.stack || event.error
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Unhandled Promise Rejection]', {
+      reason: event.reason,
+      promise: event.promise
+    });
+  });
+}
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -35,14 +56,22 @@ export const loader = async ({ request }) => {
 };
 
 function Index() {
+  console.log('[Index Component] Rendering started');
+  
   const { supportedLanguages } = useLoaderData();
+  console.log('[Index Component] Loader data:', { supportedLanguages });
+  
   const scanProductsFetcher = useFetcher();
   const scanCollectionsFetcher = useFetcher();
   const scanResourcesFetcher = useFetcher();
+  const scanAllFetcher = useFetcher();
   const translateFetcher = useFetcher();
   const statusFetcher = useFetcher();
   const clearFetcher = useFetcher();
+  
+  // React Hooks必须在顶层调用，不能在条件语句中
   const shopify = useAppBridge();
+  console.log('[Index Component] App Bridge initialized successfully');
   
   const [selectedLanguage, setSelectedLanguage] = useState('zh-CN');
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
@@ -55,13 +84,33 @@ function Index() {
   const [lastServiceError, setLastServiceError] = useState(null);
   const [clearCache, setClearCache] = useState(false);
   
+  // 分类翻译状态管理
+  const [translatingCategories, setTranslatingCategories] = useState(new Set());
+  
+  // 为每个分类创建独立的fetcher（预先创建几个）
+  const categoryFetcher1 = useFetcher();
+  const categoryFetcher2 = useFetcher();
+  const categoryFetcher3 = useFetcher();
+  const categoryFetcher4 = useFetcher();
+  const categoryFetcher5 = useFetcher();
+  
+  // 管理fetcher分配
+  const categoryFetcherMap = useRef({});
+  const availableFetchers = useRef([
+    categoryFetcher1,
+    categoryFetcher2,
+    categoryFetcher3,
+    categoryFetcher4,
+    categoryFetcher5
+  ]);
+  
   // 智能轮询状态管理
   const [pollInterval, setPollInterval] = useState(60000); // 默认60秒
   const [lastStatusData, setLastStatusData] = useState(null);
 
-  // 资源类型选项
+  // 资源类型选项 - 按类别组织但不使用禁用的分隔符
   const resourceTypeOptions = useMemo(() => [
-    // 现有资源类型
+    // 基础内容类型
     { label: '产品', value: 'PRODUCT' },
     { label: '产品集合', value: 'COLLECTION' },
     { label: '博客文章', value: 'ARTICLE' },
@@ -71,33 +120,31 @@ function Index() {
     { label: '链接', value: 'LINK' },
     { label: '过滤器', value: 'FILTER' },
     
-    // A. Theme相关资源
-    { label: '--- 主题设置 ---', value: '', disabled: true },
-    { label: '主题', value: 'ONLINE_STORE_THEME' },
-    { label: '应用嵌入', value: 'ONLINE_STORE_THEME_APP_EMBED' },
-    { label: 'JSON模板', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
-    { label: '本地化内容', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
-    { label: '区块组', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
-    { label: '主题设置分类', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
-    { label: '静态区块', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
+    // Theme相关资源
+    { label: '[主题] 主题设置', value: 'ONLINE_STORE_THEME' },
+    { label: '[主题] 应用嵌入', value: 'ONLINE_STORE_THEME_APP_EMBED' },
+    { label: '[主题] JSON模板', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
+    { label: '[主题] 本地化内容', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
+    { label: '[主题] 区块组', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
+    { label: '[主题] 设置分类', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
+    { label: '[主题] 静态区块', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
     
-    // B. 产品扩展
-    { label: '--- 产品扩展 ---', value: '', disabled: true },
-    { label: '产品选项', value: 'PRODUCT_OPTION' },
-    { label: '产品选项值', value: 'PRODUCT_OPTION_VALUE' },
-    { label: '销售计划', value: 'SELLING_PLAN' },
-    { label: '销售计划组', value: 'SELLING_PLAN_GROUP' },
+    // 产品扩展
+    { label: '[产品扩展] 产品选项', value: 'PRODUCT_OPTION' },
+    { label: '[产品扩展] 产品选项值', value: 'PRODUCT_OPTION_VALUE' },
+    { label: '[产品扩展] 销售计划', value: 'SELLING_PLAN' },
+    { label: '[产品扩展] 销售计划组', value: 'SELLING_PLAN_GROUP' },
     
-    // C. 店铺配置
-    { label: '--- 店铺配置 ---', value: '', disabled: true },
-    { label: '店铺信息', value: 'SHOP' },
-    { label: '店铺政策', value: 'SHOP_POLICY' }
+    // 店铺配置
+    { label: '[店铺] 店铺信息', value: 'SHOP' },
+    { label: '[店铺] 店铺政策', value: 'SHOP_POLICY' }
   ], []);;
 
   // 加载状态
   const isScanning = scanProductsFetcher.state === 'submitting' || 
                      scanCollectionsFetcher.state === 'submitting' || 
-                     scanResourcesFetcher.state === 'submitting';
+                     scanResourcesFetcher.state === 'submitting' ||
+                     scanAllFetcher.state === 'submitting';
   const isTranslating = translateFetcher.state === 'submitting';
   const isClearing = clearFetcher.state === 'submitting';
 
@@ -110,10 +157,10 @@ function Index() {
   // 安全的toast显示函数
   const showToast = useCallback((message, options = {}) => {
     try {
-      if (shopify && shopify.toast && !appBridgeError) {
+      if (shopify && shopify.toast) {
         shopify.toast.show(message, options);
       } else {
-        // 如果toast不可用或AppBridge有错误，使用日志记录
+        // 如果toast不可用，使用日志记录
         addLog(message, options.isError ? 'error' : 'info');
       }
     } catch (error) {
@@ -121,7 +168,7 @@ function Index() {
       addLog(message, options.isError ? 'error' : 'info');
       setAppBridgeError(true);
     }
-  }, [shopify, addLog, appBridgeError]);
+  }, [shopify, addLog]);
 
   // 加载状态 - 添加错误重试机制
   const loadStatus = useCallback(() => {
@@ -180,8 +227,56 @@ function Index() {
     }
   }, [statusFetcher.data, addLog, lastServiceError, hasStatusChanged, lastStatusData]);
 
+  // 监听分类翻译fetcher的状态变化
+  useEffect(() => {
+    // 检查每个fetcher的状态
+    [categoryFetcher1, categoryFetcher2, categoryFetcher3, categoryFetcher4, categoryFetcher5].forEach(fetcher => {
+      if (fetcher.state === 'idle' && fetcher.data) {
+        // 找到对应的categoryKey
+        const categoryKey = Object.keys(categoryFetcherMap.current).find(
+          key => categoryFetcherMap.current[key] === fetcher
+        );
+        
+        if (categoryKey && translatingCategories.has(categoryKey)) {
+          // 移除翻译状态
+          setTranslatingCategories(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(categoryKey);
+            return newSet;
+          });
+          
+          // 处理响应
+          if (fetcher.data.success) {
+            const successCount = fetcher.data.data?.stats?.success || 0;
+            const failureCount = fetcher.data.data?.stats?.failure || 0;
+            
+            if (successCount > 0) {
+              addLog(`✅ ${categoryKey} 分类翻译完成: 成功 ${successCount} 个，失败 ${failureCount} 个`, 'success');
+              showToast(`${categoryKey} 分类翻译完成！`, { duration: 3000 });
+            } else {
+              addLog(`⚠️ ${categoryKey} 分类翻译完成，但没有成功的项目`, 'warning');
+            }
+            
+            // 刷新状态
+            loadStatus();
+          } else {
+            const errorMsg = fetcher.data.error || '翻译失败';
+            addLog(`❌ ${categoryKey} 分类翻译失败: ${errorMsg}`, 'error');
+            showToast(`翻译失败: ${errorMsg}`, { isError: true });
+          }
+          
+          // 清理fetcher映射
+          delete categoryFetcherMap.current[categoryKey];
+        }
+      }
+    });
+  }, [categoryFetcher1.state, categoryFetcher2.state, categoryFetcher3.state, 
+      categoryFetcher4.state, categoryFetcher5.state, translatingCategories, 
+      addLog, showToast, loadStatus]);
+
   // 页面加载时获取状态 - 只在首次加载时执行
   useEffect(() => {
+    console.log('[Index Component] Initial useEffect - loading status');
     loadStatus();
   }, []); // 只在组件挂载时执行一次
 
@@ -234,6 +329,21 @@ function Index() {
     }
   }, [addLog, scanCollectionsFetcher]);
 
+  // 扫描所有资源
+  const scanAllResources = useCallback(() => {
+    try {
+      addLog('🔍 开始扫描所有资源类型...', 'info');
+      scanAllFetcher.submit({}, { 
+        method: 'POST', 
+        action: '/api/scan-all' 
+      });
+    } catch (error) {
+      console.error('扫描所有资源失败:', error);
+      addLog('❌ 扫描所有资源失败，请检查网络连接', 'error');
+      setAppBridgeError(true);
+    }
+  }, [addLog, scanAllFetcher]);
+
   // 扫描选定的资源类型
   const scanSelectedResourceType = useCallback(() => {
     try {
@@ -253,6 +363,71 @@ function Index() {
       setAppBridgeError(true);
     }
   }, [addLog, scanResourcesFetcher, selectedResourceType, resourceTypeOptions]);
+
+  // 处理分类翻译
+  const handleCategoryTranslation = useCallback((categoryKey, resourceIds) => {
+    try {
+      // 检查是否已在翻译中
+      if (translatingCategories.has(categoryKey)) {
+        addLog(`⏳ ${categoryKey} 分类正在翻译中，请稍候...`, 'warning');
+        return;
+      }
+      
+      // 检查翻译服务状态
+      if (translationService && translationService.status === 'unhealthy') {
+        const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
+        addLog(`❌ 翻译服务异常: ${errorMsg}`, 'error');
+        showToast(`翻译服务异常: ${errorMsg}`, { isError: true });
+        return;
+      }
+      
+      // 获取或分配一个可用的fetcher
+      let fetcher = categoryFetcherMap.current[categoryKey];
+      if (!fetcher) {
+        // 找一个未使用的fetcher
+        for (let i = 0; i < availableFetchers.current.length; i++) {
+          const f = availableFetchers.current[i];
+          const isUsed = Object.values(categoryFetcherMap.current).includes(f);
+          if (!isUsed) {
+            fetcher = f;
+            categoryFetcherMap.current[categoryKey] = f;
+            break;
+          }
+        }
+      }
+      
+      if (!fetcher) {
+        addLog(`⚠️ 同时翻译的分类过多，请稍后再试`, 'warning');
+        return;
+      }
+      
+      // 设置翻译状态
+      setTranslatingCategories(prev => new Set([...prev, categoryKey]));
+      
+      addLog(`🔄 开始翻译 ${categoryKey} 分类 (${resourceIds.length} 个资源) 到 ${selectedLanguage}...`, 'info');
+      
+      // 提交翻译请求
+      fetcher.submit({
+        language: selectedLanguage,
+        resourceIds: JSON.stringify(resourceIds),
+        clearCache: clearCache.toString()
+      }, { 
+        method: 'POST', 
+        action: '/api/translate' 
+      });
+      
+    } catch (error) {
+      console.error('分类翻译失败:', error);
+      addLog(`❌ ${categoryKey} 分类翻译失败: ${error.message}`, 'error');
+      
+      // 清理状态
+      setTranslatingCategories(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(categoryKey);
+        return newSet;
+      });
+    }
+  }, [selectedLanguage, clearCache, translationService, addLog, showToast, translatingCategories]);
 
   // 开始翻译
   const startTranslation = useCallback(() => {
@@ -452,52 +627,63 @@ function Index() {
                     />
                   </Box>
                   
-                  <InlineStack gap="200">
-                    <Button 
-                      onClick={scanSelectedResourceType} 
-                      loading={isScanning}
-                      variant="secondary"
-                    >
-                      扫描选定类型
-                    </Button>
-                    <Button 
-                      onClick={scanProducts} 
-                      loading={isScanning}
-                      variant="tertiary"
-                    >
-                      快速扫描产品
-                    </Button>
-                    <Button 
-                      onClick={scanCollections} 
-                      loading={isScanning}
-                      variant="tertiary"
-                    >
-                      快速扫描集合
-                    </Button>
-                    <Button 
-                      onClick={startTranslation} 
-                      loading={isTranslating}
-                      variant="primary"
-                      disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
-                    >
-                      开始翻译
-                    </Button>
-                    <Button 
-                      url="/app/sync"
-                      variant="primary"
-                      tone="success"
-                    >
-                      同步管理
-                    </Button>
-                    <Button 
-                      onClick={clearData} 
-                      loading={isClearing}
-                      variant="tertiary"
-                      tone="critical"
-                    >
-                      清空数据
-                    </Button>
-                  </InlineStack>
+                  <BlockStack gap="200">
+                    <InlineStack gap="200">
+                      <Button 
+                        onClick={scanAllResources} 
+                        loading={isScanning}
+                        variant="primary"
+                      >
+                        扫描所有资源
+                      </Button>
+                      <Button 
+                        onClick={scanSelectedResourceType} 
+                        loading={isScanning}
+                        variant="secondary"
+                      >
+                        扫描选定类型
+                      </Button>
+                      <Button 
+                        onClick={scanProducts} 
+                        loading={isScanning}
+                        variant="tertiary"
+                      >
+                        快速扫描产品
+                      </Button>
+                      <Button 
+                        onClick={scanCollections} 
+                        loading={isScanning}
+                        variant="tertiary"
+                      >
+                        快速扫描集合
+                      </Button>
+                    </InlineStack>
+                    <InlineStack gap="200">
+                      <Button 
+                        onClick={startTranslation} 
+                        loading={isTranslating}
+                        variant="primary"
+                        disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
+                      >
+                        开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
+                      </Button>
+                      <Button 
+                        url="/app/sync"
+                        variant="primary"
+                        tone="success"
+                      >
+                        同步管理
+                      </Button>
+                      <Button 
+                        onClick={clearData} 
+                        loading={isClearing}
+                        variant="tertiary"
+                        tone="critical"
+                      >
+                        清空数据
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
                 </BlockStack>
               </BlockStack>
             </Card>
@@ -556,45 +742,38 @@ function Index() {
           </Layout>
         )}
 
-        {/* 资源列表 */}
-        {resources.length > 0 && (
+        {/* 资源分类展示 */}
+        {resources.length > 0 ? (
+          <ResourceCategoryDisplay 
+            resources={resources}
+            selectedResources={selectedResources}
+            onSelectionChange={handleResourceSelection}
+            currentLanguage={selectedLanguage}
+            onResourceClick={(resource) => {
+              // 处理资源点击，显示详情
+              showToast(`查看资源: ${resource.title || resource.handle || resource.name}`);
+            }}
+            onTranslateCategory={handleCategoryTranslation}
+            translatingCategories={translatingCategories}
+            clearCache={clearCache}
+          />
+        ) : (
           <Layout>
             <Layout.Section>
               <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between">
-                    <Text as="h2" variant="headingMd">资源列表</Text>
-                    <Button 
-                      onClick={toggleSelectAll}
-                      variant="tertiary"
-                    >
-                      {selectedResources.length === resources.length ? '取消全选' : '全选'}
+                <BlockStack gap="3">
+                  <Text as="h2" variant="headingMd">暂无资源数据</Text>
+                  <Text as="p" tone="subdued">
+                    请先选择资源类型并点击"扫描选定类型"按钮来加载资源数据
+                  </Text>
+                  <InlineStack gap="2">
+                    <Button onClick={scanSelectedResourceType} loading={isScanning}>
+                      扫描 {resourceTypeOptions.find(opt => opt.value === selectedResourceType)?.label || selectedResourceType}
+                    </Button>
+                    <Button onClick={scanProducts} variant="secondary" loading={isScanning}>
+                      快速扫描产品
                     </Button>
                   </InlineStack>
-                  
-                  <Box style={{maxHeight: "400px", overflowY: "scroll"}}>
-                    <BlockStack gap="200">
-                      {resources.map((resource) => (
-                        <Card key={resource.id} subdued>
-                          <InlineStack align="space-between">
-                            <InlineStack gap="300">
-                              <Checkbox
-                                checked={selectedResources.includes(resource.id)}
-                                onChange={(checked) => handleResourceSelection(resource.id, checked)}
-                              />
-                              <BlockStack gap="100">
-                                <Text as="h4" variant="headingSm">{resource.title}</Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  {resource.resourceType} | 翻译数: {resource.translationCount}
-                                </Text>
-                              </BlockStack>
-                            </InlineStack>
-                            {getStatusBadge(resource.status)}
-                          </InlineStack>
-                        </Card>
-                      ))}
-                    </BlockStack>
-                  </Box>
                 </BlockStack>
               </Card>
             </Layout.Section>

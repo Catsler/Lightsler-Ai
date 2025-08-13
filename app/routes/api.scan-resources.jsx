@@ -1,14 +1,6 @@
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, saveResources } from "../services/database.server.js";
-import { 
-  fetchResourcesByType,
-  fetchThemeResources,
-  fetchProductOptions,
-  fetchSellingPlans,
-  fetchShopInfo,
-  RESOURCE_TYPES 
-} from "../services/shopify-graphql.server.js";
 import { withErrorHandling } from "../utils/api-response.server.js";
 
 /**
@@ -17,6 +9,16 @@ import { withErrorHandling } from "../utils/api-response.server.js";
  */
 export const action = async ({ request }) => {
   return withErrorHandling(async () => {
+    // 将服务端导入移到action函数内部，避免Vite构建错误
+    const { 
+      fetchResourcesByType,
+      fetchThemeResources,
+      fetchProductOptions,
+      fetchSellingPlans,
+      fetchShopInfo,
+      RESOURCE_TYPES 
+    } = await import("../services/shopify-graphql.server.js");
+    
     // 验证Shopify应用认证
     const { admin, session } = await authenticate.admin(request);
     const shopDomain = session.shop;

@@ -3,6 +3,7 @@ import { getOrCreateShop, getAllResources, getTranslationStats } from "../servic
 import { getJobStatus, getQueueStats } from "../services/queue.server.js";
 import { getTranslationServiceStatus, getTranslationStats as getTranslationServiceStats } from "../services/translation.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
+import { getResourceCategory } from "../config/resource-categories.js";
 
 /**
  * 状态查询API - 支持GET和POST请求
@@ -42,16 +43,28 @@ export const loader = async ({ request }) => {
         ...translationServiceStatus,
         stats: translationServiceStats
       },
-      resources: resources.map(r => ({
-        id: r.id,
-        resourceType: r.resourceType,
-        resourceId: r.resourceId,
-        title: r.title,
-        status: r.status,
-        translationCount: r.translations?.length || 0,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt
-      }))
+      resources: resources.map(r => {
+        const categoryInfo = getResourceCategory(r.resourceType);
+        return {
+          id: r.id,
+          resourceType: r.resourceType,
+          resourceId: r.resourceId,
+          title: r.title,
+          handle: r.handle,
+          name: r.name,
+          status: r.status,
+          translationCount: r.translations?.length || 0,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          category: categoryInfo ? {
+            categoryKey: categoryInfo.categoryKey,
+            categoryName: categoryInfo.categoryName,
+            categoryIcon: categoryInfo.categoryIcon,
+            subcategoryKey: categoryInfo.subcategoryKey,
+            subcategoryName: categoryInfo.subcategoryName
+          } : null
+        };
+      })
     }, "状态查询成功");
     
   }, "获取状态", request.headers.get("shopify-shop-domain") || "", { silent: true });

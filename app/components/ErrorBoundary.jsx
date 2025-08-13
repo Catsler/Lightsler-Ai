@@ -78,6 +78,9 @@ export class ErrorBoundary extends React.Component {
       url: window.location.href,
       errorCount: this.state.errorCount
     };
+    
+    // 上报错误到服务器（增强版）
+    this.reportErrorToServer(errorDetails);
 
     // 记录错误到多个日志服务
     if (window.Shopify?.analytics) {
@@ -101,6 +104,72 @@ export class ErrorBoundary extends React.Component {
     if (this.state.canAutoRecover && this.state.errorCount < 3) {
       UILogger.info('尝试自动恢复UI错误', 'ErrorBoundary-AutoRecover');
       setTimeout(this.handleAutoRecover, 3000);
+    }
+  }
+  
+  // 新增：上报错误到服务器
+  reportErrorToServer(errorDetails) {
+    try {
+      // 准备错误数据
+      const errorData = {
+        errorType: 'UI',
+        errorCategory: this.state.isNetworkError ? 'NETWORK' : 'ERROR',
+        errorCode: `UI_${errorDetails.errorType.toUpperCase()}`,
+        message: errorDetails.message,
+        stack: errorDetails.stack,
+        stackTrace: errorDetails.stack,
+        componentStack: errorDetails.componentStack,
+        userAgent: errorDetails.userAgent,
+        url: errorDetails.url,
+        timestamp: errorDetails.timestamp,
+        errorCount: errorDetails.errorCount,
+        canAutoRecover: this.state.canAutoRecover,
+        componentName: this.props.componentName || 'Unknown'
+      };
+      
+      // 上下文信息
+      const context = {
+        source: 'frontend',
+        component: 'ErrorBoundary',
+        userAgent: navigator.userAgent,
+        requestUrl: window.location.href,
+        sessionStorage: {
+          hasData: !!window.sessionStorage.length
+        },
+        localStorage: {
+          hasData: !!window.localStorage.length
+        },
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
+      };
+      
+      // 异步发送错误到服务器
+      fetch('/api/errors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          action: 'collect',
+          errorData: JSON.stringify(errorData),
+          context: JSON.stringify(context)
+        })
+      })
+      .then(response => {
+        if (response.ok) {
+          UILogger.info('错误已上报到服务器', 'ErrorBoundary-Report');
+        } else {
+          UILogger.warn('错误上报失败', 'ErrorBoundary-Report');
+        }
+      })
+      .catch(err => {
+        UILogger.error('错误上报异常', err, 'ErrorBoundary-Report');
+      });
+      
+    } catch (error) {
+      console.error('准备错误上报数据失败:', error);
     }
   }
 

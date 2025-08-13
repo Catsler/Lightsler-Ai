@@ -37,8 +37,10 @@ npx prisma migrate reset         # 重置数据库（清除所有数据）
 npm run deploy                   # 部署到Shopify（更新权限、webhook等）
 
 # 测试脚本
-node check-status.js             # 检查应用状态（配置、数据库、队列）
-node simple-test.js              # 基础功能测试（无需Shopify环境）
+node test-error-system.js        # 错误系统测试
+node test-resource-types.js      # 资源类型测试  
+node test-category-translation.js # 分类翻译测试
+node diagnose-issue.js           # 问题诊断工具
 
 # Redis（可选）
 brew services start redis        # macOS启动Redis
@@ -60,11 +62,20 @@ app/
 │   ├── shopify-graphql.server.js # Shopify API封装（资源类型定义）
 │   ├── database.server.js        # 数据库操作
 │   ├── queue.server.js           # Redis队列
-│   └── memory-queue.server.js    # 内存队列降级
+│   ├── memory-queue.server.js    # 内存队列降级
+│   ├── sync-to-shopify.server.js # 批量同步服务
+│   ├── theme-translation.server.js # 主题翻译专用服务
+│   ├── error-analyzer.server.js  # 错误分析服务
+│   └── error-collector.server.js # 错误收集服务
 ├── utils/               # 工具函数
 │   ├── error-handler.server.js   # 错误处理（TranslationError类）
 │   ├── api-response.server.js    # API响应标准化
-│   └── logger.server.js          # 日志系统
+│   ├── error-fingerprint.server.js # 错误指纹分组
+│   ├── logger.server.js          # 日志系统
+│   ├── api.server.js             # API辅助函数
+│   └── config.server.js          # 配置管理
+├── config/              # 配置文件
+│   └── resource-categories.js    # 资源分类配置
 ├── shopify.server.js    # Shopify应用配置
 └── db.server.js         # Prisma客户端单例
 ```
@@ -88,6 +99,9 @@ app/
 - `GET /api/status` - 系统状态和统计
 - `POST /api/sync-translations` - 同步翻译到Shopify
 - `POST /api/clear` - 清理数据
+- `GET /api/errors` - 错误日志查询
+- `GET /api/translation-logs` - 翻译日志查询
+- `GET /api/translation-status` - 翻译状态查询
 
 ## 数据模型（Prisma）
 
@@ -182,17 +196,26 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 - `translateUrlHandle`: URL slug翻译优化
 - `validateTranslation`: 翻译质量验证
 - `TranslationLogger`: 翻译日志管理类
+- `intelligentChunkText`: 智能文本分块
+- `protectHtmlTags/restoreHtmlTags`: HTML标签保护
 
 ### GraphQL服务 (shopify-graphql.server.js)
-- `fetchResourcesForTranslation`: 获取需翻译资源
+- `fetchResourcesByType`: 按类型获取资源
 - `fetchThemeResources`: Theme资源特殊处理
-- `syncTranslationsToShopify`: 批量同步到Shopify
+- `updateResourceTranslationBatch`: 批量更新翻译
+- `executeGraphQLWithRetry`: 带重试的GraphQL执行
 - `RESOURCE_TYPES`: 资源类型配置对象
+- `FIELD_MAPPINGS`: 字段映射配置
 
 ### 错误处理 (error-handler.server.js)
 - `TranslationError`: 自定义错误类
 - `withErrorHandling`: 路由错误包装器
 - `captureError`: 错误记录和分析
+
+### 错误分析服务 (error-analyzer.server.js)
+- 错误模式识别
+- 影响评估
+- 根因分析
 
 ## 测试和调试
 
@@ -200,6 +223,8 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 - `/test/*` - 各种功能测试页面
 - `/debug/*` - 调试信息页面
 - `/app` - 主应用界面
+- `/app/errors` - 错误管理界面
+- `/app/sync` - 同步管理界面
 
 ### 开发时常用命令
 ```bash
@@ -209,8 +234,10 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
 # 查看数据库
 npx prisma studio
 
-# 检查应用状态
-node check-status.js
+# 运行测试脚本
+node test-error-system.js
+node test-resource-types.js
+node diagnose-issue.js
 
 # 清理缓存和重置
 npx prisma migrate reset
@@ -223,3 +250,6 @@ npx prisma migrate reset
 3. **性能优化**: 大批量翻译使用队列系统
 4. **错误恢复**: ErrorLog表提供详细错误追踪
 5. **开发环境**: 需要设置NODE_TLS_REJECT_UNAUTHORIZED=0绕过SSL验证
+6. **批量操作**: 使用updateResourceTranslationBatch进行批量更新以优化性能
+7. **日志管理**: TranslationLogger类自动记录所有翻译操作
+8. **内存管理**: 大文本使用intelligentChunkText分块处理避免内存溢出

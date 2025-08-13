@@ -23,6 +23,7 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/additional">Additional page</Link>
+        <Link to="/app/errors">搜集错误</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

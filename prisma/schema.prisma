@@ -107,3 +107,73 @@ model Translation {
   
   @@unique([resourceId, language])
 }
+
+// 错误日志表 - 全面的错误收集和分析系统
+model ErrorLog {
+  id             String    @id @default(cuid())
+  shopId         String?
+  userId         String?
+  sessionId      String?
+  
+  // 错误基本信息
+  errorType      String    // API/DB/VALIDATION/NETWORK/UI/QUEUE/GRAPHQL/TRANSLATION/SHOPIFY
+  errorCategory  String    // FATAL/ERROR/WARNING/INFO
+  errorCode      String    // 自定义错误代码
+  message        String    // 错误消息
+  stackTrace     String?   // 错误堆栈（可能很长）
+  
+  // 错误指纹和分组
+  fingerprint    String    // 错误指纹（用于去重和分组）
+  groupId        String?   // 错误组ID（相似错误归类）
+  occurrences    Int       @default(1) // 发生次数
+  firstSeenAt    DateTime  @default(now()) // 首次出现时间
+  lastSeenAt     DateTime  @default(now()) // 最后出现时间
+  
+  // 上下文信息（JSON格式存储详细信息）
+  context        Json      // 详细上下文（请求、响应、环境等）
+  requestUrl     String?   // 请求URL
+  requestMethod  String?   // 请求方法
+  requestBody    String?   // 请求体（截断到合理长度）
+  responseStatus Int?      // 响应状态码
+  userAgent      String?   // 用户代理
+  ipAddress      String?   // IP地址
+  environment    String?   // 环境（development/production）
+  
+  // 资源相关
+  resourceType   String?   // 涉及的资源类型（product/collection等）
+  resourceId     String?   // 涉及的资源ID
+  operation      String?   // 操作类型（scan/translate/sync等）
+  
+  // 影响评估
+  userImpact     Int       @default(0) // 影响用户数
+  severity       Int       @default(2) // 严重程度 1-5
+  businessImpact String?   // 业务影响描述
+  
+  // 状态和处理
+  status         String    @default("new") // new/acknowledged/investigating/resolved/ignored
+  priority       Int       @default(0) // 优先级 0-4（0最高）
+  assignedTo     String?   // 分配给谁处理
+  resolution     String?   // 解决方案描述
+  fixVersion     String?   // 修复版本
+  notes          String?   // 备注信息
+  
+  // 自动分析结果
+  suggestedFix   String?   // AI建议的修复方案
+  rootCause      String?   // 根因分析结果
+  relatedErrors  Json?     // 相关错误ID列表
+  tags           Json?     // 标签（用于分类和搜索）
+  
+  // 时间戳
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  resolvedAt     DateTime? // 解决时间
+  acknowledgedAt DateTime? // 确认时间
+  
+  // 索引优化查询性能
+  @@index([fingerprint])
+  @@index([shopId, errorType])
+  @@index([status, priority])
+  @@index([createdAt])
+  @@index([lastSeenAt])
+  @@index([resourceType, resourceId])
+}

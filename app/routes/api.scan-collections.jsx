@@ -1,10 +1,12 @@
 import { authenticate } from "../shopify.server.js";
-import { fetchAllCollections } from "../services/shopify-graphql.server.js";
 import { getOrCreateShop, saveResources } from "../services/database.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
 
 export const action = async ({ request }) => {
   return withErrorHandling(async () => {
+    // 将服务端导入移到action函数内部，避免Vite构建错误
+    const { fetchAllCollections } = await import("../services/shopify-graphql.server.js");
+    
     const { admin, session } = await authenticate.admin(request);
     
     // 获取或创建店铺记录

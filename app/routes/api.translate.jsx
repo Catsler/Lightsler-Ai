@@ -1,12 +1,14 @@
 import { authenticate } from "../shopify.server.js";
 import { translateResourceWithLogging, getTranslationStats, translationLogger } from "../services/translation.server.js";
 import { translateThemeResource } from "../services/theme-translation.server.js";
-import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
 import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
 
 export const action = async ({ request }) => {
   return withErrorHandling(async () => {
+    // 将服务端导入移到action函数内部，避免Vite构建错误
+    const { updateResourceTranslation } = await import("../services/shopify-graphql.server.js");
+    
     const { admin, session } = await authenticate.admin(request);
     const formData = await request.formData();
     
