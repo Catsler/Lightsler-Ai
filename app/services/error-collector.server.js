@@ -3,7 +3,7 @@
  * 统一的错误收集、存储和管理中心
  */
 
-import { prisma } from "../db.server";
+import prisma from "../db.server.js";
 import { 
   generateErrorFingerprint, 
   generateErrorGroupId, 

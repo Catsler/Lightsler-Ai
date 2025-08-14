@@ -595,96 +595,58 @@ function Index() {
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">翻译配置</Text>
+                <Text as="h2" variant="headingMd">操作面板</Text>
                 
-                <BlockStack gap="400">
-                  <InlineStack gap="400" align="start">
-                    <Box minWidth="200px">
-                      <Select
-                        label="目标语言"
-                        options={supportedLanguages}
-                        value={selectedLanguage}
-                        onChange={setSelectedLanguage}
-                      />
-                    </Box>
-                    
-                    <Box minWidth="200px">
-                      <Select
-                        label="资源类型"
-                        options={resourceTypeOptions}
-                        value={selectedResourceType}
-                        onChange={setSelectedResourceType}
-                      />
-                    </Box>
-                  </InlineStack>
-                  
-                  <Box>
-                    <Checkbox
-                      label="清除缓存并重新翻译"
-                      checked={clearCache}
-                      onChange={setClearCache}
-                      helpText="勾选后将删除现有翻译并重新生成（仅影响选中的资源）"
-                    />
-                  </Box>
-                  
-                  <BlockStack gap="200">
-                    <InlineStack gap="200">
-                      <Button 
-                        onClick={scanAllResources} 
-                        loading={isScanning}
-                        variant="primary"
-                      >
-                        扫描所有资源
-                      </Button>
-                      <Button 
-                        onClick={scanSelectedResourceType} 
-                        loading={isScanning}
-                        variant="secondary"
-                      >
-                        扫描选定类型
-                      </Button>
-                      <Button 
-                        onClick={scanProducts} 
-                        loading={isScanning}
-                        variant="tertiary"
-                      >
-                        快速扫描产品
-                      </Button>
-                      <Button 
-                        onClick={scanCollections} 
-                        loading={isScanning}
-                        variant="tertiary"
-                      >
-                        快速扫描集合
-                      </Button>
-                    </InlineStack>
-                    <InlineStack gap="200">
-                      <Button 
-                        onClick={startTranslation} 
-                        loading={isTranslating}
-                        variant="primary"
-                        disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
-                      >
-                        开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
-                      </Button>
-                      <Button 
-                        url="/app/sync"
-                        variant="primary"
-                        tone="success"
-                      >
-                        同步管理
-                      </Button>
-                      <Button 
-                        onClick={clearData} 
-                        loading={isClearing}
-                        variant="tertiary"
-                        tone="critical"
-                      >
-                        清空数据
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                </BlockStack>
+                <Box minWidth="200px">
+                  <Select
+                    label="目标语言"
+                    options={supportedLanguages}
+                    value={selectedLanguage}
+                    onChange={setSelectedLanguage}
+                  />
+                </Box>
+                
+                <Box>
+                  <Checkbox
+                    label="清除缓存并重新翻译"
+                    checked={clearCache}
+                    onChange={setClearCache}
+                    helpText="勾选后将删除现有翻译并重新生成（仅影响选中的资源）"
+                  />
+                </Box>
+                
+                <InlineStack gap="200">
+                  <Button 
+                    onClick={scanAllResources} 
+                    loading={isScanning}
+                    variant="primary"
+                  >
+                    扫描所有资源
+                  </Button>
+                  <Button 
+                    onClick={startTranslation} 
+                    loading={isTranslating}
+                    variant="primary"
+                    disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
+                  >
+                    开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
+                  </Button>
+                  <Button 
+                    url="/app/sync"
+                    variant="primary"
+                    tone="success"
+                  >
+                    同步管理
+                  </Button>
+                  <Button 
+                    onClick={clearData} 
+                    loading={isClearing}
+                    variant="tertiary"
+                    tone="critical"
+                  >
+                    清空数据
+                  </Button>
+                </InlineStack>
               </BlockStack>
             </Card>
           </Layout.Section>

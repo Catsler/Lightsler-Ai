@@ -427,7 +427,7 @@ export class ErrorCollector {
  * @param {Error} error - 错误对象
  * @param {Object} context - 错误上下文
  */
-function collectErrorToDatabase(error, context = {}) {
+export function collectErrorToDatabase(error, context = {}) {
   // 异步收集错误，不等待结果
   Promise.resolve().then(async () => {
     try {
@@ -474,3 +474,6 @@ function collectErrorToDatabase(error, context = {}) {
     }
   });
 }
+
+// captureError 是 collectErrorToDatabase 的别名，用于向后兼容
+export const captureError = collectErrorToDatabase;

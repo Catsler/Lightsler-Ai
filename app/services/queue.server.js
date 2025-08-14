@@ -6,6 +6,7 @@ import { saveTranslation, updateResourceStatus, prisma } from './database.server
 // import { authenticate } from '../shopify.server.js'; // 只在需要时导入
 import { config } from '../utils/config.server.js';
 import { MemoryQueue } from './memory-queue.server.js';
+import { collectError, ERROR_TYPES } from './error-collector.server.js';
 
 /**
  * Redis任务队列服务
@@ -80,11 +81,54 @@ try {
 }
 
 // 创建翻译任务队列
-export const translationQueue = redis 
-  ? new Bull('translation', { redis: redisConfig })
-  : new MemoryQueue('translation');
+let translationQueue;
+let useMemoryQueue = !redis;
 
-console.log(`🚀 翻译队列已启动: ${redis ? 'Redis模式' : '内存模式'}`);
+if (!useMemoryQueue) {
+  try {
+    translationQueue = new Bull('translation', { 
+      redis: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: true,
+        removeOnFail: false,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000
+        }
+      }
+    });
+    
+    // 监听队列错误，自动切换到内存模式
+    translationQueue.on('error', (error) => {
+      console.error('队列错误:', error.message);
+      if (!useMemoryQueue) {
+        console.warn('Redis队列出错，切换到内存模式');
+        useMemoryQueue = true;
+        // 创建内存队列替代
+        const memQueue = new MemoryQueue('translation');
+        // 复制队列方法
+        translationQueue.add = memQueue.add.bind(memQueue);
+        translationQueue.process = memQueue.process.bind(memQueue);
+        translationQueue.getJobs = memQueue.getJobs.bind(memQueue);
+        translationQueue.getJobCounts = memQueue.getJobCounts.bind(memQueue);
+        translationQueue.clean = memQueue.clean.bind(memQueue);
+        translationQueue.empty = memQueue.empty.bind(memQueue);
+      }
+    });
+  } catch (error) {
+    console.warn('Bull队列创建失败，使用内存模式:', error.message);
+    useMemoryQueue = true;
+  }
+}
+
+if (useMemoryQueue) {
+  translationQueue = new MemoryQueue('translation');
+}
+
+export { translationQueue };
+
+console.log(`🚀 翻译队列已启动: ${!useMemoryQueue ? 'Redis模式' : '内存模式'}`);
 
 // 队列处理器：翻译单个资源
 if (translationQueue) {
@@ -191,6 +235,29 @@ if (translationQueue) {
     } catch (error) {
       console.error(`翻译任务失败 ${resourceId}:`, error);
       
+      // 记录到错误数据库
+      if (typeof collectError !== 'undefined') {
+        await collectError({
+          errorType: ERROR_TYPES.TRANSLATION,
+          errorCategory: 'QUEUE_ERROR',
+          errorCode: error.code || 'QUEUE_TRANSLATION_FAILED',
+          message: `Queue translation failed for resource ${resourceId}: ${error.message}`,
+          stack: error.stack,
+          operation: 'queue.translateResource',
+          resourceId,
+          resourceType: resource.resourceType,
+          targetLanguage: language,
+          severity: 3,
+          retryable: true,
+          context: {
+            shopId,
+            jobId: job.id,
+            attempt: job.attemptsMade,
+            maxAttempts: job.opts.attempts
+          }
+        });
+      }
+      
       // 更新资源状态为待处理
       await updateResourceStatus(resourceId, 'pending');
       
@@ -244,12 +311,48 @@ if (translationQueue) {
   });
   
   // 错误处理
-  translationQueue.on('error', (error) => {
+  translationQueue.on('error', async (error) => {
     console.error('队列错误:', error);
+    
+    // 记录到数据库
+    await collectError({
+      errorType: ERROR_TYPES.SYSTEM,
+      errorCategory: 'QUEUE_SYSTEM',
+      errorCode: 'QUEUE_ERROR',
+      message: `Queue system error: ${error.message}`,
+      stack: error.stack,
+      operation: 'queue.system',
+      severity: 4,
+      retryable: false,
+      context: {
+        queueMode: useMemoryQueue ? 'memory' : 'redis'
+      }
+    });
   });
   
-  translationQueue.on('failed', (job, err) => {
+  translationQueue.on('failed', async (job, err) => {
     console.error(`任务失败 ${job.id}:`, err);
+    
+    // 记录到数据库
+    await collectError({
+      errorType: ERROR_TYPES.TRANSLATION,
+      errorCategory: 'QUEUE_FAILED',
+      errorCode: err.code || 'JOB_FAILED',
+      message: `Job ${job.id} failed after ${job.attemptsMade} attempts: ${err.message}`,
+      stack: err.stack,
+      operation: 'queue.job',
+      resourceId: job.data.resourceId,
+      severity: 3,
+      retryable: job.attemptsMade < (job.opts.attempts || 3),
+      context: {
+        jobId: job.id,
+        jobName: job.name,
+        attempts: job.attemptsMade,
+        maxAttempts: job.opts.attempts || 3,
+        data: job.data,
+        failedReason: job.failedReason
+      }
+    });
   });
   
   translationQueue.on('completed', (job, result) => {

@@ -73,12 +73,26 @@ model Resource {
   label        String?  // 标签（主要用于过滤器）
   contentFields Json?   // 存储不同资源类型的特定字段
   status       String   // pending, processing, completed
+  
+  // Sequential thinking扩展字段 - 版本检测和错误管理
+  contentHash  String?  // 内容哈希值，用于检测变更
+  contentVersion Int    @default(1) // 内容版本号，递增
+  lastScannedAt DateTime? // 最后扫描时间
+  errorCount   Int      @default(0) // 累计错误次数
+  lastErrorAt  DateTime? // 最后出错时间
+  riskScore    Float    @default(0.0) // 风险评分(0-1)
+  
   shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   translations Translation[]
+  translationSessions TranslationSession[] // 关联的翻译会话
+  errorLogs    ErrorLog[] // 关联的错误日志
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
   @@unique([shopId, resourceType, resourceId])
+  @@index([contentHash]) // 用于快速内容变更检测
+  @@index([lastScannedAt]) // 用于增量扫描
+  @@index([riskScore]) // 用于风险评估查询
 }
 
 // 翻译结果
@@ -100,12 +114,30 @@ model Translation {
   syncedAt   DateTime? // 同步到Shopify的时间
   syncError  String?   // 同步失败的错误信息
   syncBatch  Int?      // 批次号，用于追踪
+  
+  // Sequential thinking扩展字段 - 版本追踪和智能跳过
+  sourceVersion Int    @default(1) // 源资源版本号，用于检测是否需要重新翻译
+  skipReason    String? // 跳过原因：ALREADY_TRANSLATED/CONTENT_UNCHANGED/USER_EXCLUDED/TRANSLATION_LOCKED/ERROR_PRONE
+  skipConditions Json? // 跳过条件的详细配置
+  qualityScore  Float  @default(0.0) // 翻译质量评分(0-1)
+  errorFingerprint String? // 关联的错误指纹，用于错误追踪
+  retryCount    Int    @default(0) // 重试次数
+  lastRetryAt   DateTime? // 最后重试时间
+  isManualReview Boolean @default(false) // 是否需要人工审核
+  reviewNotes   String? // 审核备注
+  
   resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  translationSession TranslationSession? @relation(fields: [translationSessionId], references: [id])
+  translationSessionId String? // 关联的翻译会话ID
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   
   @@unique([resourceId, language])
+  @@index([sourceVersion]) // 用于版本检测查询
+  @@index([skipReason]) // 用于跳过原因分析
+  @@index([qualityScore]) // 用于质量排序
+  @@index([errorFingerprint]) // 用于错误关联查询
 }
 
 // 错误日志表 - 全面的错误收集和分析系统
@@ -163,11 +195,24 @@ model ErrorLog {
   relatedErrors  Json?     // 相关错误ID列表
   tags           Json?     // 标签（用于分类和搜索）
   
+  // Sequential thinking扩展字段 - 翻译系统集成
+  translationSessionId String? // 关联的翻译会话ID
+  recoveryAction String?   // 自动恢复动作：RETRY/SKIP/MANUAL/AUTO_FIX
+  autoFixStatus  String?   // 自动修复状态：PENDING/IN_PROGRESS/COMPLETED/FAILED
+  autoFixAttempts Int     @default(0) // 自动修复尝试次数
+  isTranslationError Boolean @default(false) // 是否为翻译相关错误
+  translationContext Json? // 翻译相关的上下文信息（API参数、文本片段等）
+  
   // 时间戳
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   resolvedAt     DateTime? // 解决时间
   acknowledgedAt DateTime? // 确认时间
+  
+  // 关系
+  resource       Resource? @relation(fields: [resourceId], references: [id])
+  translationSession TranslationSession? @relation(fields: [translationSessionId], references: [id])
+  errorPatterns  ErrorPatternMatch[] // 匹配的错误模式
   
   // 索引优化查询性能
   @@index([fingerprint])
@@ -176,4 +221,147 @@ model ErrorLog {
   @@index([createdAt])
   @@index([lastSeenAt])
   @@index([resourceType, resourceId])
+  @@index([translationSessionId]) // 翻译会话关联查询
+  @@index([isTranslationError]) // 翻译错误过滤查询
+  @@index([autoFixStatus]) // 自动修复状态查询
+}
+
+// 翻译会话表 - 断点续传和进度管理
+model TranslationSession {
+  id           String   @id @default(cuid())
+  shopId       String
+  sessionName  String?  // 会话名称（用户可选）
+  
+  // 会话基本信息
+  sessionType  String   // BATCH/INCREMENTAL/RECOVERY/MANUAL
+  totalResources Int    @default(0) // 总资源数量
+  processedCount Int    @default(0) // 已处理数量
+  succeededCount Int    @default(0) // 成功数量
+  failedCount    Int    @default(0) // 失败数量
+  skippedCount   Int    @default(0) // 跳过数量
+  
+  // 进度和状态管理
+  status         String   // PENDING/RUNNING/PAUSED/COMPLETED/FAILED/CANCELLED
+  currentBatch   Int      @default(0) // 当前批次号
+  lastCheckpoint DateTime? // 最后检查点时间
+  resumeData     Json?    // 恢复所需的数据（队列状态、失败列表等）
+  
+  // 配置和参数
+  batchSize      Int      @default(10) // 批处理大小
+  languages      Json     // 目标语言列表 ["zh-CN", "fr", "es"]
+  resourceTypes  Json     // 资源类型列表 ["PRODUCT", "COLLECTION"]
+  translationConfig Json? // 翻译配置（API参数、跳过规则等）
+  
+  // 错误和重试管理
+  maxRetries     Int      @default(3) // 最大重试次数
+  retryDelay     Int      @default(5000) // 重试延迟（毫秒）
+  failureThreshold Float @default(0.3) // 失败率阈值，超过则暂停
+  autoRecovery   Boolean  @default(true) // 是否启用自动恢复
+  
+  // 质量控制
+  qualityThreshold Float @default(0.7) // 质量阈值
+  enableManualReview Boolean @default(false) // 是否启用人工审核
+  
+  // 统计和分析数据
+  averageQuality Float    @default(0.0) // 平均质量评分
+  estimatedTimeRemaining Int? // 预估剩余时间（秒）
+  throughputPerMinute Float @default(0.0) // 每分钟处理量
+  errorRate      Float    @default(0.0) // 错误率
+  
+  // 时间戳
+  startedAt      DateTime? // 开始时间
+  pausedAt       DateTime? // 暂停时间
+  completedAt    DateTime? // 完成时间
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // 关系
+  translations   Translation[] // 关联的翻译记录
+  resources      Resource[] // 关联的资源
+  errorLogs      ErrorLog[] // 关联的错误日志
+  
+  @@index([shopId, status]) // 店铺会话状态查询
+  @@index([sessionType]) // 按类型查询
+  @@index([createdAt]) // 时间排序
+  @@index([status, lastCheckpoint]) // 恢复查询
+}
+
+// 错误模式表 - 错误模式识别和自动修复规则
+model ErrorPattern {
+  id             String   @id @default(cuid())
+  
+  // 模式基本信息
+  patternName    String   // 模式名称
+  description    String   // 模式描述
+  category       String   // 类别：TRANSLATION_API/SHOPIFY_API/NETWORK/VALIDATION/QUALITY
+  severity       Int      // 严重程度 1-5
+  
+  // 模式匹配规则
+  errorTypePattern String? // 错误类型匹配模式
+  messagePattern String?   // 错误消息匹配正则表达式
+  contextPattern Json?     // 上下文匹配规则
+  stackTracePattern String? // 堆栈跟踪匹配模式
+  
+  // 触发条件
+  occurrenceThreshold Int @default(1) // 出现次数阈值
+  timeWindowMinutes Int   @default(60) // 时间窗口（分钟）
+  resourceTypeFilter Json? // 资源类型过滤器
+  
+  // 自动修复规则
+  autoFixEnabled Boolean  @default(false) // 是否启用自动修复
+  fixAction      String?  // 修复动作：RETRY/SKIP/ADJUST_PARAMS/NOTIFY
+  fixParameters  Json?    // 修复参数
+  fixScript      String?  // 自定义修复脚本
+  
+  // 统计和效果
+  matchCount     Int      @default(0) // 匹配次数
+  fixSuccessCount Int     @default(0) // 修复成功次数
+  fixFailureCount Int     @default(0) // 修复失败次数
+  lastMatchedAt  DateTime? // 最后匹配时间
+  
+  // 状态管理
+  isActive       Boolean  @default(true) // 是否激活
+  priority       Int      @default(5) // 优先级 1-10
+  
+  // 时间戳
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // 关系
+  matches        ErrorPatternMatch[] // 匹配记录
+  
+  @@index([category, severity]) // 分类查询
+  @@index([isActive, priority]) // 激活模式优先级查询
+  @@index([lastMatchedAt]) // 最近匹配时间查询
+}
+
+// 错误模式匹配记录表 - 记录错误与模式的匹配关系
+model ErrorPatternMatch {
+  id            String   @id @default(cuid())
+  
+  // 关联信息
+  errorLogId    String
+  errorPatternId String
+  
+  // 匹配详情
+  matchScore    Float    // 匹配分数 0-1
+  matchedFields Json     // 匹配的字段详情
+  
+  // 修复记录
+  fixApplied    Boolean  @default(false) // 是否应用了修复
+  fixStatus     String?  // 修复状态：PENDING/SUCCESS/FAILED
+  fixResult     Json?    // 修复结果详情
+  fixAttempts   Int      @default(0) // 修复尝试次数
+  
+  // 时间戳
+  matchedAt     DateTime @default(now())
+  fixedAt       DateTime? // 修复时间
+  
+  // 关系
+  errorLog      ErrorLog @relation(fields: [errorLogId], references: [id], onDelete: Cascade)
+  errorPattern  ErrorPattern @relation(fields: [errorPatternId], references: [id], onDelete: Cascade)
+  
+  @@unique([errorLogId, errorPatternId]) // 防止重复匹配
+  @@index([matchScore]) // 匹配分数查询
+  @@index([fixApplied, fixStatus]) // 修复状态查询
 }

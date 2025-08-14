@@ -25,28 +25,46 @@ npm run setup                    # 初始化数据库（生成Prisma客户端 + 
 
 # 开发
 npm run dev                      # 启动开发服务器（Shopify CLI处理隧道和认证）
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev  # 开发环境绕过SSL验证
 npm run lint                     # ESLint代码检查
 npm run build                    # 构建生产版本
+npm run start                    # 运行生产构建
 
 # 数据库操作
 npx prisma generate              # 生成Prisma客户端（模型改变后需执行）
 npx prisma migrate dev           # 创建/运行数据库迁移
 npx prisma studio                # 可视化数据库管理界面
 npx prisma migrate reset         # 重置数据库（清除所有数据）
+npx prisma migrate deploy        # 生产环境迁移
 
-# Shopify部署
+# Shopify CLI命令
 npm run deploy                   # 部署到Shopify（更新权限、webhook等）
+npm run config:link              # 链接Shopify应用配置
+npm run config:use               # 使用特定的应用配置
+npm run generate                 # 生成Shopify应用代码
+npm run env                      # 管理环境变量
 
 # 测试脚本
 node test-error-system.js        # 错误系统测试
 node test-resource-types.js      # 资源类型测试  
 node test-category-translation.js # 分类翻译测试
 node test-multi-language.js      # 多语言测试
+node test-sequential-thinking.js # Sequential Thinking 系统演示
+node test-translation-logs.js    # 翻译日志测试
+node test-url-handle.js          # URL处理测试
 node diagnose-issue.js           # 问题诊断工具
+node check-logs.js               # 检查系统日志
+node view-translation-logs.js    # 查看翻译日志
+
+# 初始化脚本
+npm run init-error-patterns      # 初始化错误模式数据
+node scripts/init-languages.js   # 初始化语言配置
+node scripts/reset-database.js   # 重置数据库脚本
 
 # Redis（可选）
 brew services start redis        # macOS启动Redis
 redis-cli ping                   # 测试Redis连接
+redis-cli flushall              # 清空Redis缓存
 ```
 
 ## 项目架构
@@ -96,12 +114,22 @@ app/
 3. **同步**: GraphQL Mutation更新到Shopify店铺
 
 ### 主要API端点
+
+#### 核心翻译API
 - `POST /api/scan-resources` - 扫描所有资源类型
 - `POST /api/translate` - 同步翻译（少量即时）
 - `POST /api/translate-queue` - 异步翻译（大批量队列）
 - `GET /api/status` - 系统状态和统计
 - `POST /api/sync-translations` - 同步翻译到Shopify
 - `POST /api/clear` - 清理数据
+
+#### Sequential Thinking API
+- `POST /api/translation-sessions` - 翻译会话管理（创建、启动、暂停、恢复）
+- `POST /api/detect-changes` - 内容变更检测和智能跳过评估
+- `POST /api/error-prevention` - 错误预防和风险评估
+- `POST /api/quality-management` - 翻译质量分析和自动恢复
+
+#### 监控和日志API  
 - `GET /api/errors` - 错误日志查询
 - `GET /api/translation-logs` - 翻译日志查询
 - `GET /api/translation-status` - 翻译状态查询
@@ -128,6 +156,19 @@ app/
   - 影响评估
   - 自动分析和建议修复
   - 多维度索引优化查询
+
+### Sequential Thinking 扩展表结构
+- **TranslationSession**: 翻译会话管理
+  - 会话状态跟踪（CREATED/RUNNING/PAUSED/COMPLETED/FAILED）
+  - 断点检查点系统
+  - 进度统计和错误率监控
+- **ErrorPattern**: 错误模式识别
+  - 错误特征和关键词匹配
+  - 频率统计和影响评估
+  - 自动修复建议和预防措施
+- **ErrorPatternMatch**: 错误模式匹配关系
+  - 错误日志与模式的关联
+  - 匹配置信度和关键词记录
 
 ## 开发规范
 
@@ -184,6 +225,14 @@ NODE_ENV=development|production          # 环境标识
 - JSON模板内容处理
 - 保持原始资源ID用于API调用
 
+### Sequential Thinking 智能翻译系统
+- **会话管理**: 断点续传、状态恢复、进度跟踪
+- **智能跳过**: 基于内容变化、质量历史的AI决策
+- **版本检测**: 增量更新、内容同步、变更追踪
+- **错误预防**: 事前风险评估、预防措施执行
+- **质量分析**: 多维度质量评估、趋势预测
+- **自动恢复**: 错误诊断、智能修复、系统自愈
+
 ## 故障排查
 
 ### 常见问题
@@ -193,22 +242,6 @@ NODE_ENV=development|production          # 环境标识
 4. **翻译API问题**: 检查GPT_API_KEY和GPT_API_URL
 5. **Shopify API限流**: executeGraphQLWithRetry自动处理重试
 
-### 开发时常用命令
-```bash
-# 开发服务器（带Shopify隧道）
-NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
-
-# 查看数据库
-npx prisma studio
-
-# 运行测试脚本
-node test-error-system.js
-node test-resource-types.js
-node diagnose-issue.js
-
-# 清理缓存和重置
-npx prisma migrate reset
-```
 
 ## 重要函数和模块
 
@@ -249,6 +282,21 @@ npx prisma migrate reset
 - `/app/errors` - 错误管理界面
 - `/app/sync` - 同步管理界面
 
+### 单独测试特定功能
+```bash
+# 测试特定资源类型的翻译
+node -e "require('./test-resource-types.js').testSpecificType('PRODUCT')"
+
+# 测试特定语言的翻译
+node -e "require('./test-multi-language.js').testLanguage('zh-CN')"
+
+# 调试特定错误
+node diagnose-issue.js --error-id=123
+
+# 查看特定时间段的日志
+node view-translation-logs.js --from="2024-01-01" --to="2024-01-31"
+```
+
 ### 开发完成检查清单
 - ✅ `npm run lint` 无错误
 - ✅ `npm run build` 构建成功
@@ -256,22 +304,35 @@ npx prisma migrate reset
 - ✅ 新增Shopify权限后运行 `npm run deploy`
 - ✅ 测试关键功能流程（扫描→翻译→同步）
 
-### 开发时常用命令
+### 调试工具
 ```bash
-# 开发服务器（带Shopify隧道）
-NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
+# 查看翻译状态
+curl http://localhost:PORT/api/status
 
-# 查看数据库
-npx prisma studio
+# 查看错误日志
+curl http://localhost:PORT/api/errors
 
-# 运行测试脚本
-node test-error-system.js
-node test-resource-types.js
-node diagnose-issue.js
+# 查看翻译日志
+curl http://localhost:PORT/api/translation-logs
 
-# 清理缓存和重置
-npx prisma migrate reset
+# 测试GraphQL连接
+curl -X POST http://localhost:PORT/api/test-graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ shop { name } }"}'
 ```
+
+## 项目依赖管理
+
+### 包版本锁定
+项目使用 `resolutions` 和 `overrides` 字段锁定关键依赖版本以避免兼容性问题：
+- `@graphql-tools/url-loader`: 8.0.16
+- `vite`: ^5.4.8
+- `minimatch`: 9.0.5
+
+### 版本升级注意事项
+- **Polaris v13升级**: 需要Node.js v20.10+，同时更新Dockerfile
+- **Prisma升级**: 运行 `npx prisma migrate dev` 更新数据库架构
+- **Shopify API版本**: 当前使用2025-07，升级时更新shopify.app.toml
 
 ## 注意事项
 
@@ -285,3 +346,5 @@ npx prisma migrate reset
 8. **内存管理**: 大文本使用intelligentChunkText分块处理避免内存溢出
 9. **权限管理**: 确保shopify.app.toml中的scopes包含所有必需权限
 10. **版本兼容**: Node.js需要18.20+，Polaris限制在v12（v13需要Node 20+）
+11. **队列系统**: Redis不可用时自动降级到内存队列，无需手动干预
+12. **GraphQL限流**: executeGraphQLWithRetry自动处理重试和限流

@@ -130,6 +130,9 @@ export async function getAllResources(shopId) {
  * @returns {Promise<Object>} 翻译记录
  */
 export async function saveTranslation(resourceId, shopId, language, translations) {
+  // 记录语言参数，帮助调试
+  console.log(`[saveTranslation] 保存翻译 - 资源ID: ${resourceId}, 语言: ${language}, 店铺: ${shopId}`);
+  
   // 构建翻译数据对象
   const translationData = {
     titleTrans: translations.titleTrans || null,
@@ -143,22 +146,54 @@ export async function saveTranslation(resourceId, shopId, language, translations
     status: 'completed',
     syncStatus: 'pending' // 新翻译默认为待同步状态
   };
-
-  return await prisma.translation.upsert({
-    where: {
-      resourceId_language: {
+  
+  try {
+    const result = await prisma.translation.upsert({
+      where: {
+        resourceId_language: {
+          resourceId: resourceId,
+          language: language
+        }
+      },
+      update: translationData,
+      create: {
         resourceId: resourceId,
-        language: language
+        shopId: shopId,
+        language: language,
+        ...translationData
       }
-    },
-    update: translationData,
-    create: {
-      resourceId: resourceId,
-      shopId: shopId,
-      language: language,
-      ...translationData
+    });
+    
+    console.log(`[saveTranslation] 成功保存 ${language} 翻译，记录ID: ${result.id}`);
+    return result;
+    
+  } catch (error) {
+    console.error(`[saveTranslation] 保存翻译失败:`, error);
+    
+    // 记录到错误数据库
+    if (typeof collectError !== 'undefined') {
+      const { collectError, ERROR_TYPES } = await import('./error-collector.server.js');
+      await collectError({
+        errorType: ERROR_TYPES.DATABASE,
+        errorCategory: 'DATABASE_ERROR',
+        errorCode: 'SAVE_TRANSLATION_FAILED',
+        message: `Failed to save translation: ${error.message}`,
+        stack: error.stack,
+        operation: 'saveTranslation',
+        resourceId,
+        severity: 4,
+        retryable: true,
+        context: {
+          shopId,
+          language,
+          hasTranslations: !!translations,
+          error: error.message
+        }
+      });
     }
-  });
+    
+    throw error;
+  }
 }
 
 /**
