@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持15+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。
+Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持20+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。
 
 ### 技术栈
 - **框架**: Remix v2.16.1 + React v18.2.0
@@ -14,6 +14,7 @@ Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin�
 - **API版本**: Shopify GraphQL Admin API 2025-07
 - **构建**: Vite v5.4.8
 - **Node**: >=18.20
+- **包管理**: npm
 
 ## 常用开发命令
 
@@ -40,6 +41,7 @@ npm run deploy                   # 部署到Shopify（更新权限、webhook等�
 node test-error-system.js        # 错误系统测试
 node test-resource-types.js      # 资源类型测试  
 node test-category-translation.js # 分类翻译测试
+node test-multi-language.js      # 多语言测试
 node diagnose-issue.js           # 问题诊断工具
 
 # Redis（可选）
@@ -76,16 +78,17 @@ app/
 │   └── config.server.js          # 配置管理
 ├── config/              # 配置文件
 │   └── resource-categories.js    # 资源分类配置
+├── components/          # React组件
 ├── shopify.server.js    # Shopify应用配置
 └── db.server.js         # Prisma客户端单例
 ```
 
 ### 支持的资源类型（RESOURCE_TYPES）
-- **产品类**: product, collection, filter, product_option, product_option_value
-- **内容类**: article, blog, page  
-- **导航类**: menu, link
-- **主题类**: online_store_theme, online_store_theme_file, online_store_theme_asset, online_store_theme_template, online_store_theme_section, online_store_theme_block, online_store_theme_snippet
-- **其他**: selling_plan, shop, shop_policy
+- **产品类**: PRODUCT, COLLECTION, FILTER, PRODUCT_OPTION, PRODUCT_OPTION_VALUE, SELLING_PLAN, SELLING_PLAN_GROUP
+- **内容类**: ARTICLE, BLOG, PAGE  
+- **导航类**: MENU, LINK
+- **主题类**: ONLINE_STORE_THEME及其7个子类型（APP_EMBED, JSON_TEMPLATE, LOCALE_CONTENT等）
+- **店铺类**: SHOP, SHOP_POLICY
 
 ### 数据流程
 1. **扫描**: GraphQL批量获取Shopify资源 → 存储到SQLite
@@ -106,7 +109,7 @@ app/
 ## 数据模型（Prisma）
 
 ### 核心表结构
-- **Session**: Shopify会话管理
+- **Session**: Shopify会话管理（含用户信息、权限范围）
 - **Shop**: 店铺信息和访问令牌
 - **Resource**: 待翻译资源
   - resourceType: 资源类型
@@ -120,25 +123,31 @@ app/
   - syncStatus: pending/syncing/synced/failed
   - translationFields: JSON扩展字段
 - **Language**: 支持的语言配置
-- **ErrorLog**: 完整的错误日志系统（含指纹分组、影响评估）
+- **ErrorLog**: 完整的错误日志系统
+  - 错误指纹分组
+  - 影响评估
+  - 自动分析和建议修复
+  - 多维度索引优化查询
 
 ## 开发规范
 
 ### 代码约定
-- 服务端文件: `*.server.js` 后缀
-- 错误处理: API路由使用 `withErrorHandling` 包装
-- 认证: 使用 `shopify.authenticate.admin()` 
-- GraphQL版本: 2025-07
-- 缩进: 2个空格
-- 注释: 中文
+- **文件命名**: 服务端文件使用 `*.server.js` 后缀
+- **错误处理**: API路由使用 `withErrorHandling` 包装器
+- **认证**: 使用 `shopify.authenticate.admin()` 
+- **GraphQL版本**: 2025-07
+- **缩进**: 2个空格
+- **注释**: 中文注释
+- **ESLint**: 基于 @remix-run/eslint-config
+- **格式化**: Prettier配置
 
 ### 环境变量
 
 **必需**:
 ```bash
-SHOPIFY_API_KEY=xxx
-SHOPIFY_API_SECRET=xxx  
-GPT_API_KEY=xxx
+SHOPIFY_API_KEY=xxx        # Shopify应用密钥
+SHOPIFY_API_SECRET=xxx     # Shopify应用密码
+GPT_API_KEY=xxx           # OpenAI/兼容API密钥
 ```
 
 **可选**:
@@ -146,6 +155,7 @@ GPT_API_KEY=xxx
 GPT_API_URL=https://api.cursorai.art/v1  # GPT API地址
 REDIS_URL=redis://localhost:6379         # Redis（自动降级）
 QUEUE_CONCURRENCY=5                      # 队列并发数
+NODE_ENV=development|production          # 环境标识
 ```
 
 ## 关键特性
@@ -165,8 +175,8 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 ### Shopify集成
 - 嵌入式运行在Shopify Admin内
 - 权限配置在 `shopify.app.toml`
-- 支持webhook处理
-- GraphQL批量操作优化
+- Webhook处理（app/uninstalled, app/scopes_update）
+- GraphQL批量操作优化（executeGraphQLWithRetry）
 
 ### Theme资源处理
 - 动态字段提取（dynamicFields）
@@ -179,14 +189,26 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 ### 常见问题
 1. **认证循环**: 运行 `npm run deploy` 更新权限
 2. **数据库错误**: 运行 `npm run setup` 或 `npx prisma migrate dev`
-3. **Redis连接失败**: 自动降级，无需干预
+3. **Redis连接失败**: 自动降级到内存队列，无需干预
 4. **翻译API问题**: 检查GPT_API_KEY和GPT_API_URL
+5. **Shopify API限流**: executeGraphQLWithRetry自动处理重试
 
-### 开发完成检查
-- ✅ `npm run lint` 无错误
-- ✅ `npm run build` 构建成功
-- ✅ 数据模型变更后运行 `npx prisma migrate dev`
-- ✅ 新增Shopify权限后运行 `npm run deploy`
+### 开发时常用命令
+```bash
+# 开发服务器（带Shopify隧道）
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
+
+# 查看数据库
+npx prisma studio
+
+# 运行测试脚本
+node test-error-system.js
+node test-resource-types.js
+node diagnose-issue.js
+
+# 清理缓存和重置
+npx prisma migrate reset
+```
 
 ## 重要函数和模块
 
@@ -216,6 +238,7 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 - 错误模式识别
 - 影响评估
 - 根因分析
+- 自动修复建议
 
 ## 测试和调试
 
@@ -225,6 +248,13 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 - `/app` - 主应用界面
 - `/app/errors` - 错误管理界面
 - `/app/sync` - 同步管理界面
+
+### 开发完成检查清单
+- ✅ `npm run lint` 无错误
+- ✅ `npm run build` 构建成功
+- ✅ 数据模型变更后运行 `npx prisma migrate dev`
+- ✅ 新增Shopify权限后运行 `npm run deploy`
+- ✅ 测试关键功能流程（扫描→翻译→同步）
 
 ### 开发时常用命令
 ```bash
@@ -253,3 +283,5 @@ npx prisma migrate reset
 6. **批量操作**: 使用updateResourceTranslationBatch进行批量更新以优化性能
 7. **日志管理**: TranslationLogger类自动记录所有翻译操作
 8. **内存管理**: 大文本使用intelligentChunkText分块处理避免内存溢出
+9. **权限管理**: 确保shopify.app.toml中的scopes包含所有必需权限
+10. **版本兼容**: Node.js需要18.20+，Polaris限制在v12（v13需要Node 20+）
