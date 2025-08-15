@@ -25,6 +25,38 @@ import {
 // 导入质量分析器
 import { qualityErrorAnalyzer } from './quality-error-analyzer.server.js';
 
+// 导入Sequential Thinking核心服务
+import { 
+  DecisionEngine, 
+  TranslationScheduler 
+} from './sequential-thinking-core.server.js';
+
+/**
+ * 带超时的fetch函数
+ * @param {string} url - 请求URL
+ * @param {Object} options - fetch选项
+ * @param {number} timeout - 超时时间（毫秒），默认30秒
+ */
+async function fetchWithTimeout(url, options, timeout = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`请求超时（${timeout/1000}秒）`);
+    }
+    throw error;
+  }
+}
+
 /**
  * 语言代码到语言名称的映射
  * @param {string} langCode - 语言代码
@@ -472,7 +504,7 @@ Intel|AMD|NVIDIA|Qualcomm|Bluetooth|WiFi|USB|HDMI|4K|5G|AI|ML|VR|AR|NFT等。
     try {
       console.log(`正在翻译URL handle: "${normalizedHandle}" -> ${getLanguageName(targetLang)}`);
       
-      const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+      const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -488,7 +520,7 @@ Intel|AMD|NVIDIA|Qualcomm|Bluetooth|WiFi|USB|HDMI|4K|5G|AI|ML|VR|AR|NFT等。
             }
           ],
           temperature: 0.2, // 更低的温度确保一致性
-          max_tokens: 100, // URL handle不需要太长
+          max_tokens: Math.floor(100), // URL handle不需要太长
           top_p: 1,
           frequency_penalty: 0,
           presence_penalty: 0
@@ -1305,7 +1337,14 @@ export async function validateTranslation(originalText, translatedText, targetLa
       !brandWords.some(brand => brand.toLowerCase() === word.toLowerCase())
     );
     
-    if (nonBrandEnglish.length > originalText.split(/\s+/).length * 0.3) {
+    // 提高阈值：只有当英文单词超过原文单词数的60%时才警告
+    // 并且排除一些常见的技术术语和产品名称
+    const technicalTerms = new Set(['online', 'shop', 'store', 'product', 'collection', 'blog', 'page', 'menu', 'theme', 'template']);
+    const filteredNonBrandEnglish = nonBrandEnglish.filter(word => 
+      !technicalTerms.has(word.toLowerCase())
+    );
+    
+    if (filteredNonBrandEnglish.length > originalText.split(/\s+/).length * 0.6) {
       validationResults.warnings.push('TOO_MUCH_ENGLISH');
       
       // 记录过多英文残留
@@ -1319,8 +1358,10 @@ export async function validateTranslation(originalText, translatedText, targetLa
         retryable: true,
         context: {
           targetLanguage: targetLang,
-          englishWordCount: nonBrandEnglish.length,
-          sampleWords: nonBrandEnglish.slice(0, 10)
+          englishWordCount: filteredNonBrandEnglish.length,
+          totalWordCount: originalText.split(/\s+/).length,
+          englishWords: filteredNonBrandEnglish.slice(0, 10),
+          threshold: '60%'
         }
       });
     }
@@ -1423,7 +1464,7 @@ async function testTranslationAPI() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
     
-    const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1437,7 +1478,7 @@ async function testTranslationAPI() {
             content: 'Test'
           }
         ],
-        max_tokens: 10,
+        max_tokens: Math.floor(10),
         temperature: 0
       }),
       signal: controller.signal,
@@ -1781,10 +1822,37 @@ export const translationLogger = new TranslationLogger();
 export async function translateResourceWithLogging(resource, targetLang) {
   const resourceId = resource.id || resource.resourceId || 'unknown';
   
+  // Sequential Thinking: 智能决策是否需要翻译
+  const decisionEngine = new DecisionEngine();
+  const skipDecision = await decisionEngine.shouldSkipTranslation(resource, {
+    targetLanguage: targetLang,
+    priority: resource.priority || 'normal',
+    userRequested: resource.userRequested || false
+  });
+  
+  if (skipDecision.decision === 'skip') {
+    translationLogger.log('info', `智能跳过翻译: ${resource.title}`, {
+      resourceId,
+      resourceType: resource.resourceType,
+      targetLanguage: targetLang,
+      reason: skipDecision.reasoning,
+      confidence: skipDecision.confidence
+    });
+    
+    // 返回空翻译结果，表示跳过
+    return {
+      skipped: true,
+      reason: skipDecision.reasoning,
+      confidence: skipDecision.confidence
+    };
+  }
+  
   translationLogger.log('info', `开始翻译资源: ${resource.title}`, {
     resourceId,
     resourceType: resource.resourceType,
     targetLanguage: targetLang,
+    decision: skipDecision.decision,
+    confidence: skipDecision.confidence,
     fieldsToTranslate: {
       title: !!resource.title,  
       description: resource.resourceType === 'page' ? true : !!(resource.descriptionHtml || resource.description),
@@ -2548,10 +2616,10 @@ async function translateWithSimplePrompt(text, targetLang) {
 文本：`;
     
     // 动态计算max_tokens，支持长文本翻译
-    const dynamicMaxTokens = Math.min(text.length * 3, 8000); // 大幅提升token限制以支持长文本
+    const dynamicMaxTokens = Math.floor(Math.min(text.length * 3, 8000)); // 大幅提升token限制以支持长文本
     console.log(`简化翻译策略使用动态token限制: ${dynamicMaxTokens}`);
     
-    const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -2647,7 +2715,7 @@ async function translateTitleWithEnhancedPrompt(title, targetLang) {
 
 请直接给出翻译结果：`;
     
-    const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -2659,7 +2727,7 @@ async function translateTitleWithEnhancedPrompt(title, targetLang) {
           }
         ],
         temperature: 0.1, // 低温度确保一致性
-        max_tokens: 100, // 标题不需要太多token
+        max_tokens: Math.floor(100), // 标题不需要太多token
         top_p: 1,
         frequency_penalty: 0,
         presence_penalty: 0
@@ -2865,10 +2933,10 @@ async function translateSEODescription(description, targetLang) {
 请直接给出翻译结果：`;
     
     // 动态计算token限制，支持更长的SEO描述
-    const dynamicMaxTokens = Math.min(description.length * 2, 1000); // 提升SEO描述的token限制
+    const dynamicMaxTokens = Math.floor(Math.min(description.length * 2, 1000)); // 提升SEO描述的token限制
     console.log(`SEO描述翻译使用动态token限制: ${dynamicMaxTokens}`);
     
-    const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -3002,9 +3070,9 @@ ${itemTexts.map((text, i) => `${i + 1}. ${text}`).join('\n')}
       const timeoutId = setTimeout(() => controller.abort(), config.translation.timeout);
       
       // 动态计算token限制，确保有足够空间完整翻译
-      const dynamicMaxTokens = Math.min(itemTexts.join(' ').length * 4, 3000); // 增加token限制
+      const dynamicMaxTokens = Math.floor(Math.min(itemTexts.join(' ').length * 4, 3000)); // 增加token限制
       
-      const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
+      const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -3656,7 +3724,7 @@ async function translateLongText(text, targetLang) {
           
           // 使用更保守的翻译参数
           const result = await translateTextWithFallback(adjustedChunk, targetLang, {
-            maxTokens: Math.min(adjustedChunk.length * 3, 2000),
+            maxTokens: Math.floor(Math.min(adjustedChunk.length * 3, 2000)),
             temperature: 0.1,
             retryCount: 0
           });

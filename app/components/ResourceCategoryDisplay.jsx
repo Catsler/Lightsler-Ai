@@ -30,7 +30,9 @@ export function ResourceCategoryDisplay({
   onSelectionChange,
   currentLanguage = 'zh-CN',
   onTranslateCategory,
+  onSyncCategory,
   translatingCategories = new Set(),
+  syncingCategories = new Set(),
   clearCache = false
 }) {
   const [expandedSubcategories, setExpandedSubcategories] = useState({});
@@ -189,11 +191,10 @@ export function ResourceCategoryDisplay({
         </InlineStack>
       </Card>
       
-      {/* 分类网格展示 */}
-      <Grid columns={{xs: 1, sm: 1, md: 2, lg: 3, xl: 3}}>
+      {/* 分类单列展示 */}
+      <BlockStack gap="400">
         {Object.entries(organizedResources).map(([categoryKey, category]) => (
-          <Grid.Cell key={categoryKey}>
-            <Card>
+          <Card key={categoryKey}>
               {/* 分类标题栏 */}
               <Box paddingBlockEnd="3">
                 <InlineStack align="space-between">
@@ -220,6 +221,18 @@ export function ResourceCategoryDisplay({
                         disabled={translatingCategories.has(categoryKey) || category.totalCount === 0}
                       >
                         {translatingCategories.has(categoryKey) ? '翻译中...' : '翻译'}
+                      </Button>
+                    )}
+                    {onSyncCategory && (
+                      <Button
+                        size="slim"
+                        variant="primary"
+                        tone="success"
+                        onClick={() => onSyncCategory(categoryKey, category)}
+                        loading={syncingCategories.has(categoryKey)}
+                        disabled={syncingCategories.has(categoryKey) || category.translatedCount === 0}
+                      >
+                        {syncingCategories.has(categoryKey) ? '发布中...' : '发布'}
                       </Button>
                     )}
                     {onSelectionChange && (
@@ -359,9 +372,8 @@ export function ResourceCategoryDisplay({
                 </BlockStack>
               </Box>
             </Card>
-          </Grid.Cell>
         ))}
-      </Grid>
+      </BlockStack>
     </BlockStack>
   );
 }

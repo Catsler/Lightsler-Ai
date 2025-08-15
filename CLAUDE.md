@@ -76,7 +76,8 @@ app/
 │   ├── api.*.jsx       # API端点（扫描、翻译、同步）
 │   ├── app.*.jsx       # 嵌入式应用页面
 │   ├── test.*.jsx      # 测试页面
-│   └── debug.*.jsx     # 调试页面
+│   ├── debug.*.jsx     # 调试页面
+│   └── webhooks.*.jsx  # Webhook处理
 ├── services/            # 业务逻辑
 │   ├── translation.server.js     # GPT翻译核心（含品牌词保护）
 │   ├── shopify-graphql.server.js # Shopify API封装（资源类型定义）
@@ -134,6 +135,16 @@ app/
 - `GET /api/translation-logs` - 翻译日志查询
 - `GET /api/translation-status` - 翻译状态查询
 
+#### Webhook端点
+- `/webhooks/app/uninstalled` - 应用卸载
+- `/webhooks/app/scopes_update` - 权限更新
+- `/webhooks/product/*` - 产品创建/更新/删除
+- `/webhooks/collection/*` - 集合创建/更新
+- `/webhooks/page/*` - 页面创建/更新
+- `/webhooks/theme/*` - 主题发布/更新
+- `/webhooks/locale/*` - 语言创建/更新
+- `/webhooks/article/*` - 文章创建/更新
+
 ## 数据模型（Prisma）
 
 ### 核心表结构
@@ -146,6 +157,8 @@ app/
   - originalResourceId: 原始Shopify资源ID
   - descriptionHtml: 富文本内容
   - contentFields: JSON扩展字段（Theme资源的动态字段）
+  - contentHash: 内容哈希值（版本检测）
+  - riskScore: 风险评分（0-1）
 - **Translation**: 翻译结果
   - 每个资源+语言组合一条记录
   - syncStatus: pending/syncing/synced/failed
@@ -169,6 +182,8 @@ app/
 - **ErrorPatternMatch**: 错误模式匹配关系
   - 错误日志与模式的关联
   - 匹配置信度和关键词记录
+- **WebhookEvent**: Webhook事件记录
+  - 事件类型、负载、处理状态
 
 ## 开发规范
 
@@ -216,8 +231,9 @@ NODE_ENV=development|production          # 环境标识
 ### Shopify集成
 - 嵌入式运行在Shopify Admin内
 - 权限配置在 `shopify.app.toml`
-- Webhook处理（app/uninstalled, app/scopes_update）
+- Webhook处理（支持产品、集合、页面、主题等事件）
 - GraphQL批量操作优化（executeGraphQLWithRetry）
+- 权限范围：读写产品、内容、主题、翻译、文件等
 
 ### Theme资源处理
 - 动态字段提取（dynamicFields）
@@ -241,7 +257,6 @@ NODE_ENV=development|production          # 环境标识
 3. **Redis连接失败**: 自动降级到内存队列，无需干预
 4. **翻译API问题**: 检查GPT_API_KEY和GPT_API_URL
 5. **Shopify API限流**: executeGraphQLWithRetry自动处理重试
-
 
 ## 重要函数和模块
 
@@ -348,3 +363,6 @@ curl -X POST http://localhost:PORT/api/test-graphql \
 10. **版本兼容**: Node.js需要18.20+，Polaris限制在v12（v13需要Node 20+）
 11. **队列系统**: Redis不可用时自动降级到内存队列，无需手动干预
 12. **GraphQL限流**: executeGraphQLWithRetry自动处理重试和限流
+13. **Webhook处理**: 支持产品、集合、页面、主题、语言、文章等多种事件类型
+14. **内容版本控制**: 使用contentHash和contentVersion进行变更检测和增量更新
+15. **风险评估**: 每个资源都有riskScore评分，用于智能决策

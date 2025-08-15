@@ -98,17 +98,19 @@ export const action = async ({ request }) => {
 
 // 资源类型配置信息
 export const loader = async ({ request }) => {
+  const { RESOURCE_TYPES } = await import("../services/shopify-graphql.server.js");
+  
   return json({
     supportedResourceTypes: Object.values(RESOURCE_TYPES),
     resourceTypeDescriptions: {
-      [RESOURCE_TYPES.PRODUCT]: '产品',
-      [RESOURCE_TYPES.COLLECTION]: '产品集合',
-      [RESOURCE_TYPES.ARTICLE]: '博客文章',
-      [RESOURCE_TYPES.BLOG]: '博客',
-      [RESOURCE_TYPES.PAGE]: '页面',
-      [RESOURCE_TYPES.MENU]: '菜单',
-      [RESOURCE_TYPES.LINK]: '链接',
-      [RESOURCE_TYPES.FILTER]: '过滤器'
+      PRODUCT: '产品',
+      COLLECTION: '产品集合',
+      ARTICLE: '博客文章',
+      BLOG: '博客',
+      PAGE: '页面',
+      MENU: '菜单',
+      LINK: '链接',
+      FILTER: '过滤器'
     }
   });
 };

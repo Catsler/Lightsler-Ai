@@ -3,7 +3,7 @@
 client_id = "8102af9807fd9df0b322a44f500a1d0e"
 name = "Lightsler Ai"
 handle = "lightsler-ai"
-application_url = "https://insights-containers-para-demo.trycloudflare.com"
+application_url = "https://bringing-minimal-spring-miscellaneous.trycloudflare.com"
 embedded = true
 
 [build]
@@ -21,12 +21,70 @@ api_version = "2025-07"
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
 
+  # 产品相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "products/create" ]
+  uri = "/webhooks/product/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/product/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/delete" ]
+  uri = "/webhooks/product/delete"
+
+  # 集合相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "collections/create" ]
+  uri = "/webhooks/collection/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "collections/update" ]
+  uri = "/webhooks/collection/update"
+
+  # 页面相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "pages/create" ]
+  uri = "/webhooks/page/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "pages/update" ]
+  uri = "/webhooks/page/update"
+
+  # 主题相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "themes/publish" ]
+  uri = "/webhooks/theme/publish"
+
+  [[webhooks.subscriptions]]
+  topics = [ "themes/update" ]
+  uri = "/webhooks/theme/update"
+
+  # 语言相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "locales/create" ]
+  uri = "/webhooks/locale/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "locales/update" ]
+  uri = "/webhooks/locale/update"
+
+  # 博客文章相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "articles/create" ]
+  uri = "/webhooks/article/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "articles/update" ]
+  uri = "/webhooks/article/update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
 
 [auth]
-redirect_urls = ["https://insights-containers-para-demo.trycloudflare.com/auth/callback", "https://insights-containers-para-demo.trycloudflare.com/auth/shopify/callback", "https://insights-containers-para-demo.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://bringing-minimal-spring-miscellaneous.trycloudflare.com/auth/callback", "https://bringing-minimal-spring-miscellaneous.trycloudflare.com/auth/shopify/callback", "https://bringing-minimal-spring-miscellaneous.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

@@ -3,6 +3,34 @@ import { captureError, TranslationError } from '../utils/error-handler.server.js
 import { logger } from '../utils/logger.server.js';
 import { validateTranslation } from './translation.server.js';
 
+// 品牌词定义（应该与translation.server.js保持一致）
+const BRAND_WORDS = new Set([
+  // 科技品牌
+  'shopify', 'apple', 'google', 'microsoft', 'samsung', 'huawei', 'xiaomi', 'oppo', 'vivo',
+  'oneplus', 'realme', 'sony', 'lg', 'nokia', 'motorola', 'lenovo', 'asus', 'acer', 'dell',
+  'hp', 'ibm', 'intel', 'amd', 'nvidia', 'qualcomm', 'mediatek', 'broadcom', 'cisco',
+  
+  // 电商平台
+  'amazon', 'ebay', 'alibaba', 'taobao', 'jd', 'tmall', 'pinduoduo', 'wish', 'etsy',
+  'walmart', 'target', 'costco', 'best buy', 'home depot', 'lowes', 'ikea', 'sephora',
+  
+  // 社交媒体
+  'facebook', 'meta', 'instagram', 'twitter', 'x', 'youtube', 'tiktok', 'snapchat',
+  'linkedin', 'pinterest', 'reddit', 'discord', 'telegram', 'whatsapp', 'wechat', 'weibo',
+  
+  // 支付品牌
+  'paypal', 'stripe', 'square', 'visa', 'mastercard', 'amex', 'discover', 'unionpay',
+  'alipay', 'wechat pay', 'apple pay', 'google pay', 'samsung pay', 'venmo', 'cash app',
+  
+  // 云服务
+  'aws', 'azure', 'gcp', 'google cloud', 'cloudflare', 'vercel', 'netlify', 'heroku',
+  'digitalocean', 'linode', 'vultr', 'ovh', 'godaddy', 'namecheap', 'squarespace', 'wix',
+  
+  // Shopify相关
+  'shop pay', 'shopify plus', 'shopify payments', 'shopify pos', 'shopify fulfillment',
+  'shopify capital', 'shopify email', 'shopify inbox', 'shopify markets', 'shopify collabs'
+]);
+
 /**
  * 质量错误分析器 - 翻译质量评估与错误关联分析
  * 

@@ -36,9 +36,11 @@ model Shop {
   id          String   @id
   domain      String   @unique
   accessToken String
+  autoTranslateEnabled Boolean @default(false) // 是否启用自动翻译
   languages   Language[]
   resources   Resource[]
   translations Translation[]
+  webhookEvents WebhookEvent[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -51,6 +53,7 @@ model Language {
   shopId   String
   shop     Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
   isActive Boolean @default(true)
+  enabled  Boolean @default(true) // 是否启用该语言的翻译
   
   @@unique([shopId, code])
 }
@@ -364,4 +367,24 @@ model ErrorPatternMatch {
   @@unique([errorLogId, errorPatternId]) // 防止重复匹配
   @@index([matchScore]) // 匹配分数查询
   @@index([fixApplied, fixStatus]) // 修复状态查询
+}
+
+// Webhook事件记录
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  shop          String   // 店铺domain
+  shopModel     Shop     @relation(fields: [shop], references: [domain], onDelete: Cascade)
+  topic         String   // webhook主题 (products/create, collections/update等)
+  resourceType  String   // 资源类型 (PRODUCT, COLLECTION等)
+  resourceId    String?  // 资源ID
+  payload       Json     // 原始payload数据
+  processed     Boolean  @default(false) // 是否已处理
+  processedAt   DateTime? // 处理时间
+  error         String?  // 错误信息（如果处理失败）
+  retryCount    Int      @default(0) // 重试次数
+  createdAt     DateTime @default(now())
+  
+  @@index([shop, topic])
+  @@index([processed, createdAt])
+  @@index([resourceType, resourceId])
 }

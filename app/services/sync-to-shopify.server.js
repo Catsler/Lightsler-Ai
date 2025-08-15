@@ -355,3 +355,166 @@ export async function clearSyncErrors(shopId) {
   
   return result.count;
 }
+
+/**
+ * 按分类同步资源翻译
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} shopId - 店铺ID
+ * @param {Object} options - 同步选项
+ * @returns {Promise<Object>} 同步结果
+ */
+export async function syncCategoryResources(admin, shopId, options = {}) {
+  const { categoryKey, subcategoryKey, language = 'zh-CN', resourceIds } = options;
+  
+  logger.info(`开始按分类同步资源，分类: ${categoryKey}, 子分类: ${subcategoryKey || '全部'}, 语言: ${language}`);
+  
+  const results = {
+    successCount: 0,
+    failedCount: 0,
+    syncedResources: [],
+    failedResources: [],
+    errors: []
+  };
+  
+  try {
+    // 导入分类配置
+    const { RESOURCE_CATEGORIES } = await import('../config/resource-categories.js');
+    
+    // 获取分类对应的资源类型
+    let resourceTypes = [];
+    
+    if (categoryKey && RESOURCE_CATEGORIES[categoryKey]) {
+      const category = RESOURCE_CATEGORIES[categoryKey];
+      
+      if (subcategoryKey && category.subcategories[subcategoryKey]) {
+        // 特定子分类的资源类型
+        resourceTypes = category.subcategories[subcategoryKey].resources;
+      } else {
+        // 整个分类的所有资源类型
+        Object.values(category.subcategories).forEach(sub => {
+          resourceTypes = [...resourceTypes, ...sub.resources];
+        });
+      }
+    }
+    
+    if (resourceTypes.length === 0) {
+      throw new Error(`未找到分类 ${categoryKey} 的资源类型配置`);
+    }
+    
+    logger.info(`分类 ${categoryKey} 包含资源类型: ${resourceTypes.join(', ')}`);
+    
+    // 构建查询条件
+    const where = {
+      shopId,
+      syncStatus: 'pending',
+      status: 'completed',
+      language,
+      resource: {
+        resourceType: {
+          in: resourceTypes
+        }
+      }
+    };
+    
+    // 如果指定了资源ID列表，添加到查询条件
+    if (resourceIds && Array.isArray(resourceIds) && resourceIds.length > 0) {
+      where.resourceId = {
+        in: resourceIds
+      };
+    }
+    
+    // 获取待同步的翻译
+    const translations = await prisma.translation.findMany({
+      where,
+      include: {
+        resource: true
+      },
+      orderBy: {
+        createdAt: 'asc'
+      }
+    });
+    
+    logger.info(`找到 ${translations.length} 个待同步的翻译`);
+    
+    if (translations.length === 0) {
+      return results;
+    }
+    
+    // 按资源分组
+    const groupedTranslations = groupTranslationsByResource(translations);
+    
+    // 批量更新状态为同步中
+    await batchUpdateSyncStatus(
+      translations.map(t => t.id),
+      'syncing'
+    );
+    
+    // 按资源类型分批同步
+    for (const [resourceKey, resourceTranslations] of Object.entries(groupedTranslations)) {
+      const [resourceType, resourceId] = resourceKey.split(':');
+      
+      logger.info(`同步资源: ${resourceType} - ${resourceId}, 包含 ${resourceTranslations.length} 个翻译`);
+      
+      try {
+        const result = await syncResourceTranslations(
+          admin,
+          resourceType,
+          resourceTranslations
+        );
+        
+        if (result.success) {
+          results.successCount += resourceTranslations.length;
+          results.syncedResources.push({
+            resourceType,
+            resourceId,
+            translations: resourceTranslations.length
+          });
+          
+          // 更新状态为已同步
+          await batchUpdateSyncStatus(
+            resourceTranslations.map(t => t.id),
+            'synced'
+          );
+        } else {
+          results.failedCount += resourceTranslations.length;
+          results.failedResources.push({
+            resourceType,
+            resourceId,
+            error: result.error
+          });
+          
+          // 更新状态为失败
+          await batchUpdateSyncStatus(
+            resourceTranslations.map(t => t.id),
+            'failed',
+            result.error
+          );
+        }
+      } catch (error) {
+        logger.error(`同步资源 ${resourceType}:${resourceId} 失败:`, error);
+        results.failedCount += resourceTranslations.length;
+        results.errors.push({
+          resource: `${resourceType}:${resourceId}`,
+          error: error.message
+        });
+        
+        // 更新状态为失败
+        await batchUpdateSyncStatus(
+          resourceTranslations.map(t => t.id),
+          'failed',
+          error.message
+        );
+      }
+    }
+    
+    logger.info(`分类同步完成，成功 ${results.successCount}，失败 ${results.failedCount}`);
+    
+  } catch (error) {
+    logger.error('分类同步过程中发生错误:', error);
+    results.errors.push({
+      general: error.message
+    });
+  }
+  
+  return results;
+}

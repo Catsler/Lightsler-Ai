@@ -67,6 +67,45 @@ export async function action({ request }) {
         });
       }
       
+      case "syncByCategory": {
+        // 按分类同步
+        const categoryKey = formData.get("categoryKey");
+        const subcategoryKey = formData.get("subcategoryKey");
+        const language = formData.get("language");
+        const resourceIds = formData.get("resourceIds");
+        
+        if (!categoryKey) {
+          return json(
+            { success: false, error: "分类键值不能为空" },
+            { status: 400 }
+          );
+        }
+        
+        const options = {
+          categoryKey,
+          language: language || 'zh-CN'
+        };
+        
+        if (subcategoryKey) options.subcategoryKey = subcategoryKey;
+        if (resourceIds) {
+          try {
+            options.resourceIds = JSON.parse(resourceIds);
+          } catch (e) {
+            console.error('解析resourceIds失败:', e);
+          }
+        }
+        
+        console.log('开始按分类同步翻译到Shopify:', options);
+        const { syncCategoryResources } = await import("../services/sync-to-shopify.server.js");
+        const result = await syncCategoryResources(admin, shopId, options);
+        
+        return json({
+          success: true,
+          message: `分类同步完成：成功 ${result.successCount}，失败 ${result.failedCount}`,
+          result
+        });
+      }
+      
       case "retry": {
         // 重试失败的同步
         console.log('重试失败的同步');

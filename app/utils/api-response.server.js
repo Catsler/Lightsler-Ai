@@ -76,6 +76,22 @@ export function logApiOperation(operation, shopDomain, details = {}, success = t
 }
 
 /**
+ * 创建统一的API响应
+ * @param {*} data - 响应数据
+ * @param {string} message - 消息
+ * @param {boolean} success - 是否成功
+ * @returns {Object} 响应对象
+ */
+export function createApiResponse(data = null, message = '', success = true) {
+  return {
+    success,
+    message: message || (success ? '操作成功' : '操作失败'),
+    data,
+    timestamp: new Date().toISOString()
+  };
+}
+
+/**
  * 验证必需参数
  * @param {Object} params - 参数对象
  * @param {Array} requiredFields - 必需字段列表

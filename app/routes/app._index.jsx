@@ -17,6 +17,8 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
+import { LanguageManager } from "../components/LanguageManager";
+import prisma from "../db.server";
 
 // 添加全局错误监听
 if (typeof window !== 'undefined') {
@@ -39,19 +41,34 @@ if (typeof window !== 'undefined') {
 }
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  
+  // 获取店铺已启用的语言（从数据库）
+  const shop = await prisma.shop.findUnique({
+    where: { id: session.shop },
+    include: { languages: { where: { isActive: true } } }
+  });
+  
+  // 格式化语言列表供Select组件使用
+  const supportedLanguages = shop?.languages?.length > 0
+    ? shop.languages.map(lang => ({
+        label: lang.name,
+        value: lang.code
+      }))
+    : [
+        // 默认语言列表（如果数据库中没有）
+        { label: 'Chinese (Simplified)', value: 'zh-CN' },
+        { label: 'Chinese (Traditional)', value: 'zh-TW' },
+        { label: 'English', value: 'en' },
+        { label: 'Japanese', value: 'ja' },
+        { label: 'Korean', value: 'ko' },
+        { label: 'French', value: 'fr' },
+        { label: 'German', value: 'de' },
+        { label: 'Spanish', value: 'es' },
+      ];
   
   return {
-    supportedLanguages: [
-      { label: 'Chinese (Simplified)', value: 'zh-CN' },
-      { label: 'Chinese (Traditional)', value: 'zh-TW' },
-      { label: 'English', value: 'en' },
-      { label: 'Japanese', value: 'ja' },
-      { label: 'Korean', value: 'ko' },
-      { label: 'French', value: 'fr' },
-      { label: 'German', value: 'de' },
-      { label: 'Spanish', value: 'es' },
-    ]
+    supportedLanguages
   };
 };
 
@@ -83,9 +100,11 @@ function Index() {
   const [appBridgeError, setAppBridgeError] = useState(false);
   const [lastServiceError, setLastServiceError] = useState(null);
   const [clearCache, setClearCache] = useState(false);
+  const [dynamicLanguages, setDynamicLanguages] = useState(supportedLanguages);
   
   // 分类翻译状态管理
   const [translatingCategories, setTranslatingCategories] = useState(new Set());
+  const [syncingCategories, setSyncingCategories] = useState(new Set());
   
   // 为每个分类创建独立的fetcher（预先创建几个）
   const categoryFetcher1 = useFetcher();
@@ -93,6 +112,7 @@ function Index() {
   const categoryFetcher3 = useFetcher();
   const categoryFetcher4 = useFetcher();
   const categoryFetcher5 = useFetcher();
+  const syncFetcher = useFetcher();
   
   // 管理fetcher分配
   const categoryFetcherMap = useRef({});
@@ -274,6 +294,44 @@ function Index() {
       categoryFetcher4.state, categoryFetcher5.state, translatingCategories, 
       addLog, showToast, loadStatus]);
 
+  // 监听同步响应
+  useEffect(() => {
+    if (syncFetcher.state === 'idle' && syncFetcher.data) {
+      // 找出正在同步的分类
+      const syncingCategory = Array.from(syncingCategories)[0];
+      
+      if (syncingCategory) {
+        // 处理响应
+        if (syncFetcher.data.success) {
+          const { successCount = 0, failedCount = 0 } = syncFetcher.data.result || {};
+          
+          if (successCount > 0) {
+            addLog(`✅ 分类同步完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'success');
+            showToast(`分类发布成功！`, { duration: 3000 });
+          } else if (failedCount > 0) {
+            addLog(`⚠️ 分类同步完成，但有 ${failedCount} 个失败`, 'warning');
+          } else {
+            addLog(`ℹ️ 分类暂无需要同步的内容`, 'info');
+          }
+          
+          // 刷新状态
+          loadStatus();
+        } else {
+          const errorMsg = syncFetcher.data.error || '同步失败';
+          addLog(`❌ 分类同步失败: ${errorMsg}`, 'error');
+          showToast(`同步失败: ${errorMsg}`, { isError: true });
+        }
+        
+        // 清理同步状态
+        setSyncingCategories(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(syncingCategory);
+          return newSet;
+        });
+      }
+    }
+  }, [syncFetcher.state, syncFetcher.data, syncingCategories, addLog, showToast, loadStatus]);
+
   // 页面加载时获取状态 - 只在首次加载时执行
   useEffect(() => {
     console.log('[Index Component] Initial useEffect - loading status');
@@ -429,6 +487,52 @@ function Index() {
     }
   }, [selectedLanguage, clearCache, translationService, addLog, showToast, translatingCategories]);
 
+  // 处理分类同步（发布到Shopify）
+  const handleCategorySync = useCallback(async (categoryKey, category) => {
+    try {
+      // 检查是否已在同步中
+      if (syncingCategories.has(categoryKey)) {
+        addLog(`⚠️ ${category.name} 分类正在同步中，请稍候...`, 'warning');
+        return;
+      }
+      
+      // 设置同步状态
+      setSyncingCategories(prev => new Set([...prev, categoryKey]));
+      
+      addLog(`🚀 开始同步 ${category.name} 分类到Shopify...`, 'info');
+      
+      // 收集该分类下所有资源的ID
+      const categoryResourceIds = [];
+      Object.values(category.subcategories).forEach(subcategory => {
+        subcategory.items.forEach(resource => {
+          categoryResourceIds.push(resource.id);
+        });
+      });
+      
+      // 提交同步请求
+      syncFetcher.submit({
+        action: 'syncByCategory',
+        categoryKey: categoryKey,
+        language: selectedLanguage,
+        resourceIds: JSON.stringify(categoryResourceIds)
+      }, { 
+        method: 'POST', 
+        action: '/api/sync-translations' 
+      });
+      
+    } catch (error) {
+      console.error('分类同步失败:', error);
+      addLog(`❌ ${category.name} 分类同步失败: ${error.message}`, 'error');
+      
+      // 清理状态
+      setSyncingCategories(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(categoryKey);
+        return newSet;
+      });
+    }
+  }, [selectedLanguage, addLog, syncingCategories, syncFetcher]);
+
   // 开始翻译
   const startTranslation = useCallback(() => {
     try {
@@ -486,6 +590,23 @@ function Index() {
       setSelectedResources(resources.map(r => r.id));
     }
   }, [selectedResources.length, resources]);
+  
+  // 处理语言更新
+  const handleLanguagesUpdated = useCallback((languages) => {
+    // 更新可用语言列表
+    const formattedLanguages = languages.map(lang => ({
+      label: lang.label || lang.name,
+      value: lang.value || lang.code
+    }));
+    setDynamicLanguages(formattedLanguages);
+    addLog('✅ 语言列表已更新', 'success');
+  }, [addLog]);
+  
+  // 处理语言添加
+  const handleLanguageAdded = useCallback((languageCodes) => {
+    addLog(`✅ 成功添加 ${languageCodes.length} 个语言`, 'success');
+    showToast(`成功添加 ${languageCodes.length} 个语言`, { duration: 3000 });
+  }, [addLog, showToast]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -597,14 +718,23 @@ function Index() {
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">操作面板</Text>
                 
-                <Box minWidth="200px">
-                  <Select
-                    label="目标语言"
-                    options={supportedLanguages}
-                    value={selectedLanguage}
-                    onChange={setSelectedLanguage}
-                  />
-                </Box>
+                <InlineStack gap="300">
+                  <Box minWidth="200px">
+                    <Select
+                      label="目标语言"
+                      options={dynamicLanguages}
+                      value={selectedLanguage}
+                      onChange={setSelectedLanguage}
+                    />
+                  </Box>
+                  <Box paddingBlockStart="600">
+                    <LanguageManager
+                      currentLanguages={dynamicLanguages}
+                      onLanguageAdded={handleLanguageAdded}
+                      onLanguagesUpdated={handleLanguagesUpdated}
+                    />
+                  </Box>
+                </InlineStack>
                 
                 <Box>
                   <Checkbox
@@ -716,7 +846,9 @@ function Index() {
               showToast(`查看资源: ${resource.title || resource.handle || resource.name}`);
             }}
             onTranslateCategory={handleCategoryTranslation}
+            onSyncCategory={handleCategorySync}
             translatingCategories={translatingCategories}
+            syncingCategories={syncingCategories}
             clearCache={clearCache}
           />
         ) : (

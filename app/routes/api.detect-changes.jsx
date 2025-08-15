@@ -2,7 +2,7 @@ import { json } from '@remix-run/node';
 import { withErrorHandling } from '../utils/error-handler.server.js';
 import { versionDetectionService } from '../services/version-detection.server.js';
 import { intelligentSkipEngine } from '../services/intelligent-skip-engine.server.js';
-import { shopify } from '../shopify.server.js';
+import { authenticate } from '../shopify.server.js';
 
 /**
  * 内容变更检测API端点
@@ -15,8 +15,8 @@ import { shopify } from '../shopify.server.js';
  */
 
 export const action = withErrorHandling(async ({ request }) => {
-  const { admin } = await shopify.authenticate.admin(request);
-  const shopId = admin.rest.session.shop;
+  const { admin, session } = await authenticate.admin(request);
+  const shopId = session.shop;
   const requestData = await request.json();
 
   const { operation } = requestData;
