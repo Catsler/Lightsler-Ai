@@ -59,38 +59,74 @@ npm install
 echo "[8/12] 创建环境配置文件..."
 if [ ! -f ".env" ]; then
     cat > .env << 'EOF'
-# ============================================
-# Shopify 应用配置
-# ============================================
+# ===========================================
+# Shopify 应用配置 (必需)
+# ===========================================
 SHOPIFY_API_KEY=请替换为你的API密钥
 SHOPIFY_API_SECRET=请替换为你的API密码
-SHOPIFY_SCOPES=write_products,read_products,write_translations,read_translations,write_content,read_content,write_themes,read_themes,write_files,read_files,write_online_store_pages,read_online_store_pages,write_metaobjects,read_metaobjects
+
+# 应用URL (必需 - 改为你的实际域名或IP)
 SHOPIFY_APP_URL=http://你的服务器IP:3000
 
-# ============================================
-# GPT API 配置
-# ============================================
-GPT_API_KEY=请替换为你的OpenAI密钥
-GPT_API_URL=https://api.openai.com/v1
-# 或使用兼容API：
-# GPT_API_URL=https://api.cursorai.art/v1
+# API权限范围 (必需)
+SCOPES=read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_products,write_themes,write_translations,write_online_store_pages
 
-# ============================================
-# 数据库配置
-# ============================================
-DATABASE_URL="file:./prisma/dev.db"
+# ===========================================
+# 数据库配置 (必需)
+# ===========================================
+DATABASE_URL=file:./dev.db
 
-# ============================================
-# Redis 配置（可选）
-# ============================================
+# ===========================================
+# AI翻译服务配置 (必需)
+# ===========================================
+# 使用第三方中转API (如 vveai.com)
+OPENAI_API_KEY=请替换为你的中转API密钥
+OPENAI_BASE_URL=https://us.vveai.com/v1
+OPENAI_MODEL=gpt-3.5-turbo
+
+# GPT翻译API配置 (应用使用这个变量名)
+GPT_API_KEY=请替换为你的中转API密钥
+GPT_API_URL=https://us.vveai.com/v1
+GPT_MODEL=gpt-4o-mini
+
+# ===========================================
+# Redis缓存配置 (推荐)
+# ===========================================
+REDIS_ENABLED=true
 REDIS_URL=redis://localhost:6379
 
-# ============================================
-# 其他配置
-# ============================================
+# ===========================================
+# 品牌保护配置
+# ===========================================
+ENABLE_BRAND_PROTECTION=true
+CUSTOM_BRANDS=请替换为你的品牌名,用逗号分隔
+SMART_BRAND_DETECTION=true
+PROTECT_PRODUCT_MODELS=true
+PROTECT_SKU=true
+PROTECT_MATERIALS=true
+
+# ===========================================
+# Webhook自动翻译配置
+# ===========================================
+WEBHOOK_AUTO_TRANSLATE_ENABLED=true
+WEBHOOK_TRANSLATE_DELAY=5000
+WEBHOOK_BATCH_THRESHOLD=10
+WEBHOOK_DEDUP_WINDOW=60
+WEBHOOK_EVENT_RETENTION_DAYS=30
+WEBHOOK_PRODUCT_PRIORITY=HIGH
+WEBHOOK_COLLECTION_PRIORITY=HIGH
+WEBHOOK_PAGE_PRIORITY=NORMAL
+WEBHOOK_ARTICLE_PRIORITY=NORMAL
+WEBHOOK_THEME_PRIORITY=LOW
+WEBHOOK_ERROR_NOTIFICATION=true
+
+# ===========================================
+# 环境设置
+# ===========================================
 NODE_ENV=production
-PORT=3000
-QUEUE_CONCURRENCY=5
+LOG_LEVEL=info
+LOG_FORMAT=json
+LOG_DIR=logs
 EOF
     echo ""
     echo "⚠️  请编辑 .env 文件，填入你的实际API密钥"
