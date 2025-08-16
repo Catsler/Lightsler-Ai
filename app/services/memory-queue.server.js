@@ -2,6 +2,8 @@
  * 内存队列实现 - Redis不可用时的备用方案
  */
 
+import { logger } from '../utils/logger.server.js';
+
 // 内存队列存储
 const jobs = new Map();
 const queue = [];
@@ -25,7 +27,7 @@ class MemoryQueue {
     }
     
     this.processors.set(jobType, { processor, concurrency });
-    console.log(`📝 注册内存队列处理器: ${jobType} (并发: ${concurrency})`);
+    logger.info(`Register memory queue processor: ${jobType} (concurrency: ${concurrency})`);
   }
 
   // 添加任务到队列
@@ -46,7 +48,7 @@ class MemoryQueue {
     jobs.set(jobId, job);
     queue.push(job);
 
-    console.log(`➕ 添加内存队列任务: ${jobType} (ID: ${jobId})`);
+    logger.info(`Add memory queue job: ${jobType} (ID: ${jobId})`);
 
     // 启动处理器
     this.processQueue();
@@ -80,12 +82,12 @@ class MemoryQueue {
       const processor = this.processors.get(job.type);
 
       if (!processor) {
-        console.warn(`⚠️ 未找到处理器: ${job.type}`);
+        logger.warn(`Processor not found: ${job.type}`);
         continue;
       }
 
       try {
-        console.log(`🔄 处理内存队列任务: ${job.type} (ID: ${job.id})`);
+        logger.info(`Processing memory queue job: ${job.type} (ID: ${job.id})`);
         job.status = 'active';
         
         // 创建job对象，模拟Bull.js接口
@@ -103,14 +105,14 @@ class MemoryQueue {
         job.result = result;
         job.completedAt = new Date();
 
-        console.log(`✅ 内存队列任务完成: ${job.type} (ID: ${job.id})`);
+        logger.info(`Memory queue job completed: ${job.type} (ID: ${job.id})`);
 
       } catch (error) {
         job.attempts++;
-        console.error(`❌ 内存队列任务失败: ${job.type} (ID: ${job.id})`, error.message);
+        logger.error(`Memory queue job failed: ${job.type} (ID: ${job.id}) - ${error.message}`);
 
         if (job.attempts < job.maxAttempts) {
-          console.log(`🔄 重试任务: ${job.type} (ID: ${job.id}, 尝试: ${job.attempts}/${job.maxAttempts})`);
+          logger.info(`Retry job: ${job.type} (ID: ${job.id}, attempt: ${job.attempts}/${job.maxAttempts})`);
           queue.push(job); // 重新排队
         } else {
           job.status = 'failed';
@@ -166,7 +168,7 @@ class MemoryQueue {
   // 事件处理（简化版）
   on(event, handler) {
     // 简化实现，仅记录日志
-    console.log(`📝 注册内存队列事件: ${event}`);
+    logger.debug(`Register memory queue event: ${event}`);
   }
 }
 

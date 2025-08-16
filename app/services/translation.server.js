@@ -25,6 +25,16 @@ import {
 // 导入质量分析器
 import { qualityErrorAnalyzer } from './quality-error-analyzer.server.js';
 
+// 导入内存缓存服务
+import { 
+  getCachedTranslation, 
+  setCachedTranslation,
+  getMemoryCache 
+} from './memory-cache.server.js';
+
+// 导入crypto用于生成哈希
+import crypto from 'crypto';
+
 // 导入Sequential Thinking核心服务
 import { 
   DecisionEngine, 
@@ -1817,10 +1827,50 @@ class TranslationLogger {
 export const translationLogger = new TranslationLogger();
 
 /**
+ * 生成资源内容的哈希值
+ */
+function generateContentHash(resource) {
+  const content = JSON.stringify({
+    title: resource.title,
+    description: resource.description,
+    descriptionHtml: resource.descriptionHtml,
+    handle: resource.handle,
+    summary: resource.summary,
+    label: resource.label,
+    seoTitle: resource.seoTitle,
+    seoDescription: resource.seoDescription,
+    contentFields: resource.contentFields,
+    resourceType: resource.resourceType
+  });
+  
+  return crypto.createHash('md5').update(content).digest('hex');
+}
+
+/**
  * 增强版翻译资源函数，包含详细日志
  */
 export async function translateResourceWithLogging(resource, targetLang) {
   const resourceId = resource.id || resource.resourceId || 'unknown';
+  
+  // 先检查内存缓存
+  const contentHash = resource.contentHash || generateContentHash(resource);
+  const cachedTranslation = await getCachedTranslation(resourceId, targetLang, contentHash);
+  
+  if (cachedTranslation) {
+    translationLogger.log('info', `使用缓存的翻译: ${resource.title}`, {
+      resourceId,
+      resourceType: resource.resourceType,
+      targetLanguage: targetLang,
+      cacheHit: true
+    });
+    
+    // 更新缓存统计
+    const cache = getMemoryCache();
+    const stats = cache.getStats();
+    translationLogger.log('debug', '缓存命中统计', stats);
+    
+    return cachedTranslation;
+  }
   
   // Sequential Thinking: 智能决策是否需要翻译
   const decisionEngine = new DecisionEngine();
@@ -2038,6 +2088,16 @@ export async function translateResourceWithLogging(resource, targetLang) {
         });
         // 质量评估失败不应该影响翻译流程
       }
+    }
+    
+    // 将成功的翻译结果存入内存缓存
+    if (isActuallyTranslated) {
+      await setCachedTranslation(resourceId, targetLang, contentHash, translations);
+      translationLogger.log('debug', `翻译结果已缓存: ${resource.title}`, {
+        resourceId,
+        targetLanguage: targetLang,
+        contentHash
+      });
     }
     
     return translations;

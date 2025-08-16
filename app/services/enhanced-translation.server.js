@@ -5,12 +5,13 @@
 
 import { translateText } from './translation.server.js';
 import { isBrandWord } from './translation.server.js';
+import { logger } from '../utils/logger.server.js';
 
 /**
  * 三次翻译机制 - 彻底处理未翻译的内容
  */
 export async function performTripleTranslation(text, targetLang, maxIterations = 3) {
-  console.log(`🔄 启动三次翻译机制，目标语言: ${targetLang}`);
+  logger.info(`Starting triple translation mechanism, target language: ${targetLang}`);
   
   let currentText = text;
   let iteration = 0;
@@ -18,17 +19,17 @@ export async function performTripleTranslation(text, targetLang, maxIterations =
   
   while (iteration < maxIterations) {
     iteration++;
-    console.log(`\n📍 第 ${iteration} 轮翻译检测`);
+    logger.info(`Translation iteration ${iteration} detection`);
     
     // 检测未翻译的内容
     const untranslatedParts = detectUntranslatedContent(currentText, targetLang);
     
     if (untranslatedParts.length === 0) {
-      console.log(`✅ 第 ${iteration} 轮检测：没有发现未翻译内容`);
+      logger.info(`Iteration ${iteration} detection: no untranslated content found`);
       break;
     }
     
-    console.log(`⚠️ 第 ${iteration} 轮检测：发现 ${untranslatedParts.length} 处未翻译内容`);
+    logger.warn(`Iteration ${iteration} detection: found ${untranslatedParts.length} untranslated parts`);
     
     // 记录本轮翻译前的状态
     translationHistory.push({
@@ -43,26 +44,22 @@ export async function performTripleTranslation(text, targetLang, maxIterations =
     // 检查是否有改进
     const newUntranslatedParts = detectUntranslatedContent(currentText, targetLang);
     if (newUntranslatedParts.length >= untranslatedParts.length) {
-      console.log(`⚠️ 第 ${iteration} 轮翻译后未见改进，停止迭代`);
+      logger.warn(`Iteration ${iteration} translation shows no improvement, stopping`);
       
       // 尝试最后的强力翻译
       if (iteration === maxIterations - 1) {
-        console.log(`🔨 执行最终强力翻译...`);
+        logger.info(`Executing final force translation...`);
         currentText = await performAggressiveTranslation(currentText, targetLang, newUntranslatedParts);
       }
       break;
     }
     
-    console.log(`📈 第 ${iteration} 轮翻译改进：${untranslatedParts.length} -> ${newUntranslatedParts.length}`);
+    logger.info(`Iteration ${iteration} translation improvement: ${untranslatedParts.length} -> ${newUntranslatedParts.length}`);
   }
   
   // 最终统计
   const finalStats = getFinalTranslationStats(currentText, targetLang);
-  console.log(`\n📊 三次翻译最终统计：`);
-  console.log(`- 总迭代轮数: ${iteration}`);
-  console.log(`- 中文占比: ${finalStats.chineseRatio.toFixed(1)}%`);
-  console.log(`- 英文占比: ${finalStats.englishRatio.toFixed(1)}%`);
-  console.log(`- 剩余未翻译: ${finalStats.remainingEnglish.length} 处`);
+  logger.info(`Triple translation final stats - Iterations: ${iteration}, Chinese ratio: ${finalStats.chineseRatio.toFixed(1)}%, English ratio: ${finalStats.englishRatio.toFixed(1)}%, Remaining untranslated: ${finalStats.remainingEnglish.length}`);
   
   return {
     translatedText: currentText,
@@ -220,7 +217,7 @@ async function translateUntranslatedParts(text, untranslatedParts, targetLang) {
     // 并行翻译批次中的内容
     const translationPromises = batch.map(async (part) => {
       try {
-        console.log(`🔄 翻译 [${part.type}]: "${part.content.substring(0, 50)}..."`);
+        logger.debug(`Translating [${part.type}]: "${part.content.substring(0, 50)}..."`);
         
         // 根据类型选择翻译策略
         let translationResult;
@@ -275,10 +272,10 @@ async function translateUntranslatedParts(text, untranslatedParts, targetLang) {
         if (occurrences === 1) {
           // 只有一处匹配，安全替换
           translatedText = translatedText.replace(regex, result.translated);
-          console.log(`✅ 已替换 [${result.type}]: "${result.original.substring(0, 30)}..." -> "${result.translated.substring(0, 30)}..."`);
+          logger.debug(`Replaced [${result.type}]: "${result.original.substring(0, 30)}..." -> "${result.translated.substring(0, 30)}..."`);
         } else if (occurrences > 1) {
           // 多处匹配，需要更精确的替换
-          console.log(`⚠️ 发现多处匹配 (${occurrences})，使用上下文替换`);
+          logger.warn(`Found multiple matches (${occurrences}), using context replacement`);
           translatedText = contextualReplace(translatedText, result.original, result.translated);
         }
       }
@@ -424,7 +421,7 @@ async function translateConcise(text, targetLang) {
  * 强力翻译（最后手段）
  */
 async function performAggressiveTranslation(text, targetLang, remainingParts) {
-  console.log(`🔨 执行强力翻译，处理 ${remainingParts.length} 处顽固内容`);
+  logger.info(`Executing force translation, processing ${remainingParts.length} stubborn parts`);
   
   let processedText = text;
   

@@ -5,6 +5,7 @@
 
 import { prisma } from '../db.server.js';
 import { TranslationLogger } from '../utils/logger.server.js';
+import { logger } from '../utils/logger.server.js';
 import { collectError } from './error-collector.server.js';
 
 // 日志缓冲区
@@ -47,7 +48,7 @@ class LogBuffer {
     try {
       await this.persistLogs(logsToFlush);
     } catch (error) {
-      console.error('日志持久化失败:', error);
+      logger.error(`Log persistence failed: ${error.message}`);
       // 失败的日志重新加入缓冲区（但限制重试次数）
       const retriableLogs = logsToFlush.filter(log => 
         (log.retryCount || 0) < 3
@@ -231,13 +232,13 @@ class LogRotationService {
         }
       });
       
-      console.log(`日志轮转: 删除了 ${result.count} 条旧日志`);
+      logger.info(`Log rotation: deleted ${result.count} old logs`);
       
       // 归档重要日志（可选）
       await this.archiveImportantLogs(cutoffDate);
       
     } catch (error) {
-      console.error('日志轮转失败:', error);
+      logger.error(`Log rotation failed: ${error.message}`);
     }
   }
   
@@ -254,7 +255,7 @@ class LogRotationService {
     
     if (importantLogs.length > 0) {
       // TODO: 实现归档逻辑（保存到文件或云存储）
-      console.log(`归档了 ${importantLogs.length} 条重要日志`);
+      logger.info(`Archived ${importantLogs.length} important logs`);
     }
   }
 }

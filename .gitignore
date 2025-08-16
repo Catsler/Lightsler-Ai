@@ -14,10 +14,23 @@ database.sqlite
 .env
 .env.*
 
+# Temporary and test files
+test-*.js
+debug-*.js
+check-*.js
+view-*.js
+diagnose-*.js
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
 
+# Cache directories
+.serena/
+screenshoots/
 
-
-
+# Extensions
 /extensions/*/dist
 
 # Ignore shopify files created during app dev
