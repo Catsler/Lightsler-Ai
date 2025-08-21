@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -127,6 +127,7 @@ function Index() {
   
   const { supportedLanguages } = useLoaderData();
   console.log('[Index Component] Loader data:', { supportedLanguages });
+  const navigate = useNavigate();
   
   const scanProductsFetcher = useFetcher();
   const scanCollectionsFetcher = useFetcher();
@@ -232,7 +233,7 @@ function Index() {
     // 店铺配置
     { label: '[店铺] 店铺信息', value: 'SHOP' },
     { label: '[店铺] 店铺政策', value: 'SHOP_POLICY' }
-  ], []);;
+  ], []);
 
   // 加载状态
   const isScanning = scanProductsFetcher.state === 'submitting' || 
@@ -997,6 +998,35 @@ function Index() {
                   />
                 </Box>
                 
+                <Box paddingBlockStart="400">
+                  <Button
+                    variant="secondary"
+                    tone="critical"
+                    onClick={() => {
+                      // 清除localStorage中的扫描历史
+                      localStorage.removeItem('scanHistory');
+                      localStorage.removeItem('selectedLanguage');
+                      
+                      // 重置组件状态
+                      setScanHistory({});
+                      setAutoScanTriggered(false);
+                      
+                      // 显示成功提示
+                      shopify.toast.show("自动扫描已重置，刷新页面后将重新触发");
+                      
+                      // 1秒后刷新页面
+                      setTimeout(() => {
+                        window.location.reload();
+                      }, 1000);
+                    }}
+                  >
+                    重置自动扫描
+                  </Button>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    清除扫描历史记录，下次选择语言时将触发新的扫描
+                  </Text>
+                </Box>
+                
                 <InlineStack gap="200">
                   {/* 扫描按钮已移除，改为自动扫描 */}
                   <Button 
@@ -1088,8 +1118,10 @@ function Index() {
             onSelectionChange={handleResourceSelection}
             currentLanguage={selectedLanguage}
             onResourceClick={(resource) => {
-              // 处理资源点击，显示详情
-              showToast(`查看资源: ${resource.title || resource.handle || resource.name}`);
+              // 导航到资源详情页
+              const resourceType = resource.resourceType?.toLowerCase() || 'resource';
+              const resourceId = resource.originalResourceId || resource.resourceId || resource.id;
+              navigate(`/app/resource/${resourceType}/${resourceId}?lang=${selectedLanguage}`);
             }}
             onTranslateCategory={handleCategoryTranslation}
             onSyncCategory={handleCategorySync}

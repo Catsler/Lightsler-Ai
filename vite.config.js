@@ -19,27 +19,18 @@ if (
 
 const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
   .hostname;
-let hmrConfig;
 
-if (host === "localhost") {
-  hmrConfig = {
-    protocol: "ws",
-    host: "localhost",
-    port: 64999,
-    clientPort: 64999,
-  };
-} else {
-  hmrConfig = {
-    protocol: "wss",
-    host: host,
-    port: parseInt(process.env.FRONTEND_PORT) || 8002,
-    clientPort: 443,
-  };
-}
+// 强制HMR使用localhost，避免VPN接口干扰
+let hmrConfig = {
+  protocol: "ws",
+  host: "localhost",
+  port: 64999,
+  clientPort: 64999,
+};
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "localhost", "*.trycloudflare.com", "*.ease-joy.fun", "onewind.ease-joy.fun", "daui.ease-joy.fun", "sshvdt.ease-joy.fun"],
+    allowedHosts: [host, "localhost", "*.trycloudflare.com", "*.ease-joy.fun", "translate.ease-joy.fun"],
     cors: {
       origin: true,
       credentials: true,
@@ -47,7 +38,8 @@ export default defineConfig({
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
-    port: Number(process.env.PORT || 3000),
+    port: 3000,
+    strictPort: true,
     hmr: hmrConfig,
     fs: {
       // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information

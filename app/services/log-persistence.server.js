@@ -4,8 +4,7 @@
  */
 
 import { prisma } from '../db.server.js';
-import { TranslationLogger } from '../utils/logger.server.js';
-import { logger } from '../utils/logger.server.js';
+import { TranslationLogger , logger } from '../utils/logger.server.js';
 import { collectError } from './error-collector.server.js';
 
 // 日志缓冲区

@@ -75,6 +75,10 @@ model Resource {
   seoDescription String?
   summary      String?  // 摘要（主要用于文章）
   label        String?  // 标签（主要用于过滤器）
+  // 产品特定字段
+  vendor       String?  // 供应商
+  productType  String?  // 产品类型
+  tags         String?  // 产品标签（逗号分隔）
   contentFields Json?   // 存储不同资源类型的特定字段
   status       String   // pending, processing, completed
   
@@ -112,6 +116,10 @@ model Translation {
   labelTrans String? // 标签翻译（过滤器）
   seoTitleTrans String?
   seoDescTrans String?
+  // 产品特定字段翻译
+  vendorTrans String?  // 供应商翻译
+  productTypeTrans String? // 产品类型翻译
+  tagsTrans String?  // 标签翻译（逗号分隔）
   translationFields Json? // 存储其他类型特定的翻译字段
   status     String   // pending, completed, failed
   syncStatus String   @default("pending") // pending, syncing, synced, failed

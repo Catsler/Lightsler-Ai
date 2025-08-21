@@ -3,8 +3,7 @@
  * 解决二次翻译后仍有未翻译内容的问题
  */
 
-import { translateText } from './translation.server.js';
-import { isBrandWord } from './translation.server.js';
+import { translateText , isBrandWord } from './translation.server.js';
 import { logger } from '../utils/logger.server.js';
 
 /**

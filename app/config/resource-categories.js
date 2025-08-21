@@ -15,11 +15,23 @@ export const RESOURCE_CATEGORIES = {
       },
       COLLECTIONS: {
         name: '集合',
-        resources: ['COLLECTION', 'FILTER']
+        resources: ['COLLECTION']
       },
       SELLING_PLANS: {
         name: '销售计划',
         resources: ['SELLING_PLAN', 'SELLING_PLAN_GROUP']
+      }
+    }
+  },
+  
+  // 筛选器（独立分类）
+  FILTERS: {
+    name: '筛选器',
+    icon: '🔍',
+    subcategories: {
+      PRODUCT_FILTERS: {
+        name: '产品筛选器',
+        resources: ['FILTER']
       }
     }
   },
@@ -91,7 +103,7 @@ export const RESOURCE_CATEGORIES = {
       }
     }
   }
-};
+};;
 
 /**
  * 获取资源所属的分类信息

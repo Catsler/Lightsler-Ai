@@ -1,7 +1,7 @@
 import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server.js";
-import { prisma } from "../db.server.js";
-import { withErrorHandling } from "../utils/api-response.server.js";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+import { withErrorHandling } from "../utils/api-response.server";
 
 /**
  * 获取扫描历史
@@ -44,12 +44,48 @@ export const loader = withErrorHandling(async ({ request }) => {
 });
 
 /**
- * 更新扫描历史
+ * 处理扫描历史的更新和删除
  */
 export const action = withErrorHandling(async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const shopId = session.shop;
   
+  // 处理DELETE请求
+  if (request.method === 'DELETE') {
+    const url = new URL(request.url);
+    const language = url.searchParams.get('language');
+    
+    if (language) {
+      // 删除特定语言的历史
+      await prisma.scanHistory.deleteMany({
+        where: {
+          shopId,
+          language
+        }
+      });
+      
+      console.log(`[ScanHistory API] 删除 ${language} 的扫描历史`);
+      
+      return json({ 
+        success: true, 
+        message: `已删除 ${language} 的扫描历史` 
+      });
+    } else {
+      // 删除所有历史
+      await prisma.scanHistory.deleteMany({
+        where: { shopId }
+      });
+      
+      console.log(`[ScanHistory API] 删除所有扫描历史`);
+      
+      return json({ 
+        success: true, 
+        message: '已删除所有扫描历史' 
+      });
+    }
+  }
+  
+  // 处理POST/PUT请求 - 更新扫描历史
   const formData = await request.formData();
   const language = formData.get('language');
   const resourceCount = parseInt(formData.get('resourceCount') || '0');
@@ -100,44 +136,4 @@ export const action = withErrorHandling(async ({ request }) => {
       scanDuration: scanHistory.scanDuration
     }
   });
-});
-
-/**
- * 删除扫描历史（可选功能）
- */
-export const DELETE = withErrorHandling(async ({ request }) => {
-  const { session } = await authenticate.admin(request);
-  const shopId = session.shop;
-  
-  const url = new URL(request.url);
-  const language = url.searchParams.get('language');
-  
-  if (language) {
-    // 删除特定语言的历史
-    await prisma.scanHistory.deleteMany({
-      where: {
-        shopId,
-        language
-      }
-    });
-    
-    console.log(`[ScanHistory API] 删除 ${language} 的扫描历史`);
-    
-    return json({ 
-      success: true, 
-      message: `已删除 ${language} 的扫描历史` 
-    });
-  } else {
-    // 删除所有历史
-    await prisma.scanHistory.deleteMany({
-      where: { shopId }
-    });
-    
-    console.log(`[ScanHistory API] 删除所有扫描历史`);
-    
-    return json({ 
-      success: true, 
-      message: '已删除所有扫描历史' 
-    });
-  }
 });

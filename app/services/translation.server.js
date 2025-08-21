@@ -684,9 +684,7 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
 - 翻译完成后，检查是否还有英文单词残留
 - 确保所有技术术语都已翻译
 - 确保翻译自然流畅，符合目标语言习惯
-- 确保所有占位符保持原样
-
-重要：如果原文超过你的处理能力，请明确说明"TEXT_TOO_LONG"，不要返回不完整的翻译。`;
+- 确保所有占位符保持原样`;
 
   // 使用统一的API调用函数进行翻译
   const translationFunction = withErrorHandling(async () => {
@@ -716,15 +714,19 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
       });
     }
 
-    // 检查是否返回了"TEXT_TOO_LONG"标识
-    if (translatedText === "TEXT_TOO_LONG") {
-      logger.warn('文本过长，API无法完整处理');
-      return {
-        success: false,
-        text: text,
-        error: '文本过长，需要分块处理',
-        isOriginal: true
-      };
+    // 移除TEXT_TOO_LONG检查，因为这个指令已经从提示词中移除
+    // 如果API返回了原文，说明翻译失败
+    if (translatedText === text && text.length > 100) {
+      logger.warn('翻译可能失败，返回了原文');
+      // 对于长文本，如果返回原文，尝试分块处理
+      if (text.length > config.translation.longTextThreshold / 2) {
+        return {
+          success: false,
+          text: text,
+          error: '翻译失败，需要分块处理',
+          isOriginal: true
+        };
+      }
     }
 
     // 增强的翻译完整性验证
@@ -1014,19 +1016,13 @@ async function validateTranslationCompleteness(originalText, translatedText, tar
   const incompletePatterns = [
     /^(Here is|Here's|I'll translate|The translation|Translation:|翻译如下|翻译结果)/i,
     /\.\.\.$/, // 以省略号结尾
-    /\[继续\]|\[continued\]|\[more\]/i,
-    /TEXT_TOO_LONG/ // GPT返回的特殊标识
+    /\[继续\]|\[continued\]|\[more\]/i
+    // 移除TEXT_TOO_LONG检查，因为这个指令已经从系统提示词中移除
   ];
   
-  // 对于HTML内容和产品描述，只检查明显的错误模式
+  // 对于HTML内容和产品描述，跳过大部分模式检查
   if (isHtmlContent || isProductContent) {
-    if (/TEXT_TOO_LONG/.test(translatedText)) {
-      return {
-        isComplete: false,
-        reason: 'API报告文本过长'
-      };
-    }
-    // 跳过其他模式检查，因为产品描述可能以"..."结尾作为设计
+    // 跳过模式检查，因为产品描述可能以"..."结尾作为设计
   } else {
     for (const pattern of incompletePatterns) {
       if (pattern.test(translatedText)) {
@@ -4254,6 +4250,12 @@ export async function translateResource(resource, targetLang) {
     labelTrans: null,
     seoTitleTrans: null,
     seoDescTrans: null,
+    // 新增产品额外字段的翻译
+    vendorTrans: null,
+    productTypeTrans: null,
+    tagsTrans: null,
+    // 存储contentFields中其他需要翻译的字段
+    contentFieldsTrans: {}
   };
 
   const translationValidations = []; // 记录所有字段的验证结果
@@ -4441,6 +4443,93 @@ export async function translateResource(resource, targetLang) {
     );
     
     console.log(`✅ SEO描述翻译完成: "${resource.seoDescription}" -> "${translated.seoDescTrans}"`);
+  }
+
+  // 翻译vendor字段（供应商）
+  if (resource.vendor) {
+    console.log(`🏭 开始翻译vendor字段: "${resource.vendor}"`);
+    translated.vendorTrans = await translateText(resource.vendor, targetLang);
+    
+    // 后处理vendor翻译
+    translated.vendorTrans = await postProcessTranslation(
+      translated.vendorTrans,
+      targetLang,
+      resource.vendor
+    );
+    console.log(`✅ Vendor翻译完成: "${resource.vendor}" -> "${translated.vendorTrans}"`);
+  }
+
+  // 翻译product_type字段（产品类型）
+  if (resource.product_type || resource.productType) {
+    const productType = resource.product_type || resource.productType;
+    console.log(`📦 开始翻译product_type字段: "${productType}"`);
+    translated.productTypeTrans = await translateText(productType, targetLang);
+    
+    // 后处理product_type翻译
+    translated.productTypeTrans = await postProcessTranslation(
+      translated.productTypeTrans,
+      targetLang,
+      productType
+    );
+    console.log(`✅ Product_type翻译完成: "${productType}" -> "${translated.productTypeTrans}"`);
+  }
+
+  // 翻译tags字段（产品标签，逗号分隔）
+  if (resource.tags) {
+    console.log(`🏷️ 开始翻译tags字段: "${resource.tags}"`);
+    
+    // 将tags字符串分割成数组
+    const tagsList = resource.tags.split(',').map(tag => tag.trim());
+    
+    // 并行翻译所有标签
+    const translatedTags = await Promise.all(
+      tagsList.map(async (tag) => {
+        const translatedTag = await translateText(tag, targetLang);
+        // 对每个标签进行后处理
+        return postProcessTranslation(translatedTag, targetLang, tag);
+      })
+    );
+    
+    // 将翻译后的标签重新组合成逗号分隔的字符串
+    translated.tagsTrans = translatedTags.join(', ');
+    console.log(`✅ Tags翻译完成: "${resource.tags}" -> "${translated.tagsTrans}"`);
+  }
+
+  // 处理contentFields中的其他可翻译字段
+  if (resource.contentFields && typeof resource.contentFields === 'object') {
+    console.log(`📋 开始处理contentFields中的额外字段`);
+    const contentFields = resource.contentFields;
+    
+    for (const [key, value] of Object.entries(contentFields)) {
+      // 跳过已经处理过的字段和非字符串字段
+      if (['title', 'body', 'body_html', 'handle', 'meta_title', 'meta_description', 
+           'vendor', 'product_type', 'tags'].includes(key)) {
+        continue;
+      }
+      
+      // 只翻译字符串类型的值
+      if (typeof value === 'string' && value.trim()) {
+        console.log(`🔄 翻译contentField: ${key}`);
+        try {
+          translated.contentFieldsTrans[key] = await translateText(value, targetLang);
+          // 后处理
+          translated.contentFieldsTrans[key] = await postProcessTranslation(
+            translated.contentFieldsTrans[key],
+            targetLang,
+            value
+          );
+          console.log(`✅ ContentField "${key}" 翻译完成`);
+        } catch (error) {
+          console.error(`❌ ContentField "${key}" 翻译失败:`, error.message);
+          // 失败时保留原值
+          translated.contentFieldsTrans[key] = value;
+        }
+      }
+    }
+    
+    if (Object.keys(translated.contentFieldsTrans).length > 0) {
+      console.log(`✅ 完成 ${Object.keys(translated.contentFieldsTrans).length} 个额外字段的翻译`);
+    }
   }
 
   // 输出关键字段验证总结

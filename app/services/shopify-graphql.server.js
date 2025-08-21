@@ -15,6 +15,9 @@ export const RESOURCE_TYPES = {
   MENU: 'MENU',
   LINK: 'LINK',
   FILTER: 'FILTER',
+  // 新增Metafield支持
+  METAFIELD: 'METAFIELD',
+  METAOBJECT: 'METAOBJECT',
   
   // A. Theme相关资源 (7个)
   ONLINE_STORE_THEME: 'ONLINE_STORE_THEME',
@@ -43,7 +46,11 @@ export const FIELD_MAPPINGS = {
     descTrans: 'body_html',
     handleTrans: 'handle',
     seoTitleTrans: 'meta_title',
-    seoDescTrans: 'meta_description'
+    seoDescTrans: 'meta_description',
+    // 新增产品额外字段映射
+    vendorTrans: 'vendor',
+    productTypeTrans: 'product_type',
+    tagsTrans: 'tags'
   },
   [RESOURCE_TYPES.COLLECTION]: {
     titleTrans: 'title',
@@ -163,7 +170,7 @@ export const RESOURCE_FIELD_MAPPINGS = {
   [RESOURCE_TYPES.FILTER]: ['label']
 };
 
-// GraphQL查询：获取产品（包括富文本内容）
+// GraphQL查询：获取产品（包括富文本内容和额外字段）
 const GET_PRODUCTS_QUERY = `
   query getProducts($cursor: String) {
     products(first: 50, after: $cursor) {
@@ -174,6 +181,9 @@ const GET_PRODUCTS_QUERY = `
           description
           descriptionHtml
           handle
+          vendor
+          productType
+          tags
           seo {
             title
             description
@@ -246,6 +256,83 @@ const TRANSLATABLE_RESOURCES_BY_TYPE_QUERY = `
       pageInfo {
         hasNextPage
         endCursor
+      }
+    }
+  }
+`;
+// 产品Metafields查询（用于获取特定命名空间的metafields）
+const PRODUCT_METAFIELDS_QUERY = `
+  query getProductMetafields($productId: ID!, $namespace: String) {
+    product(id: $productId) {
+      id
+      metafields(first: 100, namespace: $namespace) {
+        edges {
+          node {
+            id
+            namespace
+            key
+            value
+            type
+            description
+          }
+        }
+      }
+    }
+  }
+`;
+
+// 产品详情查询（包含variants、vendor和metafields）
+const PRODUCT_DETAILS_QUERY = `
+  query getProductDetails($id: ID!) {
+    product(id: $id) {
+      id
+      title
+      descriptionHtml
+      vendor
+      productType
+      handle
+      seo {
+        title
+        description
+      }
+      variants(first: 100) {
+        edges {
+          node {
+            id
+            title
+            price
+            sku
+            selectedOptions {
+              name
+              value
+            }
+          }
+        }
+      }
+      metafields(first: 100) {
+        edges {
+          node {
+            namespace
+            key
+            value
+            type
+          }
+        }
+      }
+    }
+  }
+`;
+
+// 获取产品的可翻译内容（包含variants）
+const PRODUCT_TRANSLATABLE_CONTENT_QUERY = `
+  query getProductTranslatableContent($id: ID!) {
+    translatableResource(resourceId: $id) {
+      resourceId
+      translatableContent {
+        key
+        value
+        digest
+        locale
       }
     }
   }
@@ -339,6 +426,10 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
         handle: product.handle || '',
         seoTitle: product.seo?.title || '',
         seoDescription: product.seo?.description || '',
+        // 添加产品特定字段
+        vendor: product.vendor || '',
+        productType: product.productType || '',
+        tags: Array.isArray(product.tags) ? product.tags.join(', ') : '',
         resourceType: 'product'
       });
     }
@@ -349,88 +440,6 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
 
   console.log(`总共获取 ${products.length} 个产品`);
   return products;
-}
-
-/**
- * 获取店铺所有集合，支持重试机制
- * @param {Object} admin - Shopify Admin API客户端
- * @param {number} maxRetries - 最大重试次数
- * @returns {Promise<Array>} 集合列表
- */
-export async function fetchAllCollections(admin, maxRetries = 3) {
-  const collections = [];
-  let cursor = null;
-  let hasNextPage = true;
-
-  while (hasNextPage) {
-    let retryCount = 0;
-    let success = false;
-    let response, data;
-
-    while (retryCount < maxRetries && !success) {
-      try {
-        console.log(`获取集合数据 - 游标: ${cursor || 'null'}, 尝试: ${retryCount + 1}/${maxRetries}`);
-        
-        // 设置超时控制
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('GraphQL请求超时')), 30000)
-        );
-        
-        const requestPromise = admin.graphql(GET_COLLECTIONS_QUERY, {
-          variables: { cursor }
-        });
-        
-        response = await Promise.race([requestPromise, timeoutPromise]);
-        data = await response.json();
-        success = true;
-        
-      } catch (error) {
-        retryCount++;
-        console.error(`GraphQL请求失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
-        
-        if (retryCount < maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数退避，最大5秒
-          console.log(`${delay}ms后重试...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw new Error(`GraphQL请求失败，已达最大重试次数: ${error.message}`);
-        }
-      }
-    }
-    
-    if (data.errors) {
-      throw new Error(`GraphQL错误: ${JSON.stringify(data.errors)}`);
-    }
-
-    if (!data.data || !data.data.collections) {
-      throw new Error('GraphQL响应数据格式异常');
-    }
-
-    const collectionEdges = data.data.collections.edges;
-    console.log(`成功获取 ${collectionEdges.length} 个集合`);
-    
-    for (const edge of collectionEdges) {
-      const collection = edge.node;
-      const collectionId = collection.id.replace('gid://shopify/Collection/', '');
-      collections.push({
-        id: collectionId,
-        originalId: collectionId, // 添加originalId字段
-        gid: collection.id,
-        title: collection.title,
-        description: collection.description || '',
-        descriptionHtml: collection.descriptionHtml || '',
-        handle: collection.handle || '',
-        seoTitle: collection.seo?.title || '',
-        seoDescription: collection.seo?.description || '',
-        resourceType: 'collection'
-      });
-    }
-
-    hasNextPage = data.data.collections.pageInfo.hasNextPage;
-    cursor = data.data.collections.pageInfo.endCursor;
-  }
-
-  return collections;
 }
 
 /**
@@ -547,6 +556,7 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
   const resources = [];
   let cursor = null;
   let hasNextPage = true;
+  let filteredCount = 0;
 
   console.log(`开始获取${resourceType}类型的可翻译资源`);
 
@@ -576,6 +586,17 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
       const content = {};
       for (const item of resource.translatableContent) {
         content[item.key] = item.value;
+      }
+      
+      // 检查资源是否有有效内容
+      const hasValidContent = content.title || content.body || content.body_html || 
+                             content.summary || content.label || content.name;
+      
+      // 过滤掉没有任何有效内容的资源
+      if (!hasValidContent) {
+        filteredCount++;
+        console.log(`[过滤] ${resourceType} 资源 ${resource.resourceId} 没有有效内容，已跳过`);
+        continue;
       }
       
       // 构建标准化资源对象
@@ -610,6 +631,12 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
         resourceData.summary = content.summary || '';
       } else if (resourceType === RESOURCE_TYPES.FILTER) {
         resourceData.label = content.label || '';
+      } else if (resourceType === RESOURCE_TYPES.PRODUCT) {
+        // 为产品资源添加额外字段
+        resourceData.vendor = content.vendor || '';
+        resourceData.product_type = content.product_type || '';
+        resourceData.productType = content.product_type || ''; // 兼容两种命名
+        resourceData.tags = content.tags || '';
       }
 
       // 将其他字段存储在contentFields中
@@ -630,8 +657,237 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
     cursor = data.data.translatableResources.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  if (filteredCount > 0) {
+    console.log(`[过滤统计] 共过滤掉 ${filteredCount} 个无效的${resourceType}资源`);
+  }
+  
+  // 对于产品资源，批量获取 metafields
+  if (resourceType === RESOURCE_TYPES.PRODUCT && resources.length > 0) {
+    console.log(`开始批量获取 ${resources.length} 个产品的 metafields...`);
+    
+    // 并行获取所有产品的详细信息（包括metafields）
+    const batchSize = 5; // 每批处理5个产品
+    for (let i = 0; i < resources.length; i += batchSize) {
+      const batch = resources.slice(i, Math.min(i + batchSize, resources.length));
+      
+      try {
+        const detailsPromises = batch.map(async (resource) => {
+          try {
+            const details = await fetchProductDetails(admin, resource.gid, maxRetries);
+            return { resource, details };
+          } catch (error) {
+            console.warn(`获取产品 ${resource.id} 的详细信息失败:`, error.message);
+            return { resource, details: null };
+          }
+        });
+        
+        const results = await Promise.all(detailsPromises);
+        
+        // 更新资源数据
+        for (const { resource, details } of results) {
+          if (details && details.metafields) {
+            const index = resources.findIndex(r => r.id === resource.id);
+            if (index !== -1) {
+              // 合并 metafields 到资源数据
+              resources[index].metafields = details.metafields;
+              
+              // 更新其他详细信息
+              if (details.variants) {
+                resources[index].variants = details.variants;
+              }
+              if (details.seo) {
+                resources[index].seoTitle = details.seo.title || resources[index].seoTitle;
+                resources[index].seoDescription = details.seo.description || resources[index].seoDescription;
+              }
+              
+              console.log(`✅ 产品 ${resource.id} 已添加 ${Object.keys(details.metafields || {}).length} 个 metafields`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`批量获取产品详情失败:`, error);
+      }
+    }
+    
+    console.log(`✅ 完成产品 metafields 获取`);
+  }
+  
+  console.log(`总共获取 ${resources.length} 个有效的${resourceType}资源`);
   return resources;
+}
+
+/**
+ * 获取产品的Metafields
+ * @param {Object} admin - Shopify admin API实例
+ * @param {string} productId - 产品GID
+ * @param {string[]} namespaces - 要获取的metafield命名空间（如['bundles', 'specifications']）
+ * @returns {Promise<Array>} Metafields数组
+ */
+export async function fetchProductMetafields(admin, productId, namespaces = [], maxRetries = 3) {
+  console.log(`获取产品Metafields: ${productId}, 命名空间: ${namespaces.join(', ')}`);
+  
+  const allMetafields = [];
+  
+  try {
+    // 如果指定了命名空间，逐个查询
+    if (namespaces.length > 0) {
+      for (const namespace of namespaces) {
+        const data = await executeGraphQLWithRetry(
+          admin,
+          PRODUCT_METAFIELDS_QUERY,
+          { productId, namespace },
+          maxRetries
+        );
+        
+        if (data.data?.product?.metafields?.edges) {
+          const metafields = data.data.product.metafields.edges.map(edge => edge.node);
+          allMetafields.push(...metafields);
+          console.log(`✅ 获取到 ${metafields.length} 个 "${namespace}" metafields`);
+        }
+      }
+    } else {
+      // 获取所有metafields
+      const data = await executeGraphQLWithRetry(
+        admin,
+        PRODUCT_METAFIELDS_QUERY,
+        { productId },
+        maxRetries
+      );
+      
+      if (data.data?.product?.metafields?.edges) {
+        const metafields = data.data.product.metafields.edges.map(edge => edge.node);
+        allMetafields.push(...metafields);
+        console.log(`✅ 获取到 ${metafields.length} 个metafields`);
+      }
+    }
+    
+    return allMetafields;
+  } catch (error) {
+    console.error(`获取产品Metafields失败:`, error);
+    return [];
+  }
+}
+
+// 获取产品详细信息（包含variants、vendor和metafields）
+export async function fetchProductDetails(admin, productId, maxRetries = 3) {
+  console.log(`获取产品详细信息: ${productId}`);
+  
+  try {
+    // 构造GraphQL ID
+    const gid = productId.startsWith('gid://') ? productId : `gid://shopify/Product/${productId}`;
+    
+    const response = await executeGraphQLWithRetry(
+      admin,
+      PRODUCT_DETAILS_QUERY,
+      { id: gid },
+      maxRetries
+    );
+
+    if (!response.data?.product) {
+      throw new Error(`产品不存在: ${productId}`);
+    }
+
+    const product = response.data.product;
+    
+    // 获取可翻译内容
+    const translatableResponse = await executeGraphQLWithRetry(
+      admin,
+      PRODUCT_TRANSLATABLE_CONTENT_QUERY,
+      { id: gid },
+      maxRetries
+    );
+
+    const translatableContent = {};
+    if (translatableResponse.data?.translatableResource?.translatableContent) {
+      for (const item of translatableResponse.data.translatableResource.translatableContent) {
+        translatableContent[item.key] = {
+          value: item.value,
+          digest: item.digest,
+          locale: item.locale
+        };
+      }
+    }
+
+    // 处理variants
+    const variants = [];
+    if (product.variants?.edges) {
+      for (const edge of product.variants.edges) {
+        const variant = edge.node;
+        variants.push({
+          id: variant.id,
+          title: variant.title,
+          price: variant.price,
+          sku: variant.sku,
+          options: variant.selectedOptions || []
+        });
+      }
+    }
+
+    // 处理metafields（过滤掉category相关的）
+    const metafields = {};
+    if (product.metafields?.edges) {
+      for (const edge of product.metafields.edges) {
+        const metafield = edge.node;
+        // 过滤掉category namespace的metafields
+        if (metafield.namespace !== 'category' && metafield.namespace !== 'categories') {
+          if (!metafields[metafield.namespace]) {
+            metafields[metafield.namespace] = {};
+          }
+          metafields[metafield.namespace][metafield.key] = {
+            value: metafield.value,
+            type: metafield.type
+          };
+        }
+      }
+    }
+
+    // 构建返回的数据结构
+    return {
+      id: product.id,
+      title: product.title,
+      description: product.descriptionHtml,
+      vendor: product.vendor,
+      productType: product.productType,
+      handle: product.handle,
+      seo: {
+        title: product.seo?.title || '',
+        description: product.seo?.description || ''
+      },
+      variants,
+      metafields,
+      translatableContent,
+      // 添加可翻译字段的映射
+      translatableFields: {
+        title: translatableContent.title?.value || product.title,
+        body_html: translatableContent.body_html?.value || product.descriptionHtml,
+        vendor: translatableContent.vendor?.value || product.vendor,
+        product_type: translatableContent.product_type?.value || product.productType,
+        meta_title: translatableContent.meta_title?.value || product.seo?.title,
+        meta_description: translatableContent.meta_description?.value || product.seo?.description
+      }
+    };
+  } catch (error) {
+    console.error('获取产品详细信息失败:', error);
+    throw error;
+  }
+}
+
+// 获取资源详细信息（通用接口）
+export async function fetchResourceDetails(admin, resourceType, resourceId, maxRetries = 3) {
+  // 目前只实现产品类型，其他类型可以后续扩展
+  if (resourceType === RESOURCE_TYPES.PRODUCT) {
+    return await fetchProductDetails(admin, resourceId, maxRetries);
+  }
+  
+  // 其他资源类型使用原有的fetchResourcesByType逻辑
+  const resources = await fetchResourcesByType(admin, resourceType, maxRetries);
+  const resource = resources.find(r => r.id === resourceId || r.gid?.includes(resourceId));
+  
+  if (!resource) {
+    throw new Error(`资源不存在: ${resourceType}/${resourceId}`);
+  }
+  
+  return resource;
 }
 
 // 获取Theme相关资源
@@ -1232,6 +1488,39 @@ export async function updateResourceTranslation(admin, resourceGid, translations
             console.log(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
           }
         }
+      }
+    }
+    
+    // 处理contentFieldsTrans（产品等资源的额外字段）
+    if (translations.contentFieldsTrans && typeof translations.contentFieldsTrans === 'object') {
+      console.log('📋 处理contentFields额外字段翻译...');
+      
+      for (const [fieldKey, fieldValue] of Object.entries(translations.contentFieldsTrans)) {
+        if (fieldValue) {
+          console.log(`🔍 处理contentField: ${fieldKey}`);
+          const content = translatableContent.find(item => item.key === fieldKey);
+          
+          if (content) {
+            const translationInput = {
+              locale: targetLocale,
+              key: fieldKey,
+              value: fieldValue,
+              translatableContentDigest: content.digest
+            };
+            translationInputs.push(translationInput);
+            console.log(`✅ 成功添加contentField翻译:`, {
+              key: fieldKey,
+              valueLength: fieldValue.length,
+              valuePreview: fieldValue.substring(0, 50) + '...'
+            });
+          } else {
+            console.log(`⚠️ ContentField "${fieldKey}" 未找到对应的可翻译内容`);
+          }
+        }
+      }
+      
+      if (Object.keys(translations.contentFieldsTrans).length > 0) {
+        console.log(`✅ 完成 ${Object.keys(translations.contentFieldsTrans).length} 个contentFields字段的处理`);
       }
     }
 

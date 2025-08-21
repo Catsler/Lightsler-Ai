@@ -312,13 +312,35 @@ export function ResourceCategoryDisplay({
                                           />
                                         )}
                                         <Box minWidth="0" style={{flex: 1}}>
-                                          <Text 
-                                            as="span" 
-                                            variant="bodyMd"
-                                            truncate
-                                          >
-                                            {getResourceDisplayName(resource)}
-                                          </Text>
+                                          <BlockStack gap="1">
+                                            <Text 
+                                              as="span" 
+                                              variant="bodyMd"
+                                              truncate
+                                            >
+                                              {getResourceDisplayName(resource)}
+                                            </Text>
+                                            {/* 显示产品额外字段 */}
+                                            {resource.resourceType === 'product' && (
+                                              <InlineStack gap="2">
+                                                {resource.vendor && (
+                                                  <Badge tone="info" size="small">
+                                                    供应商: {resource.vendor}
+                                                  </Badge>
+                                                )}
+                                                {resource.productType && (
+                                                  <Badge tone="info" size="small">
+                                                    类型: {resource.productType}
+                                                  </Badge>
+                                                )}
+                                                {resource.tags && (
+                                                  <Badge tone="info" size="small">
+                                                    标签: {resource.tags.split(',').length}个
+                                                  </Badge>
+                                                )}
+                                              </InlineStack>
+                                            )}
+                                          </BlockStack>
                                         </Box>
                                       </InlineStack>
                                       <InlineStack gap="1">
