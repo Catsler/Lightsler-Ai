@@ -18,6 +18,7 @@ import { authenticate } from "../shopify.server";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
 import { LanguageManager } from "../components/LanguageManager";
+import ScanningAnimation from "../components/ScanningAnimation";
 import prisma from "../db.server";
 
 // 添加全局错误监听
@@ -133,6 +134,8 @@ function Index() {
   const translateFetcher = useFetcher();
   const statusFetcher = useFetcher();
   const clearFetcher = useFetcher();
+  const sequentialScanFetcher = useFetcher();
+  const scanProgressFetcher = useFetcher();
   
   // React Hooks必须在顶层调用，不能在条件语句中
   const shopify = useAppBridge();
@@ -149,6 +152,18 @@ function Index() {
   const [lastServiceError, setLastServiceError] = useState(null);
   const [clearCache, setClearCache] = useState(false);
   const [dynamicLanguages, setDynamicLanguages] = useState(supportedLanguages);
+  
+  // 扫描动画相关状态
+  const [isSequentialScanning, setIsSequentialScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanPhase, setScanPhase] = useState('initializing');
+  const [scanThinkingChain, setScanThinkingChain] = useState([]);
+  const [scanStats, setScanStats] = useState(null);
+  const [currentScanResource, setCurrentScanResource] = useState(null);
+  const [scanSessionId, setScanSessionId] = useState(null);
+  const [scannedResourcesCount, setScannedResourcesCount] = useState(0);
+  const [totalResourcesCount, setTotalResourcesCount] = useState(0);
+  const [hasSelectedLanguage, setHasSelectedLanguage] = useState(false);
   
   // 分类翻译状态管理
   const [translatingCategories, setTranslatingCategories] = useState(new Set());
@@ -385,6 +400,68 @@ function Index() {
     console.log('[Index Component] Initial useEffect - loading status');
     loadStatus();
   }, []); // 只在组件挂载时执行一次
+  
+  // 处理智能扫描响应
+  useEffect(() => {
+    if (sequentialScanFetcher.data) {
+      const { success, data, error } = sequentialScanFetcher.data;
+      
+      if (success && data) {
+        setScanSessionId(data.sessionId);
+        addLog('🚀 智能扫描已启动', 'success');
+        
+        // 开始轮询进度
+        if (data.sessionId) {
+          // 初始进度更新
+          if (data.stats) {
+            setScanStats(data.stats);
+            setIsSequentialScanning(false); // 扫描完成
+          }
+        }
+      } else {
+        addLog(`❌ 智能扫描失败: ${error || '未知错误'}`, 'error');
+        setIsSequentialScanning(false);
+      }
+    }
+  }, [sequentialScanFetcher.data, addLog]);
+  
+  // 轮询扫描进度
+  useEffect(() => {
+    if (!scanSessionId || !isSequentialScanning) return;
+    
+    const pollProgress = () => {
+      scanProgressFetcher.load(`/api/sequential-scan?sessionId=${scanSessionId}`);
+    };
+    
+    // 立即执行一次
+    pollProgress();
+    
+    // 设置轮询间隔
+    const interval = setInterval(pollProgress, 1000); // 每秒更新一次
+    
+    return () => clearInterval(interval);
+  }, [scanSessionId, isSequentialScanning, scanProgressFetcher]);
+  
+  // 处理进度更新
+  useEffect(() => {
+    if (scanProgressFetcher.data) {
+      const { success, data } = scanProgressFetcher.data;
+      
+      if (success && data) {
+        setScanProgress(data.progress || 0);
+        setScanPhase(data.phase || 'processing');
+        setScanThinkingChain(data.thinkingChain || []);
+        setCurrentScanResource(data.currentResource);
+        setScannedResourcesCount(data.scannedResources || 0);
+        setTotalResourcesCount(data.totalResources || 0);
+        
+        // 如果扫描完成
+        if (data.progress >= 100 && data.stats) {
+          setScanStats(data.stats);
+        }
+      }
+    }
+  }, [scanProgressFetcher.data]);
 
   // 设置智能定时刷新
   useEffect(() => {
@@ -449,6 +526,48 @@ function Index() {
       setAppBridgeError(true);
     }
   }, [addLog, scanAllFetcher]);
+  
+  // 智能扫描（Sequential Thinking）
+  const startSequentialScan = useCallback(() => {
+    try {
+      addLog('🤖 启动智能扫描...', 'info');
+      setIsSequentialScanning(true);
+      setScanProgress(0);
+      setScanPhase('initializing');
+      setScanThinkingChain([]);
+      setScanStats(null);
+      setCurrentScanResource(null);
+      setScannedResourcesCount(0);
+      setTotalResourcesCount(0);
+      
+      // 调用智能扫描API
+      sequentialScanFetcher.submit(
+        { 
+          language: selectedLanguage,
+          resourceType: 'ALL',
+          useIntelligence: 'true'
+        }, 
+        { 
+          method: 'POST', 
+          action: '/api/sequential-scan' 
+        }
+      );
+    } catch (error) {
+      console.error('智能扫描失败:', error);
+      addLog('❌ 智能扫描失败，请检查网络连接', 'error');
+      setIsSequentialScanning(false);
+    }
+  }, [addLog, sequentialScanFetcher, selectedLanguage]);
+  
+  // 关闭扫描动画
+  const closeScanAnimation = useCallback(() => {
+    setIsSequentialScanning(false);
+    setScanSessionId(null);
+    setScanProgress(0);
+    setScanThinkingChain([]);
+    // 刷新资源列表
+    loadStatus();
+  }, [loadStatus]);
 
   // 扫描选定的资源类型
   const scanSelectedResourceType = useCallback(() => {
@@ -650,6 +769,19 @@ function Index() {
     addLog('✅ 语言列表已更新', 'success');
   }, [addLog]);
   
+  // 处理语言选择变化（自动触发扫描）
+  const handleLanguageChange = useCallback((value) => {
+    setSelectedLanguage(value);
+    
+    // 如果是首次选择语言（不是默认的zh-CN），自动触发智能扫描
+    if (!hasSelectedLanguage && value !== 'zh-CN') {
+      setHasSelectedLanguage(true);
+      setTimeout(() => {
+        startSequentialScan();
+      }, 500); // 延迟500ms启动，让UI有时间更新
+    }
+  }, [hasSelectedLanguage, startSequentialScan]);
+  
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
     addLog(`✅ 成功添加 ${languageCodes.length} 个语言`, 'success');
@@ -772,7 +904,7 @@ function Index() {
                       label="目标语言"
                       options={dynamicLanguages}
                       value={selectedLanguage}
-                      onChange={setSelectedLanguage}
+                      onChange={handleLanguageChange}
                     />
                   </Box>
                   <Box paddingBlockStart="600">
@@ -794,13 +926,25 @@ function Index() {
                 </Box>
                 
                 <InlineStack gap="200">
-                  <Button 
-                    onClick={scanAllResources} 
-                    loading={isScanning}
-                    variant="primary"
-                  >
-                    扫描所有资源
-                  </Button>
+                  {/* 条件显示扫描按钮或提示 */}
+                  {!hasSelectedLanguage ? (
+                    <Button 
+                      onClick={scanAllResources} 
+                      loading={isScanning}
+                      variant="primary"
+                      disabled
+                    >
+                      请先选择目标语言
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={startSequentialScan} 
+                      loading={isScanning || isSequentialScanning}
+                      variant="primary"
+                    >
+                      智能扫描资源
+                    </Button>
+                  )}
                   <Button 
                     onClick={startTranslation} 
                     loading={isTranslating}
@@ -922,6 +1066,20 @@ function Index() {
           </Layout>
         )}
       </BlockStack>
+      
+      {/* 扫描动画 */}
+      <ScanningAnimation
+        isOpen={isSequentialScanning}
+        onClose={closeScanAnimation}
+        progress={scanProgress}
+        thinkingChain={scanThinkingChain}
+        scanStats={scanStats}
+        currentPhase={scanPhase}
+        currentResource={currentScanResource}
+        totalResources={totalResourcesCount}
+        scannedResources={scannedResourcesCount}
+        targetLanguage={selectedLanguage}
+      />
     </Page>
   );
 }
