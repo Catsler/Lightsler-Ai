@@ -19,6 +19,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
 import { LanguageManager } from "../components/LanguageManager";
 import ScanningAnimation from "../components/ScanningAnimation";
+import { needsScan, getScanHistory, updateScanHistory, mergeScanHistory } from '../utils/scan-history';
 import prisma from "../db.server";
 
 // 添加全局错误监听
@@ -141,7 +142,13 @@ function Index() {
   const shopify = useAppBridge();
   console.log('[Index Component] App Bridge initialized successfully');
   
-  const [selectedLanguage, setSelectedLanguage] = useState('zh-CN');
+  const [selectedLanguage, setSelectedLanguage] = useState(() => {
+    // 从localStorage恢复语言选择
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selectedLanguage') || 'zh-CN';
+    }
+    return 'zh-CN';
+  });
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
   const [selectedResources, setSelectedResources] = useState([]);
   const [resources, setResources] = useState([]);
@@ -163,6 +170,10 @@ function Index() {
   const [scanSessionId, setScanSessionId] = useState(null);
   const [scannedResourcesCount, setScannedResourcesCount] = useState(0);
   const [totalResourcesCount, setTotalResourcesCount] = useState(0);
+  
+  // 扫描历史和自动扫描状态
+  const [scanHistory, setScanHistory] = useState({});
+  const [autoScanTriggered, setAutoScanTriggered] = useState(false);
   const [hasSelectedLanguage, setHasSelectedLanguage] = useState(false);
   
   // 分类翻译状态管理
@@ -395,10 +406,48 @@ function Index() {
     }
   }, [syncFetcher.state, syncFetcher.data, syncingCategories, addLog, showToast, loadStatus]);
 
-  // 页面加载时获取状态 - 只在首次加载时执行
+  // 页面加载时获取状态并自动扫描默认语言
   useEffect(() => {
     console.log('[Index Component] Initial useEffect - loading status');
     loadStatus();
+    
+    // 加载扫描历史
+    const localHistory = getScanHistory();
+    setScanHistory(localHistory);
+    
+    // 从服务器获取扫描历史
+    fetch('/api/scan-history')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const mergedHistory = mergeScanHistory(data.data, localHistory);
+          setScanHistory(mergedHistory);
+          
+          // 检查默认语言是否需要扫描（只在首次加载时）
+          if (!autoScanTriggered) {
+            const defaultLang = localStorage.getItem('selectedLanguage') || 'zh-CN';
+            console.log('[Init] 检查默认语言:', defaultLang);
+            if (needsScan(defaultLang, mergedHistory)) {
+              console.log('[Init] 默认语言需要扫描');
+              setTimeout(() => {
+                autoScan(defaultLang, true); // 强制跳过二次检查
+                setAutoScanTriggered(true);
+              }, 1000); // 延迟1秒，让页面先加载
+            }
+          }
+        }
+      })
+      .catch(err => {
+        console.error('[Init] 获取扫描历史失败:', err);
+        // 即使失败也检查本地历史
+        const defaultLang = localStorage.getItem('selectedLanguage') || 'zh-CN';
+        if (!autoScanTriggered && needsScan(defaultLang, localHistory)) {
+          setTimeout(() => {
+            autoScan(defaultLang, true);
+            setAutoScanTriggered(true);
+          }, 1000);
+        }
+      });
   }, []); // 只在组件挂载时执行一次
   
   // 处理智能扫描响应
@@ -527,10 +576,17 @@ function Index() {
     }
   }, [addLog, scanAllFetcher]);
   
-  // 智能扫描（Sequential Thinking）
-  const startSequentialScan = useCallback(() => {
+  // 自动扫描（基于语言选择和24小时策略）
+  const autoScan = useCallback(async (language, forceSkipCheck = false) => {
+    // 如果不是强制跳过检查，检查是否需要扫描
+    if (!forceSkipCheck && !needsScan(language, scanHistory)) {
+      console.log(`[AutoScan] ${language} 无需扫描（24小时内已扫描）`);
+      addLog(`📝 ${language} 资源已是最新（24小时内已扫描）`, 'info');
+      return false;
+    }
+    
     try {
-      addLog('🤖 启动智能扫描...', 'info');
+      addLog(`🔄 自动扫描 ${language} 资源...`, 'info');
       setIsSequentialScanning(true);
       setScanProgress(0);
       setScanPhase('initializing');
@@ -540,24 +596,41 @@ function Index() {
       setScannedResourcesCount(0);
       setTotalResourcesCount(0);
       
-      // 调用智能扫描API
+      // 调用扫描API（使用简化的sequential-scan）
       sequentialScanFetcher.submit(
         { 
-          language: selectedLanguage,
-          resourceType: 'ALL',
-          useIntelligence: 'true'
+          language: language,
+          resourceType: 'ALL'
         }, 
         { 
           method: 'POST', 
           action: '/api/sequential-scan' 
         }
       );
+      
+      // 更新本地扫描历史
+      const newHistory = updateScanHistory(language);
+      setScanHistory(newHistory);
+      
+      // 更新服务器扫描历史（异步，不阻塞）
+      fetch('/api/scan-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          language,
+          resourceCount: '0',
+          status: 'in_progress'
+        })
+      }).catch(err => console.error('[AutoScan] 更新服务器历史失败:', err));
+      
+      return true;
     } catch (error) {
-      console.error('智能扫描失败:', error);
-      addLog('❌ 智能扫描失败，请检查网络连接', 'error');
+      console.error('[AutoScan] 扫描失败:', error);
+      addLog('❌ 自动扫描失败，请检查网络连接', 'error');
       setIsSequentialScanning(false);
+      return false;
     }
-  }, [addLog, sequentialScanFetcher, selectedLanguage]);
+  }, [scanHistory, addLog, sequentialScanFetcher]);
   
   // 关闭扫描动画
   const closeScanAnimation = useCallback(() => {
@@ -771,16 +844,15 @@ function Index() {
   
   // 处理语言选择变化（自动触发扫描）
   const handleLanguageChange = useCallback((value) => {
+    console.log('[LanguageChange] 切换语言:', value);
     setSelectedLanguage(value);
+    localStorage.setItem('selectedLanguage', value); // 保存到localStorage
     
-    // 如果是首次选择语言（不是默认的zh-CN），自动触发智能扫描
-    if (!hasSelectedLanguage && value !== 'zh-CN') {
-      setHasSelectedLanguage(true);
-      setTimeout(() => {
-        startSequentialScan();
-      }, 500); // 延迟500ms启动，让UI有时间更新
-    }
-  }, [hasSelectedLanguage, startSequentialScan]);
+    // 自动触发扫描（基于24小时策略）
+    setTimeout(() => {
+      autoScan(value);
+    }, 300); // 短暂延迟让UI更新
+  }, [autoScan]);
   
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
@@ -926,25 +998,7 @@ function Index() {
                 </Box>
                 
                 <InlineStack gap="200">
-                  {/* 条件显示扫描按钮或提示 */}
-                  {!hasSelectedLanguage ? (
-                    <Button 
-                      onClick={scanAllResources} 
-                      loading={isScanning}
-                      variant="primary"
-                      disabled
-                    >
-                      请先选择目标语言
-                    </Button>
-                  ) : (
-                    <Button 
-                      onClick={startSequentialScan} 
-                      loading={isScanning || isSequentialScanning}
-                      variant="primary"
-                    >
-                      智能扫描资源
-                    </Button>
-                  )}
+                  {/* 扫描按钮已移除，改为自动扫描 */}
                   <Button 
                     onClick={startTranslation} 
                     loading={isTranslating}

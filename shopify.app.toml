@@ -4,7 +4,7 @@
 client_id = "fa2e9f646301c483f81570613924c495"
 name = "Lightsler AI Translator"
 handle = "lightsler-ai-translator"
-application_url = "https://keith-difficult-chapel-specially.trycloudflare.com"
+application_url = "https://presidential-author-website-authorization.trycloudflare.com"
 embedded = true
 
 [build]
@@ -85,7 +85,7 @@ api_version = "2025-07"
 scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
 
 [auth]
-redirect_urls = ["https://keith-difficult-chapel-specially.trycloudflare.com/auth/callback", "https://keith-difficult-chapel-specially.trycloudflare.com/auth/shopify/callback", "https://keith-difficult-chapel-specially.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://presidential-author-website-authorization.trycloudflare.com/auth/callback", "https://presidential-author-website-authorization.trycloudflare.com/auth/shopify/callback", "https://presidential-author-website-authorization.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

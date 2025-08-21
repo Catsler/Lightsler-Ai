@@ -19,6 +19,7 @@ if (!global.scanProgress) {
  */
 export async function scanWithIntelligence({
   admin,
+  session,
   language,
   resourceType = 'ALL',
   options = {}
@@ -48,7 +49,11 @@ export async function scanWithIntelligence({
   };
   
   try {
-    logger.info('[ScanIntelligence] 开始智能扫描', { sessionId, language, resourceType });
+    logger.info('[ScanIntelligence] 开始智能扫描', { sessionId, language, resourceType, shop: session.shop });
+    
+    // 获取或创建店铺记录
+    const { getOrCreateShop } = await import('./database.server.js');
+    const shop = await getOrCreateShop(session.shop, session.accessToken);
     
     // 阶段1：初始化和分析
     updateProgress({ 
@@ -132,7 +137,7 @@ export async function scanWithIntelligence({
         
         if (resources && resources.length > 0) {
           // 保存到数据库
-          await saveResources(resources, resourceType);
+          await saveResources(shop.id, resources);
           
           allResources.push(...resources);
           scanStats.byType[resourceType] = resources.length;

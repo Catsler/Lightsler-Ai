@@ -41,6 +41,7 @@ model Shop {
   resources   Resource[]
   translations Translation[]
   webhookEvents WebhookEvent[]
+  scanHistories ScanHistory[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -387,4 +388,23 @@ model WebhookEvent {
   @@index([shop, topic])
   @@index([processed, createdAt])
   @@index([resourceType, resourceId])
+}
+
+// 扫描历史记录
+model ScanHistory {
+  id            String   @id @default(cuid())
+  shopId        String
+  language      String
+  lastScanned   DateTime @default(now())
+  resourceCount Int      @default(0)
+  status        String   @default("completed") // completed, failed, in_progress
+  scanDuration  Int?     // 扫描耗时（秒）
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  @@unique([shopId, language])
+  @@index([shopId])
+  @@index([lastScanned])
 }
