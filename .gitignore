@@ -28,7 +28,7 @@ diagnose-*.js
 *.log
 *.tmp
 *.temp
-*.bak
+.bak
 *.old
 
 # Cache directories
@@ -40,4 +40,49 @@ screenshoots/
 
 # Ignore shopify files created during app dev
 .shopify/*
-.shopify.lockbrowser-tools-mcp/
+.shopify.lock
+
+# Browser Tools MCP
+browser-tools-mcp/
+
+# 云端部署相关文件（已清理，防止重新添加）
+cloudflared*
+*.yml
+auto-deploy.sh
+setup-*.sh
+start-*production*.sh
+shop-manager.sh
+restart-tunnel.sh
+tunnel.log
+
+# 多店铺配置文件（已整合到主配置）
+shopify.app.*.toml
+
+# 生产日志文件
+logs/*/production.log
+logs/*/error.log
+
+# 阿里云凭证（敏感信息）
+.env.aliyun
+*.pem
+*.key
+aliyun-logs/
+aliyun-sync/
+
+# Cloudflare令牌文件
+.cloudflare-token
+
+# 清理报告（一次性文件）
+*cleanup-report*
+files-before-cleanup.txt
+
+# 部署包和临时文件
+*.tar.gz
+deploy/
+
+# 状态报告文件（临时快照）
+DEPLOYMENT_STATUS.md
+PROJECT_CLEANUP_REPORT.md
+shop-status-report.md
+*-status-report.md
+*-report.md

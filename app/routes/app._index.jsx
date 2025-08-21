@@ -41,22 +41,72 @@ if (typeof window !== 'undefined') {
 }
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  
-  // 获取店铺已启用的语言（从数据库）
-  const shop = await prisma.shop.findUnique({
-    where: { id: session.shop },
-    include: { languages: { where: { isActive: true } } }
-  });
-  
-  // 格式化语言列表供Select组件使用
-  const supportedLanguages = shop?.languages?.length > 0
-    ? shop.languages.map(lang => ({
-        label: lang.name,
-        value: lang.code
-      }))
-    : [
-        // 默认语言列表（如果数据库中没有）
+  try {
+    const { admin, session } = await authenticate.admin(request);
+    
+    // 验证session数据
+    if (!session || !session.shop) {
+      console.error('[app._index] Session or shop ID missing:', { session: !!session, shopId: session?.shop });
+      throw new Error('Session or shop information is missing');
+    }
+    
+    console.log('[app._index] Loading languages for shop:', session.shop);
+    
+    // 获取店铺已启用的语言（从数据库）
+    let shop = null;
+    try {
+      shop = await prisma.shop.findUnique({
+        where: { id: session.shop },
+        include: { languages: { where: { isActive: true } } }
+      });
+      
+      if (!shop) {
+        console.warn('[app._index] Shop not found in database, creating default entry');
+        // 如果店铺不存在，创建默认条目
+        shop = await prisma.shop.create({
+          data: {
+            id: session.shop,
+            domain: session.shop,
+            accessToken: 'placeholder', // 将在实际使用时更新
+          },
+          include: { languages: { where: { isActive: true } } }
+        });
+      }
+    } catch (dbError) {
+      console.error('[app._index] Database error when fetching shop:', dbError);
+      // 数据库错误时使用空shop对象
+      shop = { languages: [] };
+    }
+    
+    // 安全地格式化语言列表供Select组件使用
+    const supportedLanguages = (shop?.languages && Array.isArray(shop.languages) && shop.languages.length > 0)
+      ? shop.languages.map(lang => ({
+          label: lang.name || lang.code || 'Unknown',
+          value: lang.code || 'unknown'
+        }))
+      : [
+          // 默认语言列表（如果数据库中没有）
+          { label: 'Chinese (Simplified)', value: 'zh-CN' },
+          { label: 'Chinese (Traditional)', value: 'zh-TW' },
+          { label: 'English', value: 'en' },
+          { label: 'Japanese', value: 'ja' },
+          { label: 'Korean', value: 'ko' },
+          { label: 'French', value: 'fr' },
+          { label: 'German', value: 'de' },
+          { label: 'Spanish', value: 'es' },
+        ];
+    
+    console.log('[app._index] Loaded supported languages:', supportedLanguages.length);
+    
+    return {
+      supportedLanguages
+    };
+  } catch (error) {
+    console.error('[app._index] Loader error:', error);
+    
+    // 返回默认语言列表以防止组件崩溃
+    return {
+      supportedLanguages: [
         { label: 'Chinese (Simplified)', value: 'zh-CN' },
         { label: 'Chinese (Traditional)', value: 'zh-TW' },
         { label: 'English', value: 'en' },
@@ -65,11 +115,9 @@ export const loader = async ({ request }) => {
         { label: 'French', value: 'fr' },
         { label: 'German', value: 'de' },
         { label: 'Spanish', value: 'es' },
-      ];
-  
-  return {
-    supportedLanguages
-  };
+      ]
+    };
+  }
 };
 
 function Index() {

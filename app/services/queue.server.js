@@ -245,7 +245,7 @@ if (translationQueue) {
           stack: error.stack,
           operation: 'queue.translateResource',
           resourceId,
-          resourceType: resource.resourceType,
+          resourceType: resource?.resourceType || 'UNKNOWN',
           targetLanguage: language,
           severity: 3,
           retryable: true,

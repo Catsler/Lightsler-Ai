@@ -39,7 +39,7 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "localhost", "*.trycloudflare.com"],
+    allowedHosts: [host, "localhost", "*.trycloudflare.com", "*.ease-joy.fun", "onewind.ease-joy.fun", "daui.ease-joy.fun", "sshvdt.ease-joy.fun"],
     cors: {
       origin: true,
       credentials: true,

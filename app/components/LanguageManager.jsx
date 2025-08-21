@@ -32,6 +32,7 @@ export function LanguageManager({
   const fetcher = useFetcher();
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedLanguages, setSelectedLanguages] = useState([]);
@@ -44,21 +45,54 @@ export function LanguageManager({
 
   // 加载语言数据
   const loadLanguageData = useCallback(() => {
+    console.log('[LanguageManager] Loading language data...');
     setLoading(true);
-    fetcher.load('/api/locales?action=combined');
+    setError(null);
+    try {
+      fetcher.load('/api/locales?action=combined');
+    } catch (err) {
+      console.error('[LanguageManager] Error loading language data:', err);
+      setError('加载语言数据失败');
+      setLoading(false);
+    }
   }, []);
 
   // 处理fetcher响应
   useEffect(() => {
-    if (fetcher.data && fetcher.state === 'idle') {
+    if (fetcher.state === 'idle') {
       setLoading(false);
-      if (fetcher.data.success) {
-        setLanguageData(fetcher.data.data);
-        // 通知父组件语言更新
-        if (onLanguagesUpdated) {
-          onLanguagesUpdated(fetcher.data.data.database.languages);
+      
+      if (fetcher.data) {
+        if (fetcher.data.success && fetcher.data.data) {
+          console.log('[LanguageManager] Successfully loaded language data:', fetcher.data.data);
+          setError(null); // 清除之前的错误
+          
+          // 安全地设置语言数据，确保所有必需字段存在
+          const safeData = {
+            shop: fetcher.data.data.shop || { locales: [], count: 0 },
+            available: fetcher.data.data.available || { locales: [], grouped: {}, total: 0 },
+            database: fetcher.data.data.database || { languages: [], count: 0 },
+            limit: fetcher.data.data.limit || { currentCount: 0, maxLimit: 20, canAddMore: true, remainingSlots: 20 }
+          };
+          
+          setLanguageData(safeData);
+          
+          // 安全地通知父组件语言更新
+          if (onLanguagesUpdated && safeData.database?.languages) {
+            onLanguagesUpdated(safeData.database.languages);
+          }
+        } else {
+          const errorMessage = fetcher.data.message || '加载语言数据失败';
+          console.error('[LanguageManager] API returned error:', fetcher.data);
+          setError(errorMessage);
         }
+      } else if (fetcher.state === 'idle' && !fetcher.data) {
+        console.error('[LanguageManager] No data received from API');
+        setError('网络错误，请稍后重试');
       }
+    } else if (fetcher.state === 'loading') {
+      setLoading(true);
+      setError(null);
     }
   }, [fetcher.data, fetcher.state, onLanguagesUpdated]);
 
@@ -111,24 +145,34 @@ export function LanguageManager({
 
   // 过滤语言列表
   const getFilteredLanguages = () => {
-    let languages = [];
+    try {
+      let languages = [];
 
-    if (selectedRegion === 'all') {
-      languages = languageData.available.locales;
-    } else {
-      const grouped = languageData.available.grouped || {};
-      languages = grouped[selectedRegion] || [];
+      // 安全地获取语言列表
+      const availableLocales = languageData?.available?.locales || [];
+      const groupedLocales = languageData?.available?.grouped || {};
+
+      if (selectedRegion === 'all') {
+        languages = availableLocales;
+      } else {
+        languages = groupedLocales[selectedRegion] || [];
+      }
+
+      // 安全地应用搜索过滤
+      if (searchTerm && searchTerm.trim()) {
+        const term = searchTerm.toLowerCase().trim();
+        languages = languages.filter(lang => {
+          const label = (lang.label || '').toLowerCase();
+          const value = (lang.value || '').toLowerCase();
+          return label.includes(term) || value.includes(term);
+        });
+      }
+
+      return Array.isArray(languages) ? languages : [];
+    } catch (error) {
+      console.error('[LanguageManager] Error filtering languages:', error);
+      return [];
     }
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      languages = languages.filter(lang => 
-        lang.label.toLowerCase().includes(term) ||
-        lang.value.toLowerCase().includes(term)
-      );
-    }
-
-    return languages;
   };
 
   // 切换语言选择
@@ -193,17 +237,33 @@ export function LanguageManager({
       >
         <Modal.Section>
           <BlockStack gap="400">
+            {/* 错误提示 */}
+            {error && (
+              <Banner
+                title="加载错误"
+                tone="critical"
+                action={{
+                  content: '重试',
+                  onAction: loadLanguageData
+                }}
+              >
+                <Text variant="bodySm">{error}</Text>
+              </Banner>
+            )}
+            
             {/* 语言限制提示 */}
-            <Banner
-              title={`语言配额: ${languageData.limit.currentCount} / ${languageData.limit.maxLimit}`}
-              tone={languageData.limit.remainingSlots <= 3 ? 'warning' : 'info'}
-            >
-              <Text variant="bodySm">
-                {languageData.limit.canAddMore 
-                  ? `还可以添加 ${languageData.limit.remainingSlots} 个语言`
-                  : '已达到最大语言数量限制'}
-              </Text>
-            </Banner>
+            {!error && (
+              <Banner
+                title={`语言配额: ${languageData.limit.currentCount} / ${languageData.limit.maxLimit}`}
+                tone={languageData.limit.remainingSlots <= 3 ? 'warning' : 'info'}
+              >
+                <Text variant="bodySm">
+                  {languageData.limit.canAddMore 
+                    ? `还可以添加 ${languageData.limit.remainingSlots} 个语言`
+                    : '已达到最大语言数量限制'}
+                </Text>
+              </Banner>
+            )}
 
             {/* 当前已启用的语言 */}
             <Card>

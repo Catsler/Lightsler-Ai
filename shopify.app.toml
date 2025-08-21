@@ -1,9 +1,10 @@
+# 主要配置文件 - 适用于所有店铺
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "8102af9807fd9df0b322a44f500a1d0e"
-name = "Lightsler Ai"
-handle = "lightsler-ai"
-application_url = "https://monthly-push-compromise-tribe.trycloudflare.com"
+client_id = "fa2e9f646301c483f81570613924c495"
+name = "Lightsler AI Translator"
+handle = "lightsler-ai-translator"
+application_url = "https://keith-difficult-chapel-specially.trycloudflare.com"
 embedded = true
 
 [build]
@@ -70,7 +71,7 @@ api_version = "2025-07"
   topics = [ "locales/update" ]
   uri = "/webhooks/locale/update"
 
-  # 博客文章相关webhook
+  # 文章相关webhook
   [[webhooks.subscriptions]]
   topics = [ "articles/create" ]
   uri = "/webhooks/article/create"
@@ -80,11 +81,11 @@ api_version = "2025-07"
   uri = "/webhooks/article/update"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+# 所有必需权限
 scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
 
 [auth]
-redirect_urls = ["https://monthly-push-compromise-tribe.trycloudflare.com/auth/callback", "https://monthly-push-compromise-tribe.trycloudflare.com/auth/shopify/callback", "https://monthly-push-compromise-tribe.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://keith-difficult-chapel-specially.trycloudflare.com/auth/callback", "https://keith-difficult-chapel-specially.trycloudflare.com/auth/shopify/callback", "https://keith-difficult-chapel-specially.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

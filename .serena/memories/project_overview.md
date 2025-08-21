@@ -1,49 +1,31 @@
 # 项目概述
 
-## 基本信息
-- **项目名称**: Lightsler AI - Shopify多语言翻译应用
-- **项目类型**: Shopify嵌入式Admin应用
-- **主要功能**: 批量翻译Shopify店铺资源到多种语言
-- **开发语言**: JavaScript (Node.js)
-- **系统平台**: Darwin (macOS)
+## 项目名称
+Lightsler AI - Shopify多语言翻译应用
 
-## 核心技术栈
-- **框架**: Remix v2.16.1 (全栈Web框架)
-- **前端**: React v18.2.0 + Shopify Polaris v12.27.0
-- **数据库**: SQLite + Prisma ORM v6.2.1
-- **队列系统**: Bull + Redis（可选，自动降级到内存队列）
-- **API集成**: Shopify GraphQL Admin API 2025-07
-- **构建工具**: Vite v5.4.8
-- **运行环境**: Node.js >=18.20
+## 项目目的
+基于Remix框架构建的嵌入式Shopify Admin应用，为Shopify店铺提供智能多语言翻译服务。支持20+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。
 
-## 主要特性
-1. **资源类型支持**: 20+种Shopify资源类型
-   - 产品、集合、文章、博客、页面
-   - 菜单、链接、筛选器
-   - 主题及相关资源
-   - 店铺设置和政策
+## 核心特点
+- **Sequential Thinking智能系统**: AI驱动的翻译决策引擎，支持智能跳过、错误预防、质量分析
+- **自动降级机制**: Redis不可用时自动降级到内存队列
+- **品牌词保护**: 智能识别并保护品牌词、SKU、产品型号
+- **Webhook自动化**: 实时响应Shopify事件，自动触发翻译流程
+- **断点续传**: 翻译会话管理，支持暂停和恢复
+- **错误自愈**: 自动错误检测、分析和修复
 
-2. **翻译功能**:
-   - GPT API集成（支持OpenAI兼容接口）
-   - 富文本HTML标签保护
-   - 品牌词不翻译保护
-   - 智能文本分块处理
-   - URL slug优化翻译
+## 技术架构
+- **嵌入式运行**: 运行在Shopify Admin内部
+- **GraphQL集成**: 使用Shopify GraphQL Admin API 2025-07版本
+- **队列系统**: 支持Redis和内存队列双模式
+- **数据库**: SQLite + Prisma ORM
+- **智能翻译**: GPT API + 品牌词保护
+- **Webhook处理**: 实时响应Shopify各种事件
 
-3. **系统架构**:
-   - 批量扫描和存储资源
-   - 异步队列处理大批量翻译
-   - 批量同步到Shopify
-   - 完整的错误日志和分析系统
-
-## 业务流程
-1. **扫描阶段**: 通过GraphQL API批量获取Shopify店铺资源
-2. **存储阶段**: 将资源存储到本地SQLite数据库
-3. **翻译阶段**: 调用GPT API进行智能翻译（保护HTML和品牌词）
-4. **同步阶段**: 通过GraphQL Mutation批量更新到Shopify店铺
-
-## 部署和运行
-- **开发模式**: 使用Shopify CLI提供隧道和认证
-- **生产部署**: 支持Docker容器化部署
-- **权限管理**: 通过shopify.app.toml配置
-- **Webhook处理**: 支持app/uninstalled和app/scopes_update事件
+## 业务价值
+- 支持20+种Shopify资源类型翻译
+- 富文本和HTML标签完整保护
+- 批量翻译和实时同步
+- 智能错误预防和自动恢复
+- 品牌一致性保护
+- SEO优化翻译

@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持20+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。
 
+### 核心特点
+- **Sequential Thinking智能系统**: AI驱动的翻译决策引擎，支持智能跳过、错误预防、质量分析
+- **自动降级机制**: Redis不可用时自动降级到内存队列
+- **品牌词保护**: 智能识别并保护品牌词、SKU、产品型号
+- **Webhook自动化**: 实时响应Shopify事件，自动触发翻译流程
+
 ### 技术栈
 - **框架**: Remix v2.16.1 + React v18.2.0
 - **UI**: Shopify Polaris v12.27.0
@@ -23,9 +29,9 @@ Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin�
 npm install                      # 安装依赖
 npm run setup                    # 初始化数据库（生成Prisma客户端 + 迁移）
 
-# 开发
-npm run dev                      # 启动开发服务器（Shopify CLI处理隧道和认证）
-NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev  # 开发环境绕过SSL验证
+# 开发（推荐使用NODE_TLS_REJECT_UNAUTHORIZED避免SSL问题）
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev  # 启动开发服务器（绕过SSL验证）
+npm run dev                      # 标准启动（可能遇到SSL问题）
 npm run lint                     # ESLint代码检查
 npm run build                    # 构建生产版本
 npm run start                    # 运行生产构建
@@ -249,6 +255,17 @@ NODE_ENV=development|production          # 环境标识
 - **质量分析**: 多维度质量评估、趋势预测
 - **自动恢复**: 错误诊断、智能修复、系统自愈
 
+## 部署
+
+### 生产环境部署
+```bash
+# 部署说明已更新，请参考最新文档
+```
+
+### 本地开发环境
+- 使用 `npm run dev` 启动开发服务器
+- 配置HTTPS可使用Cloudflare Tunnel
+
 ## 故障排查
 
 ### 常见问题
@@ -257,6 +274,7 @@ NODE_ENV=development|production          # 环境标识
 3. **Redis连接失败**: 自动降级到内存队列，无需干预
 4. **翻译API问题**: 检查GPT_API_KEY和GPT_API_URL
 5. **Shopify API限流**: executeGraphQLWithRetry自动处理重试
+6. **SSL证书问题**: 开发环境使用 `NODE_TLS_REJECT_UNAUTHORIZED=0`
 
 ## 重要函数和模块
 
@@ -296,6 +314,18 @@ NODE_ENV=development|production          # 环境标识
 - `/app` - 主应用界面
 - `/app/errors` - 错误管理界面
 - `/app/sync` - 同步管理界面
+- `/app/simple` - 简化版界面
+- `/app/monitoring` - 监控面板
+
+### Browser Tools集成（MCP服务器）
+```bash
+# 启动Browser Tools进行UI测试
+./start-browser-tools.sh
+
+# 停止Browser Tools
+./stop-browser-tools.sh
+```
+Browser Tools提供浏览器自动化测试，包括截图、控制台日志、网络监控等功能。
 
 ### 单独测试特定功能
 ```bash
@@ -334,7 +364,19 @@ curl http://localhost:PORT/api/translation-logs
 curl -X POST http://localhost:PORT/api/test-graphql \
   -H "Content-Type: application/json" \
   -d '{"query":"{ shop { name } }"}'
+
+# 清理缓存和数据
+curl -X POST http://localhost:PORT/api/clear
+
+# 查看Webhook统计
+curl http://localhost:PORT/api/webhook-stats
 ```
+
+### 开发提示
+- **端口问题**: 开发服务器通常运行在随机端口，检查控制台输出
+- **认证问题**: 首次访问需要通过Shopify OAuth流程
+- **数据库迁移**: 模型改变后运行 `npx prisma migrate dev`
+- **清理测试数据**: 使用 `/api/clear` 端点或 `npx prisma migrate reset`
 
 ## 项目依赖管理
 
@@ -348,6 +390,20 @@ curl -X POST http://localhost:PORT/api/test-graphql \
 - **Polaris v13升级**: 需要Node.js v20.10+，同时更新Dockerfile
 - **Prisma升级**: 运行 `npx prisma migrate dev` 更新数据库架构
 - **Shopify API版本**: 当前使用2025-07，升级时更新shopify.app.toml
+
+## 工作流程
+
+### 典型翻译流程
+1. **扫描资源**: `POST /api/scan-resources` 获取Shopify资源
+2. **批量翻译**: `POST /api/translate-queue` 进入队列处理
+3. **同步到店铺**: `POST /api/sync-translations` 更新到Shopify
+
+### Sequential Thinking智能决策流程
+1. **创建会话**: 初始化翻译会话，设置断点检查点
+2. **智能跳过**: AI评估是否需要重新翻译（基于内容变化、质量历史）
+3. **错误预防**: 事前风险评估，执行预防措施
+4. **质量分析**: 多维度评估翻译质量
+5. **自动恢复**: 错误时智能诊断并修复
 
 ## 注意事项
 
@@ -366,3 +422,4 @@ curl -X POST http://localhost:PORT/api/test-graphql \
 13. **Webhook处理**: 支持产品、集合、页面、主题、语言、文章等多种事件类型
 14. **内容版本控制**: 使用contentHash和contentVersion进行变更检测和增量更新
 15. **风险评估**: 每个资源都有riskScore评分，用于智能决策
+16. **测试先行**: 修改后必须运行 `npm run lint` 和 `npm run build` 确保代码质量

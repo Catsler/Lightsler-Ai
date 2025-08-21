@@ -23,11 +23,25 @@ import prisma from '../db.server.js';
  * GET请求处理 - 查询语言信息
  */
 export const loader = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const url = new URL(request.url);
-  const action = url.searchParams.get('action');
-  
   try {
+    const { admin, session } = await authenticate.admin(request);
+    
+    // 验证session数据
+    if (!session || !session.shop) {
+      console.error('[api.locales] Session validation failed:', { session: !!session, shopId: session?.shop });
+      return json(createApiResponse(null, 'Session information missing', false), { status: 401 });
+    }
+    
+    if (!admin) {
+      console.error('[api.locales] Admin API client missing');
+      return json(createApiResponse(null, 'Admin API client not available', false), { status: 500 });
+    }
+    
+    const url = new URL(request.url);
+    const action = url.searchParams.get('action');
+    
+    console.log('[api.locales] Processing request:', { action, shop: session.shop });
+    
     switch (action) {
       case 'available': {
         // 获取所有可用语言
@@ -81,40 +95,74 @@ export const loader = withErrorHandling(async ({ request }) => {
       }
       
       case 'combined': {
-        // 获取综合信息（店铺语言 + 可用语言 + 限制）
-        const [shopLocales, availableLocales, limitInfo, dbLanguages] = await Promise.all([
-          getShopLocales(admin),
-          getAvailableLocales(admin),
-          checkLocaleLimit(admin),
-          prisma.language.findMany({
-            where: { shopId: session.shop, isActive: true }
-          })
-        ]);
+        console.log('[api.locales] Fetching combined language data for shop:', session.shop);
         
-        // 找出还未启用的语言
-        const enabledCodes = new Set(shopLocales.map(l => l.locale));
-        const availableToAdd = availableLocales.filter(l => !enabledCodes.has(l.isoCode));
-        
-        return json(createApiResponse({
-          shop: {
-            locales: formatLocalesForUI(shopLocales),
-            count: shopLocales.length
-          },
-          available: {
-            locales: formatLocalesForUI(availableToAdd),
-            grouped: groupLocalesByRegion(availableToAdd),
-            total: availableToAdd.length
-          },
-          database: {
-            languages: dbLanguages.map(l => ({
-              value: l.code,
-              label: l.name,
-              isActive: l.isActive
-            })),
-            count: dbLanguages.length
-          },
-          limit: limitInfo
-        }));
+        try {
+          // 获取综合信息（店铺语言 + 可用语言 + 限制）
+          const [shopLocales, availableLocales, limitInfo, dbLanguages] = await Promise.all([
+            getShopLocales(admin).catch(err => {
+              console.error('[api.locales] Error fetching shop locales:', err);
+              return [];
+            }),
+            getAvailableLocales(admin).catch(err => {
+              console.error('[api.locales] Error fetching available locales:', err);
+              return [];
+            }),
+            checkLocaleLimit(admin).catch(err => {
+              console.error('[api.locales] Error checking locale limit:', err);
+              return { currentCount: 0, maxLimit: 20, canAddMore: true, remainingSlots: 20 };
+            }),
+            prisma.language.findMany({
+              where: { shopId: session.shop, isActive: true }
+            }).catch(err => {
+              console.error('[api.locales] Error fetching database languages:', err);
+              return [];
+            })
+          ]);
+          
+          // 安全地找出还未启用的语言
+          const enabledCodes = new Set(shopLocales.map(l => l.locale || l.isoCode));
+          const availableToAdd = availableLocales.filter(l => !enabledCodes.has(l.isoCode || l.locale));
+          
+          const responseData = {
+            shop: {
+              locales: formatLocalesForUI(shopLocales || []),
+              count: (shopLocales || []).length
+            },
+            available: {
+              locales: formatLocalesForUI(availableToAdd || []),
+              grouped: groupLocalesByRegion(availableToAdd || []),
+              total: (availableToAdd || []).length
+            },
+            database: {
+              languages: (dbLanguages || []).map(l => ({
+                value: l.code,
+                label: l.name,
+                isActive: l.isActive
+              })),
+              count: (dbLanguages || []).length
+            },
+            limit: limitInfo
+          };
+          
+          console.log('[api.locales] Combined data prepared successfully:', {
+            shopCount: responseData.shop.count,
+            availableCount: responseData.available.total,
+            dbCount: responseData.database.count
+          });
+          
+          return json(createApiResponse(responseData));
+        } catch (error) {
+          console.error('[api.locales] Error in combined case:', error);
+          
+          // 返回安全的默认数据结构
+          return json(createApiResponse({
+            shop: { locales: [], count: 0 },
+            available: { locales: [], grouped: {}, total: 0 },
+            database: { languages: [], count: 0 },
+            limit: { currentCount: 0, maxLimit: 20, canAddMore: true, remainingSlots: 20 }
+          }));
+        }
       }
       
       default:
@@ -122,7 +170,7 @@ export const loader = withErrorHandling(async ({ request }) => {
     }
   } catch (error) {
     console.error('[api.locales] 查询失败:', error);
-    return json(createApiResponse(null, error.message, false), { status: 500 });
+    return json(createApiResponse(null, error.message || '内部服务器错误', false), { status: 500 });
   }
 });
 
@@ -130,11 +178,25 @@ export const loader = withErrorHandling(async ({ request }) => {
  * POST请求处理 - 语言操作
  */
 export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const formData = await request.json();
-  const { action: operation, locale, locales } = formData;
-  
   try {
+    const { admin, session } = await authenticate.admin(request);
+    
+    // 验证session数据
+    if (!session || !session.shop) {
+      console.error('[api.locales] Session validation failed in action:', { session: !!session, shopId: session?.shop });
+      return json(createApiResponse(null, 'Session information missing', false), { status: 401 });
+    }
+    
+    if (!admin) {
+      console.error('[api.locales] Admin API client missing in action');
+      return json(createApiResponse(null, 'Admin API client not available', false), { status: 500 });
+    }
+    
+    const formData = await request.json();
+    const { action: operation, locale, locales } = formData;
+    
+    console.log('[api.locales] Processing action:', { operation, shop: session.shop });
+    
     // 获取店铺信息
     const shop = await prisma.shop.findUnique({
       where: { id: session.shop }
@@ -292,6 +354,6 @@ export const action = withErrorHandling(async ({ request }) => {
     }
   } catch (error) {
     console.error('[api.locales] 操作失败:', error);
-    return json(createApiResponse(null, error.message, false), { status: 500 });
+    return json(createApiResponse(null, error.message || '内部服务器错误', false), { status: 500 });
   }
 });
