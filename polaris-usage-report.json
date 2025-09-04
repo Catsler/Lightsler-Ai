@@ -1,0 +1,179 @@
+{
+  "timestamp": "2025-09-04T02:41:25.338Z",
+  "summary": {
+    "totalFiles": 50,
+    "filesUsingPolaris": 9,
+    "totalComponentTypes": 31
+  },
+  "componentUsage": {
+    "Card": 9,
+    "Button": 9,
+    "Text": 9,
+    "Badge": 8,
+    "BlockStack": 8,
+    "InlineStack": 8,
+    "Page": 7,
+    "Select": 6,
+    "Layout": 5,
+    "Banner": 5,
+    "ProgressBar": 5,
+    "Box": 4,
+    "Checkbox": 3,
+    "Modal": 3,
+    "DataTable": 3,
+    "TextField": 3,
+    "Spinner": 3,
+    "Grid": 3,
+    "Icon": 3,
+    "EmptyState": 2,
+    "Tabs": 2,
+    "ButtonGroup": 2,
+    "TextContainer": 2,
+    "Divider": 1,
+    "Tooltip": 1,
+    "Filters": 1,
+    "Pagination": 1,
+    "SkeletonBodyText": 1,
+    "Collapsible": 1,
+    "FormLayout": 1,
+    "DatePicker": 1
+  },
+  "patterns": {
+    "Layout.Section": 5,
+    "Modal.Section": 3,
+    "Card with BlockStack": 8,
+    "InlineStack with Badge": 6,
+    "Button with icon": 1,
+    "Select with options": 5,
+    "DataTable with rows": 3
+  },
+  "propsAnalysis": {
+    "Button": {
+      "variant": {
+        "primary": 8,
+        "tertiary": 3,
+        "plain": 3,
+        "secondary": 2
+      },
+      "tone": {
+        "success": 4,
+        "critical": 1
+      },
+      "size": {
+        "slim": 8,
+        "micro": 1
+      },
+      "loading": 8,
+      "disabled": 3,
+      "onClick": 28,
+      "icon": 1
+    },
+    "Badge": {
+      "tone": {
+        "critical": 5,
+        "warning": 2,
+        "locale.isPrimary ? ": 1,
+        "success": 8,
+        "attention": 4,
+        "info": 5,
+        "\n                      category.translationProgress === 100 ? ": 1,
+        "neutral": 1,
+        "tone": 1,
+        "config.tone": 4,
+        "rec.priority === ": 1,
+        "tones[severity - 1] || ": 1,
+        "error.status === ": 1,
+        "job.status === ": 1
+      },
+      "size": {}
+    },
+    "Card": {
+      "sectioned": 3,
+      "title": 0,
+      "subdued": 4
+    },
+    "Text": {
+      "variant": {
+        "headingMd": 33,
+        "headingSm": 22,
+        "bodyMd": 25,
+        "bodySm": 31,
+        "headingXs": 2,
+        "headingLg": 10,
+        "heading2xl": 4,
+        "bodyLg": 1,
+        "headingXl": 4
+      },
+      "tone": {
+        "success": 5,
+        "subdued": 10,
+        "critical": 5,
+        "warning": 1,
+        "log.type === ": 2
+      },
+      "fontWeight": {
+        "medium": 1,
+        "semibold": 7,
+        "bold": 1
+      },
+      "alignment": {
+        "center": 1
+      }
+    },
+    "Select": {
+      "label": 11,
+      "options": 11,
+      "value": 11,
+      "onChange": 10
+    },
+    "Modal": {
+      "open": 3,
+      "onClose": 3,
+      "title": 0,
+      "primaryAction": 0,
+      "large": 0
+    }
+  },
+  "top10Components": [
+    {
+      "name": "Card",
+      "count": 9
+    },
+    {
+      "name": "Button",
+      "count": 9
+    },
+    {
+      "name": "Text",
+      "count": 9
+    },
+    {
+      "name": "Badge",
+      "count": 8
+    },
+    {
+      "name": "BlockStack",
+      "count": 8
+    },
+    {
+      "name": "InlineStack",
+      "count": 8
+    },
+    {
+      "name": "Page",
+      "count": 7
+    },
+    {
+      "name": "Select",
+      "count": 6
+    },
+    {
+      "name": "Layout",
+      "count": 5
+    },
+    {
+      "name": "Banner",
+      "count": 5
+    }
+  ]
+}

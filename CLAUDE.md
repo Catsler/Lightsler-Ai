@@ -2,6 +2,64 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 开发启动第一准则 (CRITICAL - READ FIRST)
+
+### 项目启动权限控制
+**绝对禁止**: 
+- ❌ 自主启动项目开发服务器
+- ❌ 更改用户指定的启动域名、隧道配置  
+- ❌ 修改用户的开发环境设置（除非明确授权）
+- ❌ 使用默认的shopify app dev命令
+- ❌ 创建或修改任何隧道配置
+
+**强制要求**:
+- ✅ 项目启动前必须获得用户明确授权
+- ✅ 保持用户配置的域名和隧道设置不变
+- ✅ 如必须启动，使用指定命令：`shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000`
+- ✅ 尊重用户的专有隧道配置和部署环境
+
+### 授权启动命令
+```bash
+# 唯一允许的启动命令（需用户授权）
+shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000
+
+# 开发环境SSL绕过（如需要）  
+NODE_TLS_REJECT_UNAUTHORIZED=0 shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000
+```
+
+**重要提示**: 此域名配置为用户专用，Claude Code不得擅自修改或使用其他隧道地址。
+
+## 🚨 组件引用强制规范 (CRITICAL - READ FIRST)
+
+### 强制使用本地组件库
+**绝对禁止**: 
+- ❌ 使用网络搜索的随机代码示例
+- ❌ 使用可能过时的Polaris组件API
+- ❌ 直接从记忆中引用组件而不查阅本地文档
+
+**强制要求**:
+- ✅ 所有Polaris组件必须先查阅 `docs/components/polaris/` 目录
+- ✅ 所有GraphQL查询必须参考 `docs/components/shopify-graphql/` 
+- ✅ 使用组件前必须验证本地文档的最后验证日期
+- ✅ 如本地文档不存在，必须先创建文档再使用
+
+### 本地文档引用格式
+```
+@local:polaris/layout/Card          # 布局类组件
+@local:polaris/forms/Button         # 表单类组件  
+@local:shopify-graphql/queries/     # GraphQL查询
+@local:best-practices/              # 项目最佳实践
+```
+
+### 核心组件快速参考
+| 组件 | 本地文档路径 | 使用频率 | 关键注意事项 |
+|------|------------|----------|-------------|
+| Card | @local:polaris/layout/Card | 18% | 使用新版Card，不要用LegacyCard |
+| Button | @local:polaris/forms/Button | 18% | v12使用variant/tone，不是布尔属性 |
+| Text | @local:polaris/data-display/Text | 18% | 统一文本组件，替代DisplayText等 |
+| Badge | @local:polaris/feedback/Badge | 16% | tone属性控制颜色 |
+| BlockStack | @local:polaris/layout/BlockStack | 16% | 垂直布局首选 |
+
 ## 项目概述
 
 Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin应用。支持20+种资源类型的批量翻译，包含富文本处理、SEO优化、品牌词保护和智能队列系统。

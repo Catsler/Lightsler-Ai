@@ -8,7 +8,6 @@ import {
   Text,
   Badge,
   Grid,
-  LegacyStack,
   ProgressBar,
   DataTable,
   Button,
