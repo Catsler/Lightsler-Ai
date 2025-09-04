@@ -1,14 +1,14 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "8102af9807fd9df0b322a44f500a1d0e"
-name = "Lightsler Ai"
-handle = "lightsler-ai"
-application_url = "https://monthly-push-compromise-tribe.trycloudflare.com"
+client_id = "fa2e9f646301c483f81570613924c495"
+name = "Lightsler AI Translator"
+handle = "lightsler-ai-translator"
+application_url = "https://translate.ease-joy.fun"
 embedded = true
 
 [build]
 include_config_on_deploy = true
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false
 
 [webhooks]
 api_version = "2025-07"
@@ -84,7 +84,7 @@ api_version = "2025-07"
 scopes = "read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations"
 
 [auth]
-redirect_urls = ["https://monthly-push-compromise-tribe.trycloudflare.com/auth/callback", "https://monthly-push-compromise-tribe.trycloudflare.com/auth/shopify/callback", "https://monthly-push-compromise-tribe.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://translate.ease-joy.fun/auth/callback", "https://translate.ease-joy.fun/auth/shopify/callback", "https://translate.ease-joy.fun/api/auth/callback"]
 
 [pos]
 embedded = false
