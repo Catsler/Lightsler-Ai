@@ -18,6 +18,11 @@ import { authenticate } from "../shopify.server";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
 import { LanguageManager } from "../components/LanguageManager";
+import { 
+  getLanguagePreference, 
+  setLanguagePreference, 
+  onLanguagePreferenceChange 
+} from "../utils/storage.client";
 import prisma from "../db.server";
 
 // 添加全局错误监听
@@ -68,15 +73,16 @@ export const loader = async ({ request }) => {
       ];
   
   return {
-    supportedLanguages
+    supportedLanguages,
+    shopId: session.shop  // 新增：传递shopId给前端用于localStorage键
   };
 };
 
 function Index() {
   console.log('[Index Component] Rendering started');
   
-  const { supportedLanguages } = useLoaderData();
-  console.log('[Index Component] Loader data:', { supportedLanguages });
+  const { supportedLanguages, shopId } = useLoaderData();
+  console.log('[Index Component] Loader data:', { supportedLanguages, shopId });
   
   const scanProductsFetcher = useFetcher();
   const scanCollectionsFetcher = useFetcher();
@@ -90,7 +96,27 @@ function Index() {
   const shopify = useAppBridge();
   console.log('[Index Component] App Bridge initialized successfully');
   
-  const [selectedLanguage, setSelectedLanguage] = useState('zh-CN');
+  // Language selector persistence: read saved preference on init
+  const [selectedLanguage, setSelectedLanguage] = useState(() => {
+    // SSR compatibility check
+    if (typeof window === 'undefined') {
+      console.log('[Language Preference] Server environment, using default: zh-CN');
+      return 'zh-CN';
+    }
+    
+    // Read saved language preference
+    const savedLanguage = getLanguagePreference(shopId);
+    
+    // Validate saved language is in current available list
+    if (savedLanguage && supportedLanguages.some(lang => lang.value === savedLanguage)) {
+      console.log('[Language Preference] Restored saved language:', savedLanguage);
+      return savedLanguage;
+    }
+    
+    // Default to Chinese Simplified
+    console.log('[Language Preference] Using default language: zh-CN');
+    return 'zh-CN';
+  });
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
   const [selectedResources, setSelectedResources] = useState([]);
   const [resources, setResources] = useState([]);
@@ -105,6 +131,44 @@ function Index() {
   // 分类翻译状态管理
   const [translatingCategories, setTranslatingCategories] = useState(new Set());
   const [syncingCategories, setSyncingCategories] = useState(new Set());
+
+  // Language preference persistence and multi-tab sync
+  useEffect(() => {
+    // SSR and data validation
+    if (typeof window === 'undefined' || !shopId) {
+      console.log('[Language Preference] Skip persistence setup: SSR or missing shopId');
+      return;
+    }
+    
+    // Save current language selection
+    const saved = setLanguagePreference(shopId, selectedLanguage);
+    if (saved) {
+      console.log('[Language Preference] Saved language preference:', selectedLanguage);
+    }
+    
+    // Listen for language changes from other tabs
+    const cleanup = onLanguagePreferenceChange(shopId, (newLanguage) => {
+      // Validate new language is in available list
+      if (supportedLanguages.some(lang => lang.value === newLanguage)) {
+        console.log('[Language Preference] Sync language from other tab:', newLanguage);
+        setSelectedLanguage(newLanguage);
+      } else {
+        console.warn('[Language Preference] Language from other tab not in available list:', newLanguage);
+      }
+    });
+    
+    return cleanup;
+  }, [selectedLanguage, shopId, supportedLanguages]);
+
+  // Validation when language list updates
+  useEffect(() => {
+    // If current selected language is no longer available, reset to default
+    if (supportedLanguages.length > 0 && 
+        !supportedLanguages.some(lang => lang.value === selectedLanguage)) {
+      console.warn('[Language Preference] Current language unavailable, reset to default');
+      setSelectedLanguage('zh-CN');
+    }
+  }, [supportedLanguages, selectedLanguage]);
   
   // 为每个分类创建独立的fetcher（预先创建几个）
   const categoryFetcher1 = useFetcher();
@@ -239,8 +303,8 @@ function Index() {
             setLastServiceError(currentError);
           }
         } else if (lastServiceError) {
-          // 服务恢复正常
-          addLog('✅ 翻译服务已恢复正常', 'success');
+          // Service recovered normally
+          addLog('[RECOVERY] Translation service restored', 'success');
           setLastServiceError(null);
         }
       }
@@ -725,6 +789,7 @@ function Index() {
                       options={dynamicLanguages}
                       value={selectedLanguage}
                       onChange={setSelectedLanguage}
+                      helpText="Select target language for translation (selection auto-saved)"
                     />
                   </Box>
                   <Box paddingBlockStart="600">

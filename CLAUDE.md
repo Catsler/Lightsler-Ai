@@ -127,50 +127,84 @@ redis-cli flushall              # 清空Redis缓存
 
 ## 项目架构
 
-### 核心目录结构
+### 核心架构模式
+
+**3层架构设计**:
+1. **Presentation Layer (UI)**: Remix routes + Polaris components
+2. **Service Layer**: Business logic services with `.server.js` suffix
+3. **Data Layer**: Prisma ORM + SQLite (production-ready)
+
+**关键设计原则**:
+- **Queue-First**: Redis queue with graceful fallback to memory queue
+- **Sequential Thinking**: AI-powered error recovery and intelligent skip logic
+- **Multi-Store Support**: Shop-scoped data with isolated processing
+- **Webhook-Driven**: Real-time sync via comprehensive webhook handling
+
+### 服务层架构
+
+#### 核心翻译流水线
 ```
-app/
-├── routes/              # Remix路由
-│   ├── api.*.jsx       # API端点（扫描、翻译、同步）
-│   ├── app.*.jsx       # 嵌入式应用页面
-│   ├── test.*.jsx      # 测试页面
-│   ├── debug.*.jsx     # 调试页面
-│   └── webhooks.*.jsx  # Webhook处理
-├── services/            # 业务逻辑
-│   ├── translation.server.js     # GPT翻译核心（含品牌词保护）
-│   ├── shopify-graphql.server.js # Shopify API封装（资源类型定义）
-│   ├── database.server.js        # 数据库操作
-│   ├── queue.server.js           # Redis队列
-│   ├── memory-queue.server.js    # 内存队列降级
-│   ├── sync-to-shopify.server.js # 批量同步服务
-│   ├── theme-translation.server.js # 主题翻译专用服务
-│   ├── error-analyzer.server.js  # 错误分析服务
-│   └── error-collector.server.js # 错误收集服务
-├── utils/               # 工具函数
-│   ├── error-handler.server.js   # 错误处理（TranslationError类）
-│   ├── api-response.server.js    # API响应标准化
-│   ├── error-fingerprint.server.js # 错误指纹分组
-│   ├── logger.server.js          # 日志系统
-│   ├── api.server.js             # API辅助函数
-│   └── config.server.js          # 配置管理
-├── config/              # 配置文件
-│   └── resource-categories.js    # 资源分类配置
-├── components/          # React组件
-├── shopify.server.js    # Shopify应用配置
-└── db.server.js         # Prisma客户端单例
+shopify-graphql.server.js → database.server.js → queue.server.js → translation.server.js → sync-to-shopify.server.js
 ```
 
-### 支持的资源类型（RESOURCE_TYPES）
-- **产品类**: PRODUCT, COLLECTION, FILTER, PRODUCT_OPTION, PRODUCT_OPTION_VALUE, SELLING_PLAN, SELLING_PLAN_GROUP
-- **内容类**: ARTICLE, BLOG, PAGE  
-- **导航类**: MENU, LINK
-- **主题类**: ONLINE_STORE_THEME及其7个子类型（APP_EMBED, JSON_TEMPLATE, LOCALE_CONTENT等）
-- **店铺类**: SHOP, SHOP_POLICY
+#### Sequential Thinking 智能系统
+```
+sequential-thinking-core.server.js  # 核心决策引擎
+├── intelligent-skip-engine.server.js    # 智能跳过决策
+├── version-detection.server.js          # 内容版本检测
+├── error-prevention-guard.server.js     # 错误预防
+├── quality-error-analyzer.server.js     # 质量分析
+└── auto-recovery.server.js              # 自动恢复
+```
 
-### 数据流程
-1. **扫描**: GraphQL批量获取Shopify资源 → 存储到SQLite
-2. **翻译**: 调用GPT API（保护HTML标签和品牌词） → 保存翻译结果
-3. **同步**: GraphQL Mutation更新到Shopify店铺
+#### 错误处理生态
+```
+error-collector.server.js  # 统一错误收集
+├── error-analyzer.server.js        # 模式识别
+├── error-recovery.server.js        # 自动修复
+└── translation-session-manager.js  # 会话管理
+```
+
+### 资源类型系统
+
+支持26种Shopify资源类型，按4大分类组织:
+- **Products & Collections**: PRODUCT, COLLECTION, FILTER, PRODUCT_OPTION, SELLING_PLAN等
+- **Content Management**: ARTICLE, BLOG, PAGE
+- **Navigation**: MENU, LINK
+- **Theme Resources**: 7种主题相关资源类型
+- **Shop Settings**: SHOP, SHOP_POLICY
+
+### 数据模型核心设计
+
+#### 核心实体关系
+```
+Shop 1:N Language (多语言支持)
+Shop 1:N Resource (资源管理)
+Resource 1:N Translation (翻译记录)
+Resource 1:N ErrorLog (错误追踪)
+TranslationSession 1:N Translation (会话管理)
+ErrorPattern N:N ErrorLog (模式匹配)
+```
+
+#### 关键数据特性
+- **版本控制**: contentHash + contentVersion 实现增量检测
+- **错误指纹**: fingerprint分组 + 自动修复规则
+- **质量评分**: qualityScore + riskScore 双维度评估
+- **会话恢复**: 断点续传 + resumeData检查点
+
+### 核心业务流程
+
+#### 完整翻译流水线
+1. **资源发现**: Webhook触发 + 批量扫描 → GraphQL API → SQLite存储
+2. **智能决策**: Sequential Thinking评估 → 跳过检查 → 版本对比
+3. **队列处理**: Redis队列调度 → 并发控制 → 错误重试
+4. **AI翻译**: GPT API调用 → HTML标签保护 → 品牌词保护 → 质量评估
+5. **结果同步**: GraphQL Mutation → Shopify店铺 → 状态更新
+
+#### 错误恢复机制
+1. **错误收集**: 统一错误指纹 → 模式识别 → 自动分类
+2. **智能分析**: 根因分析 → 影响评估 → 修复建议
+3. **自动恢复**: 重试策略 → 参数调整 → 人工介入
 
 ### 主要API端点
 
@@ -245,11 +279,70 @@ app/
 
 ## 开发规范
 
+### 关键开发模式
+
+#### 服务层开发规范
+```javascript
+// 服务文件必须以 .server.js 结尾
+// 导出单一主函数 + 工具函数
+// 统一错误处理和日志记录
+
+import { captureError } from "../utils/error-handler.server.js";
+import { logger } from "../utils/logger.server.js";
+
+export async function mainServiceFunction(params) {
+  try {
+    logger.info('开始处理', { params });
+    // 业务逻辑
+    return result;
+  } catch (error) {
+    await captureError('SERVICE_NAME', error, params);
+    throw error;
+  }
+}
+```
+
+#### API路由开发规范
+```javascript
+// 所有API路由使用withErrorHandling包装
+import { withErrorHandling } from "../utils/error-handler.server.js";
+import { authenticate } from "../shopify.server.js";
+
+export const action = withErrorHandling(async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  // 业务逻辑
+  return json({ success: true, data: result });
+});
+```
+
+#### 数据库操作规范
+```javascript
+// 使用事务保证数据一致性
+// 乐观锁防止并发冲突
+import prisma from "../db.server.js";
+
+await prisma.$transaction(async (tx) => {
+  const resource = await tx.resource.findUnique({
+    where: { id, contentVersion: expectedVersion }
+  });
+  
+  if (!resource) throw new Error('版本冲突');
+  
+  await tx.resource.update({
+    where: { id },
+    data: { 
+      ...updates,
+      contentVersion: { increment: 1 }
+    }
+  });
+});
+```
+
 ### 代码约定
 - **文件命名**: 服务端文件使用 `*.server.js` 后缀
 - **错误处理**: API路由使用 `withErrorHandling` 包装器
 - **认证**: 使用 `shopify.authenticate.admin()` 
-- **GraphQL版本**: 2025-07
+- **GraphQL版本**: 2025-07（在shopify.app.toml中配置）
 - **缩进**: 2个空格
 - **注释**: 中文注释
 - **ESLint**: 基于 @remix-run/eslint-config
@@ -272,40 +365,53 @@ QUEUE_CONCURRENCY=5                      # 队列并发数
 NODE_ENV=development|production          # 环境标识
 ```
 
-## 关键特性
+## 关键架构决策
 
-### 富文本处理
-- HTML标签自动保留（protectHtmlTags/restoreHtmlTags）
-- 媒体元素（图片/视频）保护
-- 品牌词不翻译（BRAND_WORDS词库）
-- 智能分块处理长文本（intelligentChunkText）
+### 服务层设计原则
+- **单一职责**: 每个`.server.js`文件专注一个业务领域
+- **依赖注入**: 服务间通过接口解耦，便于测试和替换
+- **错误边界**: 每层都有完整的错误处理和日志记录
+- **异步优先**: 重IO操作使用队列和异步处理
 
-### 队列系统
-- Redis不可用时自动降级到内存队列
-- 支持批量处理和进度跟踪
+### 数据一致性策略
+- **乐观锁**: 使用版本号防止并发更新冲突
+- **事务边界**: Prisma事务确保跨表操作的原子性
+- **幂等操作**: API设计支持安全重试
+- **最终一致性**: 异步队列处理接受短暂的数据不一致
+
+### 性能优化架构
+- **缓存分层**: 内存缓存 + Redis缓存 + 数据库缓存
+- **批量操作**: GraphQL批量查询和更新减少API调用
+- **智能跳过**: Sequential Thinking避免不必要的翻译
+- **队列分流**: 按资源类型和优先级分队列处理
+
+### 错误处理架构
+- **统一收集**: 所有错误通过ErrorLog表集中管理
+- **指纹识别**: 相同错误自动去重和分组
+- **模式匹配**: ErrorPattern表定义自动修复规则
+- **分级响应**: 根据严重程度自动执行不同的恢复策略
+
+## 核心特性实现
+
+### 富文本处理（translation.server.js）
+- `protectHtmlTags()`: HTML标签占位符保护
+- `restoreHtmlTags()`: 标签恢复和完整性验证
+- `BRAND_WORDS`: 品牌词库跳过翻译
+- `intelligentChunkText()`: 长文本智能分块
+
+### 队列系统（queue.server.js + memory-queue.server.js）
+- Redis优先，自动降级到内存队列
+- 批量处理和进度跟踪
 - 失败自动重试（最多3次）
-- 并发控制（QUEUE_CONCURRENCY）
+- `QUEUE_CONCURRENCY`环境变量控制并发
 
-### Shopify集成
-- 嵌入式运行在Shopify Admin内
-- 权限配置在 `shopify.app.toml`
-- Webhook处理（支持产品、集合、页面、主题等事件）
-- GraphQL批量操作优化（executeGraphQLWithRetry）
-- 权限范围：读写产品、内容、主题、翻译、文件等
-
-### Theme资源处理
-- 动态字段提取（dynamicFields）
-- 智能文件名解析（product.tent → Product: Tent）
-- JSON模板内容处理
-- 保持原始资源ID用于API调用
-
-### Sequential Thinking 智能翻译系统
-- **会话管理**: 断点续传、状态恢复、进度跟踪
-- **智能跳过**: 基于内容变化、质量历史的AI决策
-- **版本检测**: 增量更新、内容同步、变更追踪
-- **错误预防**: 事前风险评估、预防措施执行
-- **质量分析**: 多维度质量评估、趋势预测
-- **自动恢复**: 错误诊断、智能修复、系统自愈
+### Sequential Thinking 智能系统
+- **会话管理**: `translation-session-manager.server.js`断点续传
+- **智能跳过**: `intelligent-skip-engine.server.js`AI决策
+- **版本检测**: `version-detection.server.js`增量更新
+- **错误预防**: `error-prevention-guard.server.js`风险评估
+- **质量分析**: `quality-error-analyzer.server.js`多维度评估
+- **自动恢复**: `auto-recovery.server.js`智能修复
 
 ## 故障排查
 
@@ -377,21 +483,48 @@ node view-translation-logs.js --from="2024-01-01" --to="2024-01-31"
 - ✅ 新增Shopify权限后运行 `npm run deploy`
 - ✅ 测试关键功能流程（扫描→翻译→同步）
 
-### 调试工具
+### 关键调试命令
+
+#### 系统状态检查
 ```bash
-# 查看翻译状态
-curl http://localhost:PORT/api/status
+# 完整系统状态（包含队列、数据库、错误统计）
+curl http://localhost:3000/api/status
 
-# 查看错误日志
-curl http://localhost:PORT/api/errors
+# 错误日志查询（按严重程度分组）
+curl http://localhost:3000/api/errors?category=ERROR&limit=50
 
-# 查看翻译日志
-curl http://localhost:PORT/api/translation-logs
+# 翻译会话状态（断点续传信息）
+curl http://localhost:3000/api/translation-status
 
-# 测试GraphQL连接
-curl -X POST http://localhost:PORT/api/test-graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ shop { name } }"}'
+# 队列状态（Redis + 内存队列）
+curl http://localhost:3000/api/queue-status
+```
+
+#### 数据诊断工具
+```bash
+# 单独测试脚本
+node test-error-system.js        # 错误系统完整性测试
+node test-resource-types.js      # 资源类型扫描测试
+node test-translation-logs.js    # 翻译日志系统测试
+node diagnose-issue.js           # 问题诊断工具
+
+# Sequential Thinking 系统测试
+node test-sequential-thinking.js # AI决策引擎测试
+node test-translation-improvements.js # 翻译质量分析
+```
+
+#### 开发环境专用调试
+```bash
+# 查看所有测试页面
+open http://localhost:3000/test/language-selector
+open http://localhost:3000/test/translation-overview
+open http://localhost:3000/debug/resource-data
+
+# 错误系统调试界面
+open http://localhost:3000/app/errors
+
+# 监控面板
+open http://localhost:3000/app/monitoring
 ```
 
 ## 项目依赖管理
