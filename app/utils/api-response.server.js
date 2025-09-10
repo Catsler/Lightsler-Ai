@@ -138,8 +138,6 @@ export async function withErrorHandling(operation, operationName, shopDomain = '
     
     return result;
     
-    return result;
-    
   } catch (error) {
     // 处理Response对象类型的错误
     let errorMessage = "未知错误";

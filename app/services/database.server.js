@@ -305,4 +305,31 @@ export async function clearShopData(shopId) {
   });
 }
 
+/**
+ * 获取指定ID的资源及其所有翻译
+ * @param {string} resourceId - 资源ID (数据库中的resourceId字段，非数据库主键)
+ * @param {string} shopId - 店铺ID
+ * @returns {Promise<Object|null>} 资源记录及其翻译，如果不存在则返回null
+ */
+export async function getResourceWithTranslations(resourceId, shopId) {
+  try {
+    const resource = await prisma.resource.findFirst({
+      where: {
+        resourceId: resourceId,
+        shopId: shopId
+      },
+      include: {
+        translations: {
+          orderBy: { language: 'asc' }
+        }
+      }
+    });
+
+    return resource;
+  } catch (error) {
+    console.error('[getResourceWithTranslations] 获取资源失败:', error);
+    throw error;
+  }
+}
+
 export { prisma };

@@ -134,13 +134,14 @@ console.log(`🚀 翻译队列已启动: ${!useMemoryQueue ? 'Redis模式' : '�
 if (translationQueue) {
   translationQueue.process('translateResource', config.queue.concurrency, async (job) => {
     const { resourceId, shopId, language, adminApiContext } = job.data;
+    let resource;
     
     try {
       // 更新进度
       job.progress(10);
       
       // 获取资源信息
-      const resource = await prisma.resource.findUnique({
+      resource = await prisma.resource.findUnique({
         where: { id: resourceId }
       });
       

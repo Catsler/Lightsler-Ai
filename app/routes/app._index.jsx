@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -94,6 +94,7 @@ function Index() {
   
   // React Hooks必须在顶层调用，不能在条件语句中
   const shopify = useAppBridge();
+  const navigate = useNavigate();
   console.log('[Index Component] App Bridge initialized successfully');
   
   // Language selector persistence: read saved preference on init
@@ -953,8 +954,18 @@ function Index() {
             onSelectionChange={handleResourceSelection}
             currentLanguage={selectedLanguage}
             onResourceClick={(resource) => {
-              // 处理资源点击，显示详情
-              showToast(`查看资源: ${resource.title || resource.handle || resource.name}`);
+              // 统一路由处理 - Linus哲学：消除特殊情况
+              const resourceType = resource.resourceType.toLowerCase();
+              
+              // 所有资源使用统一路由格式
+              // Theme资源保持向后兼容，其他资源使用新路由
+              if (resourceType.includes('theme') || resourceType.includes('online_store')) {
+                // 保持Theme专用页面的向后兼容
+                navigate(`/app/theme/detail/${resource.id}?lang=${selectedLanguage}`);
+              } else {
+                // 所有其他资源使用统一路由
+                navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
+              }
             }}
             onTranslateCategory={handleCategoryTranslation}
             onSyncCategory={handleCategorySync}

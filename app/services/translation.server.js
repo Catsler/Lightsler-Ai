@@ -304,7 +304,7 @@ function normalizeHandle(text) {
 }
 
 // 检查是否为品牌词
-function isBrandWord(word) {
+export function isBrandWord(word) {
   // 检查是否在品牌词列表中
   if (BRAND_WORDS.has(word.toLowerCase())) {
     return true;

@@ -6,6 +6,18 @@ Rather than cloning this repo, you can use your preferred package manager and th
 
 Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-remix) for more details on the Remix app package.
 
+## 开发规则（Codex 全局）
+本仓库遵循 Codex 全局开发规则，详见：`/Users/Administrator/AGENTS.md`。
+
+要点摘录：
+- 好品味：通过重构消除特殊分支，化繁为简。
+- Never break userspace：向后兼容优先，避免破坏现有行为。
+- 实用主义：解决真实问题，拒绝不必要的复杂度。
+- 简洁：函数短小、命名克制、控制缩进层级。
+- 执行准则：使用计划工具、命令前有简短说明、最小化变更、匹配既有风格、避免破坏性操作、输出简洁。
+
+项目特定的细化与例外，请参阅本仓库的 `AGENTS.md`。
+
 ## Quick start
 
 ### Prerequisites

@@ -2,6 +2,77 @@
 
 ## 🚧 进行中 (In Progress)
 
+### 资源详情页系统重构 (2025-09-10启动) - Linus哲学
+**架构原则**: 消除26个特殊情况，统一为1个通用模式
+**开发方式**: 多Agent并行开发
+**预计完成**: 2025-09-15
+
+#### Phase 1: 数据层重构 (并行执行) ✅ 完成
+- [x] **统一资源详情API** - `backend-architect`
+  - 文件: `/api/resource-detail.jsx`
+  - 处理所有26种资源类型
+  - 响应时间目标: < 100ms
+- [ ] **数据库查询优化** - `database-optimizer`
+  - 添加必要索引
+  - 实现查询缓存
+  - 优化contentFields JSON查询
+
+#### Phase 2: 视图层开发 (并行执行) ✅ 完成
+- [x] **通用ResourceDetail组件** - `frontend-developer`
+  - 文件: `app/components/ResourceDetail.jsx`
+  - 自适应不同资源类型
+  - 最多3层缩进原则
+- [x] **资源类型适配器系统** - `backend-architect`
+  - 文件: `app/utils/resource-adapters.js`
+  - 统一数据转换接口
+  - 消除if/else地狱
+
+#### Phase 3: 路由整合 (串行执行) ✅ 完成
+- [x] **更新主页路由逻辑** - `code-reviewer`
+  - 文件: `app/routes/app._index.jsx`
+  - 统一跳转逻辑
+  - 移除"开发中"提示
+- [x] **创建通用详情页路由** - `frontend-developer`
+  - 文件: `app/routes/app.resource.$type.$id.jsx`
+  - 动态处理所有资源类型
+  - 保持Theme页面兼容
+
+#### Phase 4: Theme JSON优化 🎨
+- [ ] **增强JSON可视化** - `shopify-app-architect`
+  - 组件: ThemeJsonViewer
+  - 树形结构展示
+  - 高亮翻译字段
+- [ ] **优化递归翻译** - `shopify-app-architect`
+  - 减少递归深度
+  - 提升翻译性能
+  - 字段级编辑支持
+
+### Theme JSON详情页开发 (2025-01-10启动)
+**开发方式**: 多Agent并行开发
+**预计完成**: 2025-01-13
+
+#### Phase 1: 并行开发 (Agent分工) ✅ 完成
+- [x] 创建Theme专用详情页路由 - `backend-architect`
+  - `app/routes/app.theme.detail.$resourceId.jsx`
+  - 实现loader函数获取资源数据
+- [x] 开发JSON树形展示组件 - `frontend-developer`
+  - `app/components/ThemeJsonTreeView.jsx`
+  - 递归渲染、展开/折叠功能
+- [x] 创建翻译对比视图组件 - `ui-ux-designer`
+  - `app/components/ThemeTranslationCompare.jsx`
+  - 双栏对比布局
+- [x] 更新列表页跳转逻辑 - `code-reviewer`
+  - Theme资源跳转到专用详情页
+  - 普通资源显示开发中提示
+
+#### Phase 2: 验证测试 ✅ 完成
+- [x] 运行 `npm run lint && npm run build` 验证
+  - ESLint检查通过（仅有未使用变量警告）
+  - 项目构建成功
+- [ ] 添加搜索过滤功能 - `frontend-developer`（后续优化）
+- [ ] 实现批量编辑功能 - `ui-ux-designer`（后续优化）
+- [ ] 性能优化和测试 - `performance-engineer`（后续优化）
+
 ## 📋 待办事项 (Pending)
 
 ### 高优先级
@@ -22,9 +93,19 @@
 - [ ] 添加翻译进度可视化图表
 - [ ] 优化移动端显示效果
 
-## ✅ 已完成 (Completed) - 2025-01-10
+## ✅ 已完成 (Completed)
 
-### 语言级数据隔离功能
+### 双语展示字段完整性修复 - 2025-09-10
+**实施原则**: KISS (Keep It Simple, Stupid) - 最小改动，最大效果
+**改动文件**: 仅2个文件（api.resource-detail.jsx, ResourceDetail.jsx）
+- [x] 修复适配器null值过滤问题 - 保留null值展示字段存在性
+- [x] 导出STANDARD_TRANSLATION_MAP - 建立单一事实来源
+- [x] 更新组件使用统一映射表 - 消除硬编码配置
+- [x] 实现联合字段集策略 - 确保所有字段都展示
+- [x] 运行 `npm run build` 验证构建成功
+- [x] 创建Playwright测试脚本验证功能
+
+### 语言级数据隔离功能 - 2025-01-10
 - [x] 重构状态管理 - 将 `resources` 替换为 `allLanguagesData` 对象结构
 - [x] 实现派生状态计算 - 使用 `useMemo` 优化性能
 - [x] 修改 API 响应处理 - 按语言代码隔离存储数据
@@ -58,6 +139,12 @@
    - 优化开发环境热重载速度
 
 ## 📝 更新记录
+
+### 2025-09-10
+- 完成双语展示字段完整性修复（KISS原则）
+- 修复了null值字段被过滤的问题
+- 建立了字段映射的单一事实来源
+- 仅修改2个文件，保持最小改动原则
 
 ### 2025-01-10
 - 完成语言级数据隔离功能的全部实现
