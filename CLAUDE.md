@@ -42,6 +42,12 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 shopify app dev --tunnel-url=https://translate.ea
 
 **重要提示**: 此域名配置为用户专用，Claude Code不得擅自修改或使用其他隧道地址。
 
+### 关键配置信息
+- **应用URL**: https://translate.ease-joy.fun
+- **Client ID**: fa2e9f646301c483f81570613924c495 (在shopify.app.toml中配置)
+- **应用名称**: Lightsler AI Translator
+- **嵌入模式**: 启用 (embedded = true)
+
 ## 🚨 组件引用强制规范 (CRITICAL - READ FIRST)
 
 ### 强制使用本地组件库
@@ -100,8 +106,9 @@ Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin�
 - **队列**: Bull + Redis（可选，自动降级到内存队列）
 - **API版本**: Shopify GraphQL Admin API 2025-07
 - **构建**: Vite v5.4.8
-- **Node**: >=18.20
+- **Node**: ^18.20 || ^20.10 || >=21.0.0 (从package.json engines字段)
 - **包管理**: npm
+- **TypeScript**: v5.2.2 (开发依赖，类型支持)
 
 ## 常用开发命令
 
@@ -148,6 +155,10 @@ npm run config:link              # 链接Shopify应用配置
 npm run config:use               # 使用特定的应用配置
 npm run generate                 # 生成Shopify应用代码
 npm run env                      # 管理环境变量
+
+# 生产环境相关命令
+npm run docker-start             # Docker容器启动（包含setup）
+npm run graphql-codegen          # GraphQL代码生成
 ```
 
 ### 测试和调试
@@ -682,6 +693,8 @@ open http://localhost:3000/app/monitoring
 ### 包版本锁定
 项目使用 `resolutions` 和 `overrides` 字段锁定关键依赖版本以避免兼容性问题：
 - `@graphql-tools/url-loader`: 8.0.16
+- `@graphql-codegen/client-preset`: 4.7.0
+- `@graphql-codegen/typescript-operations`: 4.5.0
 - `vite`: ^5.4.8
 - `minimatch`: 9.0.5
 
