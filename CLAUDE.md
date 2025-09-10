@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚀 快速开始
+
+```bash
+# 最常用命令
+npm run dev                              # 启动开发服务器
+npm run lint && npm run build            # 代码检查和构建
+npx prisma migrate dev                   # 数据库迁移
+npm run deploy                           # 部署到Shopify
+
+# 开发环境（绕过SSL）
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
+```
+
 ## 🚨 开发启动第一准则 (CRITICAL - READ FIRST)
 
 ### 项目启动权限控制
@@ -43,6 +56,22 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 shopify app dev --tunnel-url=https://translate.ea
 - ✅ 使用组件前必须验证本地文档的最后验证日期
 - ✅ 如本地文档不存在，必须先创建文档再使用
 
+**组件验证工作流**:
+```bash
+# 1. 运行组件验证脚本
+node scripts/verify-components.js
+
+# 2. 检查组件完整性报告
+# 脚本会检查:
+# - 本地文档是否存在
+# - 文档最后更新时间
+# - 组件使用情况统计
+# - 缺失的组件文档
+
+# 3. 如果发现缺失文档，必须先创建再使用组件
+# 4. 使用组件后更新使用统计
+```
+
 ### 本地文档引用格式
 ```
 @local:polaris/layout/Card          # 布局类组件
@@ -76,53 +105,121 @@ Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin�
 
 ## 常用开发命令
 
+### 初次设置
 ```bash
-# 初次设置
 npm install                      # 安装依赖
 npm run setup                    # 初始化数据库（生成Prisma客户端 + 迁移）
+```
 
-# 开发
-npm run dev                      # 启动开发服务器（Shopify CLI处理隧道和认证）
+### 日常开发
+```bash
+# 标准开发流程
+npm run dev                      # 启动开发服务器
 NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev  # 开发环境绕过SSL验证
+
+# 增强调试开发流程（推荐）
+./start-browser-tools.sh         # 1. 启动浏览器调试工具
+npm run dev                      # 2. 启动开发服务器（会自动集成browser-tools）
+# 3. 打开 http://localhost:3000/app 开始开发
+# 4. browser-tools会实时监控和记录调试信息
+
+# 代码质量检查
 npm run lint                     # ESLint代码检查
 npm run build                    # 构建生产版本
 npm run start                    # 运行生产构建
 
-# 数据库操作
+# 停止调试环境
+./stop-browser-tools.sh          # 停止browser-tools服务器
+```
+
+### 数据库管理
+```bash
 npx prisma generate              # 生成Prisma客户端（模型改变后需执行）
 npx prisma migrate dev           # 创建/运行数据库迁移
 npx prisma studio                # 可视化数据库管理界面
 npx prisma migrate reset         # 重置数据库（清除所有数据）
 npx prisma migrate deploy        # 生产环境迁移
+```
 
-# Shopify CLI命令
+### Shopify部署
+```bash
 npm run deploy                   # 部署到Shopify（更新权限、webhook等）
 npm run config:link              # 链接Shopify应用配置
 npm run config:use               # 使用特定的应用配置
 npm run generate                 # 生成Shopify应用代码
 npm run env                      # 管理环境变量
+```
 
-# 测试脚本
-node test-error-system.js        # 错误系统测试
-node test-resource-types.js      # 资源类型测试  
-node test-category-translation.js # 分类翻译测试
+### 测试和调试
+```bash
+# 核心功能测试
+node test-resource-types.js      # 资源类型测试
 node test-multi-language.js      # 多语言测试
-node test-sequential-thinking.js # Sequential Thinking 系统演示
-node test-translation-logs.js    # 翻译日志测试
-node test-url-handle.js          # URL处理测试
+node test-sequential-thinking.js # AI系统测试
+
+# 性能测试套件
+node test-language-switching-performance.js      # 语言切换性能测试
+node test-language-manager-performance.js        # 语言管理器性能
+node test-performance-optimization.js            # 性能优化测试
+node test-cache-optimization.js                  # 缓存优化测试
+node test-database-optimization.js               # 数据库优化测试
+
+# 语言功能测试
+node test-language-switching.js                  # 基础语言切换
+node test-language-switching-comprehensive.js    # 综合语言切换测试
+node test-language-switching-functionality.js    # 语言切换功能测试
+node test-language-switching-integration.js      # 集成测试
+node test-language-switching-suite.js            # 完整测试套件
+node test-language-switching-ux-edge-cases.js    # UX边缘情况测试
+node test-language-filter-api.js                 # 语言过滤API测试
+node test-language-filter-database.js            # 语言过滤数据库测试
+
+# 系统稳定性测试
+node test-error-recovery-system.js               # 错误恢复系统测试
+node test-debounce-circuit-breaker.js           # 防抖和熔断器测试
+
+# 问题诊断工具
 node diagnose-issue.js           # 问题诊断工具
 node check-logs.js               # 检查系统日志
 node view-translation-logs.js    # 查看翻译日志
 
-# 初始化脚本
-npm run init-error-patterns      # 初始化错误模式数据
+# 系统初始化
+npm run init-error-patterns      # 初始化错误模式
 node scripts/init-languages.js   # 初始化语言配置
-node scripts/reset-database.js   # 重置数据库脚本
+node scripts/reset-database.js   # 重置数据库
+node scripts/verify-components.js # 验证组件完整性
+```
 
-# Redis（可选）
+### Redis管理（可选）
+```bash
 brew services start redis        # macOS启动Redis
-redis-cli ping                   # 测试Redis连接
-redis-cli flushall              # 清空Redis缓存
+redis-cli ping                   # 测试连接
+redis-cli flushall              # 清空缓存
+```
+
+### 浏览器调试工具
+```bash
+# 启动浏览器调试工具服务器
+./start-browser-tools.sh         # 启动browser-tools服务器
+./stop-browser-tools.sh          # 停止browser-tools服务器
+
+# 与开发环境集成使用
+# 1. 启动browser-tools服务器
+./start-browser-tools.sh
+
+# 2. 启动开发服务器
+npm run dev
+
+# 3. 打开浏览器开发者工具进行调试
+# 4. browser-tools会自动监控控制台错误和网络请求
+
+# 调试工作流
+open http://localhost:3000/app    # 打开应用
+# browser-tools会自动捕获:
+# - JavaScript控制台错误和警告
+# - 网络请求状态和响应时间
+# - 页面性能指标
+# - 自动截图功能（v1.2.0+）
 ```
 
 ## 项目架构
@@ -154,7 +251,8 @@ sequential-thinking-core.server.js  # 核心决策引擎
 ├── version-detection.server.js          # 内容版本检测
 ├── error-prevention-guard.server.js     # 错误预防
 ├── quality-error-analyzer.server.js     # 质量分析
-└── auto-recovery.server.js              # 自动恢复
+├── auto-recovery.server.js              # 自动恢复
+└── translation-intelligence.server.js   # 翻译智能分析
 ```
 
 #### 错误处理生态
@@ -163,6 +261,23 @@ error-collector.server.js  # 统一错误收集
 ├── error-analyzer.server.js        # 模式识别
 ├── error-recovery.server.js        # 自动修复
 └── translation-session-manager.js  # 会话管理
+```
+
+#### 性能与监控系统
+```
+performance-monitor.server.js  # 性能监控
+├── memory-cache.server.js          # 内存缓存管理
+├── alert-manager.server.js         # 告警管理
+└── log-persistence.server.js       # 日志持久化
+```
+
+#### 增强服务层
+```
+enhanced-translation.server.js  # 增强翻译服务
+├── theme-translation.server.js     # 主题翻译专用
+├── shopify-locales.server.js       # Shopify语言管理
+└── webhook-manager.server.js       # Webhook管理
+└── webhook-cleanup.server.js       # Webhook清理
 ```
 
 ### 资源类型系统
@@ -406,21 +521,53 @@ NODE_ENV=development|production          # 环境标识
 - `QUEUE_CONCURRENCY`环境变量控制并发
 
 ### Sequential Thinking 智能系统
-- **会话管理**: `translation-session-manager.server.js`断点续传
-- **智能跳过**: `intelligent-skip-engine.server.js`AI决策
-- **版本检测**: `version-detection.server.js`增量更新
-- **错误预防**: `error-prevention-guard.server.js`风险评估
-- **质量分析**: `quality-error-analyzer.server.js`多维度评估
-- **自动恢复**: `auto-recovery.server.js`智能修复
+
+**核心功能**：AI驱动的智能决策和错误恢复系统
+
+#### 使用场景
+1. **智能跳过决策**: 自动判断资源是否需要翻译
+   - 检测内容版本变化
+   - 评估翻译必要性
+   - 避免重复翻译
+
+2. **错误自动恢复**: 翻译失败时的智能处理
+   - 分析错误模式
+   - 自动调整参数
+   - 智能重试策略
+
+3. **质量保证**: 翻译质量多维度评估
+   - HTML完整性检查
+   - 品牌词保护验证
+   - 语义一致性评分
+
+#### 核心模块
+- **会话管理**: `translation-session-manager.server.js` - 断点续传
+- **智能跳过**: `intelligent-skip-engine.server.js` - AI决策
+- **版本检测**: `version-detection.server.js` - 增量更新
+- **错误预防**: `error-prevention-guard.server.js` - 风险评估
+- **质量分析**: `quality-error-analyzer.server.js` - 多维度评估
+- **自动恢复**: `auto-recovery.server.js` - 智能修复
 
 ## 故障排查
 
-### 常见问题
-1. **认证循环**: 运行 `npm run deploy` 更新权限
-2. **数据库错误**: 运行 `npm run setup` 或 `npx prisma migrate dev`
-3. **Redis连接失败**: 自动降级到内存队列，无需干预
-4. **翻译API问题**: 检查GPT_API_KEY和GPT_API_URL
-5. **Shopify API限流**: executeGraphQLWithRetry自动处理重试
+### 常见问题和解决方案
+
+| 问题 | 症状 | 解决方案 |
+|------|------|----------|
+| **认证循环** | 登录后立即退出 | `npm run deploy` 更新权限 |
+| **数据库错误** | "Table not found" | `npm run setup` 或 `npx prisma migrate dev` |
+| **Redis连接失败** | "ECONNREFUSED" | 自动降级到内存队列，无需干预 |
+| **翻译API问题** | "401 Unauthorized" | 检查 `GPT_API_KEY` 和 `GPT_API_URL` |
+| **Shopify限流** | "429 Too Many Requests" | executeGraphQLWithRetry自动处理 |
+| **版本冲突** | "Version conflict" | 检查contentVersion，使用事务处理 |
+| **Webhook失败** | Webhook不触发 | `npm run deploy` 重新注册webhook |
+
+### 错误代码速查
+- **AUTH_001**: Session过期 → 重新登录
+- **DB_001**: 数据库连接失败 → 检查SQLite文件权限
+- **API_001**: GraphQL错误 → 检查API版本和权限
+- **TRANS_001**: 翻译失败 → 检查GPT API配置
+- **QUEUE_001**: 队列处理失败 → 检查Redis或内存限制
 
 ## 重要函数和模块
 
@@ -481,6 +628,9 @@ node view-translation-logs.js --from="2024-01-01" --to="2024-01-31"
 - ✅ `npm run build` 构建成功
 - ✅ 数据模型变更后运行 `npx prisma migrate dev`
 - ✅ 新增Shopify权限后运行 `npm run deploy`
+- ✅ 运行组件验证 `node scripts/verify-components.js`
+- ✅ 运行性能测试 `node test-performance-optimization.js`
+- ✅ 使用browser-tools验证前端功能和性能
 - ✅ 测试关键功能流程（扫描→翻译→同步）
 
 ### 关键调试命令
@@ -540,20 +690,82 @@ open http://localhost:3000/app/monitoring
 - **Prisma升级**: 运行 `npx prisma migrate dev` 更新数据库架构
 - **Shopify API版本**: 当前使用2025-07，升级时更新shopify.app.toml
 
-## 注意事项
+## 关键注意事项
 
-1. **Theme资源**: 使用动态字段，需要特殊处理contentFields
-2. **翻译质量**: 关注HTML结构完整性和品牌词保护
-3. **性能优化**: 大批量翻译使用队列系统
-4. **错误恢复**: ErrorLog表提供详细错误追踪
-5. **开发环境**: 需要设置NODE_TLS_REJECT_UNAUTHORIZED=0绕过SSL验证
-6. **批量操作**: 使用updateResourceTranslationBatch进行批量更新以优化性能
-7. **日志管理**: TranslationLogger类自动记录所有翻译操作
-8. **内存管理**: 大文本使用intelligentChunkText分块处理避免内存溢出
-9. **权限管理**: 确保shopify.app.toml中的scopes包含所有必需权限
-10. **版本兼容**: Node.js需要18.20+，Polaris限制在v12（v13需要Node 20+）
-11. **队列系统**: Redis不可用时自动降级到内存队列，无需手动干预
-12. **GraphQL限流**: executeGraphQLWithRetry自动处理重试和限流
-13. **Webhook处理**: 支持产品、集合、页面、主题、语言、文章等多种事件类型
-14. **内容版本控制**: 使用contentHash和contentVersion进行变更检测和增量更新
-15. **风险评估**: 每个资源都有riskScore评分，用于智能决策
+### 性能优化
+- **批量操作**: 使用 `updateResourceTranslationBatch` 批量更新
+- **队列系统**: Redis不可用时自动降级到内存队列
+- **内存管理**: 大文本使用 `intelligentChunkText` 分块处理
+- **GraphQL限流**: `executeGraphQLWithRetry` 自动处理重试
+
+### 数据完整性
+- **版本控制**: 使用 `contentHash` 和 `contentVersion` 进行增量更新
+- **风险评估**: 每个资源都有 `riskScore` 评分用于智能决策
+- **Theme资源**: 动态字段需特殊处理 `contentFields`
+- **翻译质量**: HTML完整性和品牌词保护验证
+
+### 环境要求
+- **Node.js**: 需要 18.20+
+- **Polaris**: 限制在 v12（v13需要Node 20+）
+- **开发环境**: 设置 `NODE_TLS_REJECT_UNAUTHORIZED=0` 绕过SSL验证
+- **权限配置**: 确保 `shopify.app.toml` 包含所有必需权限
+
+## 性能测试与优化
+
+### 性能测试工作流
+```bash
+# 完整性能测试套件（按优先级执行）
+# 1. 基础性能测试
+node test-performance-optimization.js    # 整体性能优化测试
+
+# 2. 缓存系统测试
+node test-cache-optimization.js          # 缓存策略优化
+node test-database-optimization.js       # 数据库查询优化
+
+# 3. 语言切换性能测试
+node test-language-switching-performance.js      # 语言切换响应时间
+node test-language-manager-performance.js        # 语言管理器效率
+
+# 4. 系统稳定性测试
+node test-debounce-circuit-breaker.js           # 防抖和熔断器
+node test-error-recovery-system.js              # 错误恢复性能
+```
+
+### 性能监控集成
+```bash
+# 在开发环境中启用性能监控
+# 1. 启动性能监控服务
+npm run dev  # 自动启用performance-monitor.server.js
+
+# 2. 查看实时性能指标
+curl http://localhost:3000/api/status    # 包含性能统计
+
+# 3. 性能告警监控
+# alert-manager.server.js 会自动监控:
+# - 响应时间超出阈值
+# - 内存使用过高
+# - 队列堆积
+# - 错误率异常
+```
+
+### 性能优化检查清单
+```bash
+# 开发完成前必须运行的性能测试
+npm run lint && npm run build               # 基础质量检查
+node test-performance-optimization.js      # 性能回归测试
+node test-cache-optimization.js            # 缓存效率验证
+node test-language-switching-performance.js # 用户体验测试
+
+# 生产环境性能验证
+# 1. 启用浏览器工具监控
+./start-browser-tools.sh
+
+# 2. 模拟生产负载
+npm run dev  # 配合browser-tools监控
+
+# 3. 性能指标验证
+# - 页面加载时间 < 2秒
+# - 语言切换响应 < 500ms  
+# - 翻译队列处理速度符合预期
+# - 内存使用稳定无泄漏
+```

@@ -13,12 +13,14 @@ import { getResourceCategory } from "../config/resource-categories.js";
 export const loader = async ({ request }) => {
   return withErrorHandling(async () => {
     const { session } = await authenticate.admin(request);
+    const url = new URL(request.url);
+    const targetLanguage = url.searchParams.get('language');
     
     // 获取店铺记录
     const shop = await getOrCreateShop(session.shop, session.accessToken);
     
-    // 获取数据库统计
-    const dbStats = await getTranslationStats(shop.id);
+    // 获取数据库统计（支持语言过滤）
+    const dbStats = await getTranslationStats(shop.id, targetLanguage);
     
     // 获取队列统计
     const queueStats = await getQueueStats();
@@ -27,8 +29,8 @@ export const loader = async ({ request }) => {
     const translationServiceStatus = await getTranslationServiceStatus();
     const translationServiceStats = getTranslationServiceStats();
     
-    // 获取资源列表
-    const resources = await getAllResources(shop.id);
+    // 获取资源列表（支持语言过滤）
+    const resources = await getAllResources(shop.id, targetLanguage);
     
     return successResponse({
       shop: {

@@ -119,8 +119,22 @@ function Index() {
   });
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
   const [selectedResources, setSelectedResources] = useState([]);
-  const [resources, setResources] = useState([]);
-  const [stats, setStats] = useState({ totalResources: 0, pendingResources: 0, completedResources: 0 });
+  // 语言级数据隔离：使用对象存储各语言的独立数据
+  const [allLanguagesData, setAllLanguagesData] = useState({});
+  
+  // 派生当前语言的数据
+  const currentLanguageData = useMemo(() => 
+    allLanguagesData[selectedLanguage] || null,
+    [allLanguagesData, selectedLanguage]
+  );
+  
+  // 从当前语言数据中提取资源和统计信息
+  const resources = currentLanguageData?.resources || [];
+  const stats = currentLanguageData?.stats || {
+    totalResources: 0,
+    pendingResources: 0,
+    completedResources: 0
+  };
   const [translationService, setTranslationService] = useState(null);
   const [logs, setLogs] = useState([]);
   const [appBridgeError, setAppBridgeError] = useState(false);
@@ -169,6 +183,20 @@ function Index() {
       setSelectedLanguage('zh-CN');
     }
   }, [supportedLanguages, selectedLanguage]);
+  
+  // 语言切换时清理选中状态
+  useEffect(() => {
+    // 切换语言时清空选中的资源
+    setSelectedResources([]);
+    
+    // 检查新语言是否有缓存数据
+    const languageData = allLanguagesData[selectedLanguage];
+    if (!languageData) {
+      console.log(`[Language Switch] 语言 ${selectedLanguage} 暂无数据`);
+    } else {
+      console.log(`[Language Switch] 加载 ${selectedLanguage} 缓存数据，资源数: ${languageData.resources?.length || 0}`);
+    }
+  }, [selectedLanguage, allLanguagesData]);
   
   // 为每个分类创建独立的fetcher（预先创建几个）
   const categoryFetcher1 = useFetcher();
@@ -288,8 +316,20 @@ function Index() {
       if (hasStatusChanged(currentData, lastStatusData)) {
         const { resources: resourcesData, stats: statsData, translationService: serviceData } = currentData;
         
-        setResources(resourcesData || []);
-        setStats(statsData?.database || { totalResources: 0, pendingResources: 0, completedResources: 0 });
+        // 将数据存储到对应语言的槽位
+        setAllLanguagesData(prev => ({
+          ...prev,
+          [selectedLanguage]: {
+            resources: resourcesData || [],
+            stats: statsData?.database || {
+              totalResources: 0,
+              pendingResources: 0,
+              completedResources: 0
+            },
+            lastUpdated: Date.now()
+          }
+        }));
+        
         setTranslationService(serviceData || null);
         
         // 更新缓存的状态数据
@@ -628,14 +668,20 @@ function Index() {
 
   // 清空数据
   const clearData = useCallback(() => {
-    addLog('🗑️ 清空所有数据...', 'info');
+    addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
     clearFetcher.submit({ type: 'all' }, { 
       method: 'POST', 
       action: '/api/clear' 
     });
-    setResources([]);
+    
+    // 只清空当前语言的数据
+    setAllLanguagesData(prev => ({
+      ...prev,
+      [selectedLanguage]: null
+    }));
+    
     setSelectedResources([]);
-  }, [addLog, clearFetcher]);
+  }, [addLog, clearFetcher, selectedLanguage]);
 
   // 处理资源选择
   const handleResourceSelection = useCallback((resourceId, checked) => {

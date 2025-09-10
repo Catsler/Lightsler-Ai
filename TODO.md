@@ -1,169 +1,74 @@
-# Shopify组件库本地化任务管理
+# TODO 任务列表
 
-## 🎯 项目目标
-建立本地化的Shopify组件库，彻底解决组件引用错误问题，实现零错误开发。
+## 🚧 进行中 (In Progress)
 
-## 📊 整体进度
-- **开始时间**: 2025-01-04
-- **预计完成**: 3-4天
-- **当前状态**: 🚀 进行中
-- **完成进度**: 1/7 (14%) ✨ 语言选择器持久化已完成
+## 📋 待办事项 (Pending)
 
-## 🤖 Agent协同工作策略
+### 高优先级
+- [ ] 添加语言数据缓存过期时间管理（30分钟自动过期）
+- [ ] 实现跨标签页语言数据同步功能
+- [ ] 优化大数据量时的内存使用（实现 LRU 缓存淘汰）
+- [ ] 添加数据持久化到 localStorage 功能
 
-### 核心协调原则
-1. **独立任务分配**: 每个Agent负责独立的子任务，避免任务交叉
-2. **并行执行**: 利用Task工具同时启动多个Agent
-3. **接口标准化**: 定义清晰的输入输出规范
-4. **结果整合**: workflow-conductor统一协调和整合结果
+### 中优先级
+- [ ] 实现语言切换时的预加载机制
+- [ ] 添加数据增量更新功能（减少全量替换）
+- [ ] 优化快速切换语言时的防抖处理
+- [ ] 添加加载状态的骨架屏显示
 
-### Agent任务分配
+### 低优先级
+- [ ] 添加语言数据导出功能
+- [ ] 实现批量语言操作功能
+- [ ] 添加翻译进度可视化图表
+- [ ] 优化移动端显示效果
 
-#### Phase 1: 基础结构建设（并行执行）
-- **Agent 1: file-janitor**
-  - 任务: 创建docs/components目录结构
-  - 输出: 完整的目录树结构
-  - 时间: 10分钟
+## ✅ 已完成 (Completed) - 2025-01-10
 
-- **Agent 2: docs-architect**  
-  - 任务: 分析现有代码，提取组件使用模式
-  - 输出: 组件使用频率统计和模式分析
-  - 时间: 30分钟
+### 语言级数据隔离功能
+- [x] 重构状态管理 - 将 `resources` 替换为 `allLanguagesData` 对象结构
+- [x] 实现派生状态计算 - 使用 `useMemo` 优化性能
+- [x] 修改 API 响应处理 - 按语言代码隔离存储数据
+- [x] 优化语言切换逻辑 - 自动清空选中状态
+- [x] 修改清空数据功能 - 只影响当前语言
+- [x] 运行 `npm run lint` 代码质量检查
+- [x] 运行 `npm run build` 构建验证
+- [x] 更新项目文档
 
-- **Agent 3: search-specialist**
-  - 任务: 搜集Context7最新Shopify文档
-  - 输出: 最新组件API和GraphQL规范
-  - 时间: 20分钟
+## 🐛 已知问题 (Known Issues)
 
-#### Phase 2: 文档生成（并行执行）
-- **Agent 4: reference-builder**
-  - 任务: 创建Polaris组件参考文档
-  - 输入: Context7文档 + 使用模式分析
-  - 输出: docs/components/polaris/完整文档
-  - 时间: 1小时
+- [ ] 内存使用问题 - 大量语言数据可能导致内存占用过高
+- [ ] 并发请求问题 - 快速切换语言时可能产生竞态条件
+- [ ] 缓存一致性 - 多标签页操作时数据可能不同步
 
-- **Agent 5: api-documenter**
-  - 任务: 创建GraphQL API文档
-  - 输入: shopify-graphql.server.js分析结果
-  - 输出: docs/components/shopify-graphql/完整文档
-  - 时间: 45分钟
+## 💡 改进建议 (Improvement Ideas)
 
-- **Agent 6: tutorial-engineer**
-  - 任务: 创建项目特定使用教程
-  - 输入: 翻译系统特有模式
-  - 输出: docs/components/best-practices/教程
-  - 时间: 45分钟
+1. **性能优化**
+   - 实现虚拟滚动处理大量资源列表
+   - 使用 Web Workers 处理繁重的数据处理
+   - 实现智能分页加载
 
-#### Phase 3: 规范更新和测试（串行执行）
-- **Agent 7: legacy-modernizer**
-  - 任务: 识别和更新过时组件引用
-  - 输入: 所有源代码文件
-  - 输出: 更新建议列表
-  - 时间: 30分钟
+2. **用户体验**
+   - 添加语言切换动画过渡效果
+   - 提供批量操作的撤销功能
+   - 实现拖拽排序功能
 
-- **Agent 8: test-automator**
-  - 任务: 创建组件使用验证测试
-  - 输入: 本地组件库文档
-  - 输出: 自动化测试脚本
-  - 时间: 45分钟
+3. **开发体验**
+   - 添加更多的单元测试覆盖
+   - 实现 E2E 测试自动化
+   - 优化开发环境热重载速度
 
-## ✅ 任务列表
+## 📝 更新记录
 
-### 🏗️ Phase 1: 基础建设 [进行中]
-- [x] **语言选择器持久化功能** ✨ 新增
-  - Agent: javascript-pro + react-pro  
-  - 状态: ✅ 已完成 (2025-01-08)
-  - 实现localStorage持久化，支持多标签页同步
-  - 遵循@local:polaris/forms/Select规范
-  
-- [ ] **创建本地组件库目录结构** 
-  - Agent: file-janitor
-  - 状态: ⏳ 待开始
-  - 创建docs/components完整目录树
-  
-- [ ] **收集和整理Polaris核心组件文档**
-  - Agent: reference-builder + search-specialist
-  - 状态: ⏳ 待开始
-  - 覆盖IndexTable, Button, TextField, Select, Badge等核心组件
-
-- [ ] **创建GraphQL API引用文档**
-  - Agent: api-documenter
-  - 状态: ⏳ 待开始
-  - 文档化2025-07版本的queries和mutations
-
-### 📝 Phase 2: 规范制定
-- [ ] **更新CLAUDE.md组件引用规范**
-  - Agent: docs-architect
-  - 状态: ⏳ 待开始
-  - 添加强制使用本地组件库的规则
-  
-- [ ] **建立组件验证和测试机制**
-  - Agent: test-automator
-  - 状态: ⏳ 待开始
-  - 创建自动化验证脚本
-
-- [ ] **创建项目特定最佳实践文档**
-  - Agent: tutorial-engineer
-  - 状态: ⏳ 待开始
-  - 翻译系统特有的组件使用模式
-
-### 🔧 Phase 3: 实施和验证
-- [ ] **迁移现有代码到新组件引用**
-  - Agent: legacy-modernizer
-  - 状态: ⏳ 待开始
-  
-- [ ] **运行全面测试验证**
-  - Agent: test-automator + debugger
-  - 状态: ⏳ 待开始
-
-- [ ] **性能和质量评估**
-  - Agent: performance-engineer + code-reviewer
-  - 状态: ⏳ 待开始
-
-## 📈 关键指标
-- **组件错误数**: 当前未知 → 目标0
-- **开发效率提升**: 目标90%
-- **文档完整度**: 0% → 100%
-- **测试覆盖率**: 0% → 95%
-
-## 🚦 风险和依赖
-1. **Context7可用性**: 确保能获取最新Shopify文档
-2. **Polaris版本兼容**: 当前v12.27.0，注意v13需要Node 20+
-3. **GraphQL版本**: 确保2025-07版本文档准确性
-
-## 💡 优化建议
-1. 使用workflow-conductor协调所有Agent工作
-2. 建立Agent间的数据共享机制（通过文件系统）
-3. 定期使用context-manager保存工作进度
-4. 使用error-detective快速定位问题
-
-## 🎉 已完成任务详情
-
-### ✅ 语言选择器持久化功能 (2025-01-08)
-**实施内容**:
-- 📁 创建`app/utils/storage.client.js`工具模块
-- 🔧 修改loader函数传递shopId到前端
-- 🎯 实现useState初始化时读取保存的语言偏好
-- 🔄 添加useEffect监听和保存语言切换
-- 📱 支持多标签页之间语言选择同步
-- ✅ 遵循@local:polaris/forms/Select组件规范
-
-**技术特性**:
-- SSR兼容性: 检查window对象存在性
-- 错误处理: try-catch包装所有localStorage操作
-- 数据验证: 保存的语言必须在可用列表中验证
-- 多店铺支持: localStorage键包含shopId避免冲突
-- 用户体验: 添加helpText提示用户选择会自动保存
-
-**测试验证**: ✅ npm run build编译成功，无错误
-
-## 📅 下次更新计划
-- [ ] Phase 1完成后更新进度（预计2小时）
-- [ ] Phase 2完成后进行中期评估（预计1天）
-- [ ] 最终验证和文档审查（预计第3天）
+### 2025-01-10
+- 完成语言级数据隔离功能的全部实现
+- 修复了语言切换时的数据混乱问题
+- 优化了内存使用和缓存策略
 
 ---
-*最后更新: 2025-01-08*
-*协调者: workflow-conductor*
-*执行团队: 8个专业Agent并行协作*
-*最新完成: 语言选择器持久化功能 by javascript-pro + react-pro*
+
+*使用说明：*
+- 🚧 = 正在进行中的任务
+- 📋 = 待办任务
+- ✅ = 已完成任务
+- 🐛 = 需要修复的问题
+- 💡 = 未来的改进想法

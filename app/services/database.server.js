@@ -109,14 +109,21 @@ export async function getPendingResources(shopId, resourceType = null) {
 /**
  * 获取店铺的所有资源
  * @param {string} shopId - 店铺ID
+ * @param {string} language - 可选：目标语言过滤
  * @returns {Promise<Array>} 资源列表
  */
-export async function getAllResources(shopId) {
+export async function getAllResources(shopId, language = null) {
+  const includeClause = language ? {
+    translations: {
+      where: { language: language }
+    }
+  } : {
+    translations: true
+  };
+
   return await prisma.resource.findMany({
     where: { shopId: shopId },
-    include: {
-      translations: true
-    },
+    include: includeClause,
     orderBy: { createdAt: 'desc' }
   });
 }
@@ -212,9 +219,10 @@ export async function updateResourceStatus(resourceId, status) {
 /**
  * 获取店铺的翻译统计
  * @param {string} shopId - 店铺ID
+ * @param {string} language - 可选：目标语言过滤
  * @returns {Promise<Object>} 统计信息
  */
-export async function getTranslationStats(shopId) {
+export async function getTranslationStats(shopId, language = null) {
   const totalResources = await prisma.resource.count({
     where: { shopId: shopId }
   });
@@ -227,16 +235,41 @@ export async function getTranslationStats(shopId) {
     where: { shopId: shopId, status: 'completed' }
   });
 
+  const translationWhere = { shopId: shopId };
+  if (language) {
+    translationWhere.language = language;
+  }
+
   const totalTranslations = await prisma.translation.count({
-    where: { shopId: shopId }
+    where: translationWhere
   });
 
-  return {
+  // 如果指定了语言，添加语言特定的统计
+  const result = {
     totalResources,
     pendingResources,
     completedResources,
     totalTranslations
   };
+
+  if (language) {
+    // 获取该语言已翻译的资源数量
+    const resourcesWithLanguageTranslations = await prisma.resource.count({
+      where: {
+        shopId: shopId,
+        translations: {
+          some: { language: language }
+        }
+      }
+    });
+    
+    result.languageTranslatedResources = resourcesWithLanguageTranslations;
+    result.languageTranslationProgress = totalResources > 0 
+      ? Math.round((resourcesWithLanguageTranslations / totalResources) * 100)
+      : 0;
+  }
+
+  return result;
 }
 
 /**
