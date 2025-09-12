@@ -105,6 +105,25 @@
 - [x] 运行 `npm run build` 验证构建成功
 - [x] 创建Playwright测试脚本验证功能
 
+### 产品选项归类与双语详情增强 - 2025-09-12（KISS）
+- [x] 新增按需API：`/api/product-options`、`/api/product-metafields`（只读懒加载）
+- [x] GraphQL辅助：`fetchOptionsForProduct`、`fetchMetafieldsForProduct`
+- [x] 列表页：产品行支持“展开选项”，懒加载显示到该产品下（未改数据结构）
+- [x] 详情页：新增“选项/Metafields”区块，按需加载并展示双语对照（无译文时显示占位）
+- [x] 双语回退：对未知翻译字段启用“键值对”回退展示，保证“有原文就显示”
+- [x] 列表去重：隐藏顶层 `PRODUCT_OPTION/PRODUCT_OPTION_VALUE` 资源，只保留产品行“展开选项”展示路径
+- [x] 布局精简：移除右侧栏；“产品扩展”移至“资源内容”下；三按钮并入“资源内容”抬头；“元数据”移至页面底部
+- [x] Playwright脚本：补充最小端到端校验（布局顺序、按钮存在、展开/收起选项与Metafields）
+  - 运行前提：已通过 `shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000` 启动并登录，准备 `E2E_STORAGE_STATE`
+  - 运行示例：`E2E_BASE_URL=https://translate.ease-joy.fun:3000 E2E_RESOURCE_PATH=/app/resource/product/<id>?lang=zh-CN E2E_STORAGE_STATE=playwright/.auth/admin.json npm run test:e2e`
+- [x] 资源分类调整：将 `FILTER` 从“产品与集合/集合”移动至“内容管理/其他选项”，仅改配置，避免误归类
+
+### 动态可译模块发现与模板适配 - 2025-09-12（KISS）
+- [x] 路由 loader：调用 Admin GraphQL `translatableResource`，发现该资源的 `translatableContent.key` 列表
+- [x] 详情模板：基于 keys 动态展示模块（标题、正文、Handle、摘要/标签、SEO 优先/回退、其他可译字段）
+- [x] SEO 兼容：优先 `seo.title/seo.description`，回退 `meta_title/meta_description`
+- [x] 构建校验：`npm run build` 通过（未启动项目）
+
 ### 语言级数据隔离功能 - 2025-01-10
 - [x] 重构状态管理 - 将 `resources` 替换为 `allLanguagesData` 对象结构
 - [x] 实现派生状态计算 - 使用 `useMemo` 优化性能

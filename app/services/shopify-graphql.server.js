@@ -634,6 +634,53 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
   return resources;
 }
 
+// 获取单个产品的选项（按需懒加载）
+export async function fetchOptionsForProduct(admin, productGid, maxRetries = 3) {
+  const QUERY = `#graphql
+    query ProductOptions($id: ID!) {
+      product(id: $id) {
+        id
+        options {
+          name
+          values
+        }
+      }
+    }
+  `;
+  const data = await executeGraphQLWithRetry(admin, QUERY, { id: productGid }, maxRetries);
+  const options = data?.data?.product?.options || [];
+  return options.map(opt => ({ name: opt.name, values: opt.values || [] }));
+}
+
+// 获取单个产品的 metafields（按需懒加载）
+export async function fetchMetafieldsForProduct(admin, productGid, maxRetries = 3) {
+  const QUERY = `#graphql
+    query ProductMetafields($id: ID!, $first: Int = 50) {
+      product(id: $id) {
+        id
+        metafields(first: $first) {
+          edges {
+            node {
+              namespace
+              key
+              type
+              value
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await executeGraphQLWithRetry(admin, QUERY, { id: productGid, first: 50 }, maxRetries);
+  const edges = data?.data?.product?.metafields?.edges || [];
+  return edges.map(({ node }) => ({
+    namespace: node.namespace,
+    key: node.key,
+    type: node.type,
+    value: node.value
+  }));
+}
+
 // 获取Theme相关资源
 export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
   const resources = [];

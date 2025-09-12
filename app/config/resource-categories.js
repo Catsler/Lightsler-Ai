@@ -15,7 +15,7 @@ export const RESOURCE_CATEGORIES = {
       },
       COLLECTIONS: {
         name: '集合',
-        resources: ['COLLECTION', 'FILTER']
+        resources: ['COLLECTION']
       },
       SELLING_PLANS: {
         name: '销售计划',
@@ -36,6 +36,10 @@ export const RESOURCE_CATEGORIES = {
       PAGES: {
         name: '页面',
         resources: ['PAGE']
+      },
+      OTHER_OPTIONS: {
+        name: '其他选项',
+        resources: ['FILTER']
       }
     }
   },

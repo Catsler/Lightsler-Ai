@@ -51,6 +51,7 @@ export const loader = async ({ request }) => {
           id: r.id,
           resourceType: r.resourceType,
           resourceId: r.resourceId,
+          gid: r.gid,
           title: r.title,
           handle: r.handle,
           name: r.name,

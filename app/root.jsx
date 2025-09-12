@@ -5,8 +5,10 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
+import { useDisableSWInDev } from "./utils/use-disable-sw-in-dev";
 
 export default function App() {
+  useDisableSWInDev();
   return (
     <html>
       <head>

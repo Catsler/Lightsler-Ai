@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Badge, 
   BlockStack, 
@@ -36,9 +36,17 @@ export function ResourceCategoryDisplay({
   clearCache = false
 }) {
   const [expandedSubcategories, setExpandedSubcategories] = useState({});
+  const [expandedProducts, setExpandedProducts] = useState({}); // productId -> bool
+  const [productOptionsMap, setProductOptionsMap] = useState({}); // productId -> { loading, options }
   
+  // 过滤掉顶层的产品选项类资源（改为仅在产品行内展开显示）
+  const filteredResources = resources.filter((r) => {
+    const t = String(r?.resourceType || '').toUpperCase();
+    return t !== 'PRODUCT_OPTION' && t !== 'PRODUCT_OPTION_VALUE';
+  });
+
   // 按分类组织资源
-  const organizedResources = organizeResourcesByCategory(resources);
+  const organizedResources = organizeResourcesByCategory(filteredResources);
   
   // 切换子分类展开状态
   const toggleSubcategory = (categoryKey, subcategoryKey) => {
@@ -48,6 +56,26 @@ export function ResourceCategoryDisplay({
       [key]: !prev[key]
     }));
   };
+
+  const isProduct = (resource) => String(resource?.resourceType || '').toUpperCase() === 'PRODUCT';
+
+  const toggleProductOptions = useCallback(async (resource) => {
+    const pid = resource.id;
+    setExpandedProducts(prev => ({ ...prev, [pid]: !prev[pid] }));
+    // 懒加载：首次展开时拉取
+    if (!productOptionsMap[pid] && resource.gid) {
+      setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: true, options: [] } }));
+      try {
+        const res = await fetch(`/api/product-options?gid=${encodeURIComponent(resource.gid)}`);
+        const data = await res.json();
+        const options = data?.data?.options || [];
+        setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: false, options } }));
+      } catch (e) {
+        setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: false, options: [] } }));
+        // 静默失败，不阻塞页面
+      }
+    }
+  }, [productOptionsMap]);
   
   // 获取资源显示名称
   const getResourceDisplayName = (resource) => {
@@ -323,6 +351,11 @@ export function ResourceCategoryDisplay({
                                       </InlineStack>
                                       <InlineStack gap="1">
                                         {getResourceStatusBadge(resource)}
+                                        {isProduct(resource) && resource.gid && (
+                                          <Button size="micro" variant="plain" onClick={() => toggleProductOptions(resource)}>
+                                            {expandedProducts[resource.id] ? '收起选项' : '展开选项'}
+                                          </Button>
+                                        )}
                                         {onResourceClick && (
                                           <Button
                                             size="micro"
@@ -334,6 +367,27 @@ export function ResourceCategoryDisplay({
                                         )}
                                       </InlineStack>
                                     </InlineStack>
+                                    {isProduct(resource) && expandedProducts[resource.id] && (
+                                      <Box padding="2" paddingInlineStart="8">
+                                        <BlockStack gap="1">
+                                          {productOptionsMap[resource.id]?.loading && (
+                                            <Text variant="bodySm" tone="subdued">加载选项中...</Text>
+                                          )}
+                                          {!productOptionsMap[resource.id]?.loading && (
+                                            (productOptionsMap[resource.id]?.options || []).length > 0 ? (
+                                              productOptionsMap[resource.id].options.map((opt, i) => (
+                                                <Text key={i} variant="bodySm">
+                                                  {opt.name}: {Array.isArray(opt.values) ? opt.values.slice(0, 5).join(', ') : ''}
+                                                  {Array.isArray(opt.values) && opt.values.length > 5 ? ' …' : ''}
+                                                </Text>
+                                              ))
+                                            ) : (
+                                              <Text variant="bodySm" tone="subdued">无选项</Text>
+                                            )
+                                          )}
+                                        </BlockStack>
+                                      </Box>
+                                    )}
                                   </Box>
                                 ))}
                               </BlockStack>

@@ -55,6 +55,20 @@ export const loader = async ({ request, params }) => {
     const adapter = new ResourceDetailAdapter(resource);
     const unifiedResource = adapter.transform();
     
+    // 动态发现可译字段 keys（以 GraphQL translatableResource 为准）
+    let translatableKeys = [];
+    try {
+      const gid = unifiedResource?.fields?.standard?.gid;
+      if (gid) {
+        const { executeGraphQLWithRetry, TRANSLATABLE_RESOURCE_QUERY } = await import("../services/shopify-graphql.server.js");
+        const data = await executeGraphQLWithRetry(admin, TRANSLATABLE_RESOURCE_QUERY, { resourceId: gid });
+        const content = data?.data?.translatableResource?.translatableContent || [];
+        translatableKeys = content.map(item => item.key);
+      }
+    } catch (e) {
+      console.warn('[资源详情页] 获取translatable keys失败，使用回退策略:', e?.message);
+    }
+    
     // 获取URL参数中的语言
     const url = new URL(request.url);
     const currentLanguage = url.searchParams.get('lang') || 'zh-CN';
@@ -62,7 +76,8 @@ export const loader = async ({ request, params }) => {
     return json({
       resource: unifiedResource,
       currentLanguage,
-      shop: session.shop
+      shop: session.shop,
+      translatableKeys
     });
     
   } catch (error) {
@@ -77,7 +92,7 @@ export const loader = async ({ request, params }) => {
 };
 
 export default function ResourceDetailPage() {
-  const { resource, currentLanguage } = useLoaderData();
+  const { resource, currentLanguage, translatableKeys } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
@@ -141,19 +156,11 @@ export default function ResourceDetailPage() {
     }
   ];
   
-  // 主要操作按钮
-  const primaryAction = resource.metadata.canTranslate ? {
-    content: '翻译此资源',
-    onAction: handleTranslate,
-    primary: true
-  } : null;
-  
   return (
     <Page
       backAction={{ content: '返回', onAction: handleBack }}
       title={pageTitle}
       subtitle={`类型: ${resource.type} | 语言: ${currentLanguage}`}
-      primaryAction={primaryAction}
       secondaryActions={secondaryActions}
       titleMetadata={
         resource.metadata.errorCount > 0 && (
@@ -174,6 +181,10 @@ export default function ResourceDetailPage() {
         <ResourceDetail 
           resource={resource} 
           currentLanguage={currentLanguage}
+          translatableKeys={translatableKeys}
+          onTranslate={handleTranslate}
+          onEdit={handleEdit}
+          onViewHistory={() => console.log('查看历史：待实现')}
         />
         
         {/* 调试信息（开发环境） */}
