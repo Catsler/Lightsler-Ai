@@ -1,100 +1,62 @@
 /**
- * 资源分类配置
- * 定义资源的分类层级和归属关系
+ * 资源分类配置（对齐 Shopify Translate & Adapt）
+ * 仅列出可翻译资源；带感叹号提示的官方非翻译项不纳入此表
  */
 
 export const RESOURCE_CATEGORIES = {
-  // 产品和集合
-  PRODUCTS_COLLECTIONS: {
-    name: '产品与集合',
+  // Products
+  PRODUCTS: {
+    name: 'Products',
     icon: '📦',
     subcategories: {
-      PRODUCTS: {
-        name: '产品',
-        resources: ['PRODUCT', 'PRODUCT_OPTION', 'PRODUCT_OPTION_VALUE']
-      },
-      COLLECTIONS: {
-        name: '集合',
-        resources: ['COLLECTION']
-      },
-      SELLING_PLANS: {
-        name: '销售计划',
-        resources: ['SELLING_PLAN', 'SELLING_PLAN_GROUP']
-      }
+      COLLECTIONS: { name: 'Collections', resources: ['COLLECTION'] },
+      PRODUCTS: { name: 'Products', resources: ['PRODUCT'] },
+      // 可选扩展：产品扩展（不直接作为翻译主类目）
+      PRODUCT_EXT: { name: 'Product extensions', resources: ['PRODUCT_OPTION', 'PRODUCT_OPTION_VALUE', 'SELLING_PLAN', 'SELLING_PLAN_GROUP'] }
     }
   },
-  
-  // 内容管理
+
+  // Online Store
+  ONLINE_STORE: {
+    name: 'Online Store',
+    icon: '🛍️',
+    subcategories: {
+      BLOG_POSTS: { name: 'Blog posts', resources: ['ARTICLE'] },
+      BLOG_TITLES: { name: 'Blog titles', resources: ['BLOG'] },
+      FILTERS: { name: 'Filters', resources: ['FILTER'] },
+      METAFIELDS: { name: 'Metafields', resources: ['METAFIELD'] }, // 若不支持则无资源
+      PAGES: { name: 'Pages', resources: ['PAGE'] },
+      POLICIES: { name: 'Policies', resources: ['SHOP_POLICY'] },
+      STORE_METADATA: { name: 'Store metadata', resources: ['SHOP'] }
+      // Cookie banner（非翻译项）不纳入
+      // Metaobjects（按要求先隐藏）不纳入
+    }
+  },
+
+  // Content
   CONTENT: {
-    name: '内容管理',
+    name: 'Content',
     icon: '📝',
     subcategories: {
-      ARTICLES_BLOGS: {
-        name: '文章与博客',
-        resources: ['ARTICLE', 'BLOG']
-      },
-      PAGES: {
-        name: '页面',
-        resources: ['PAGE']
-      },
-      OTHER_OPTIONS: {
-        name: '其他选项',
-        resources: ['FILTER']
-      }
+      MENU: { name: 'Menu', resources: ['MENU'] }
+      // Links 非官方列表项，保留内部使用：可按需加入
     }
   },
-  
-  // 导航
-  NAVIGATION: {
-    name: '导航',
-    icon: '🧭',
-    subcategories: {
-      MENUS: {
-        name: '菜单',
-        resources: ['MENU', 'LINK']
-      }
-    }
-  },
-  
-  // 主题
+
+  // Theme
   THEME: {
-    name: '主题',
+    name: 'Theme',
     icon: '🎨',
     subcategories: {
-      THEME_CORE: {
-        name: '主题核心',
-        resources: ['ONLINE_STORE_THEME']
-      },
-      THEME_COMPONENTS: {
-        name: '主题组件',
-        resources: [
-          'ONLINE_STORE_THEME_APP_EMBED',
-          'ONLINE_STORE_THEME_JSON_TEMPLATE',
-          'ONLINE_STORE_THEME_SECTION_GROUP'
-        ]
-      },
-      THEME_SETTINGS: {
-        name: '主题设置',
-        resources: [
-          'ONLINE_STORE_THEME_LOCALE_CONTENT',
-          'ONLINE_STORE_THEME_SETTINGS_CATEGORY',
-          'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS'
-        ]
-      }
-    }
-  },
-  
-  // 店铺设置
-  SHOP_SETTINGS: {
-    name: '店铺设置',
-    icon: '⚙️',
-    subcategories: {
-      SHOP_INFO: {
-        name: '店铺信息',
-        resources: ['SHOP', 'SHOP_POLICY']
-      }
+      APP_EMBEDS: { name: 'App embeds', resources: ['ONLINE_STORE_THEME_APP_EMBED'] },
+      SECTION_GROUPS: { name: 'Section groups', resources: ['ONLINE_STORE_THEME_SECTION_GROUP'] },
+      STATIC_SECTIONS: { name: 'Static sections', resources: ['ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS'] },
+      TEMPLATES: { name: 'Templates', resources: ['ONLINE_STORE_THEME_JSON_TEMPLATE'] },
+      THEME_SETTINGS: { name: 'Theme settings', resources: ['ONLINE_STORE_THEME_SETTINGS_CATEGORY'] }
+      // Default theme content（非翻译项）不纳入
     }
   }
+  // Settings（Notifications/Shipping 非翻译项）不纳入
 };
 
 /**

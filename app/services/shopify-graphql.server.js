@@ -33,7 +33,10 @@ export const RESOURCE_TYPES = {
   
   // C. 店铺设置相关 (2个)
   SHOP: 'SHOP',
-  SHOP_POLICY: 'SHOP_POLICY'
+  SHOP_POLICY: 'SHOP_POLICY',
+  
+  // D. 其他尝试（按官方分类）
+  METAFIELD: 'METAFIELD' // 若后端不支持，该类型不会返回数据
 };;
 
 // 字段映射配置 - 定义翻译字段到GraphQL字段的映射

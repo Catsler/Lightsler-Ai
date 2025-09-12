@@ -221,37 +221,32 @@ function Index() {
   const [pollInterval, setPollInterval] = useState(60000); // 默认60秒
   const [lastStatusData, setLastStatusData] = useState(null);
 
-  // 资源类型选项 - 按类别组织但不使用禁用的分隔符
+  // 资源类型选项（对齐 Shopify 官方分类；隐藏非翻译项与暂不支持项）
   const resourceTypeOptions = useMemo(() => [
-    // 基础内容类型
-    { label: '产品', value: 'PRODUCT' },
-    { label: '产品集合', value: 'COLLECTION' },
-    { label: '博客文章', value: 'ARTICLE' },
-    { label: '博客', value: 'BLOG' },
-    { label: '页面', value: 'PAGE' },
-    { label: '菜单', value: 'MENU' },
-    { label: '链接', value: 'LINK' },
-    { label: '过滤器', value: 'FILTER' },
-    
-    // Theme相关资源
-    { label: '[主题] 主题设置', value: 'ONLINE_STORE_THEME' },
-    { label: '[主题] 应用嵌入', value: 'ONLINE_STORE_THEME_APP_EMBED' },
-    { label: '[主题] JSON模板', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
-    { label: '[主题] 本地化内容', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
-    { label: '[主题] 区块组', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
-    { label: '[主题] 设置分类', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
-    { label: '[主题] 静态区块', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
-    
-    // 产品扩展
-    { label: '[产品扩展] 产品选项', value: 'PRODUCT_OPTION' },
-    { label: '[产品扩展] 产品选项值', value: 'PRODUCT_OPTION_VALUE' },
-    { label: '[产品扩展] 销售计划', value: 'SELLING_PLAN' },
-    { label: '[产品扩展] 销售计划组', value: 'SELLING_PLAN_GROUP' },
-    
-    // 店铺配置
-    { label: '[店铺] 店铺信息', value: 'SHOP' },
-    { label: '[店铺] 店铺政策', value: 'SHOP_POLICY' }
-  ], []);;
+    // Products
+    { label: 'Products', value: 'PRODUCT' },
+    { label: 'Collections', value: 'COLLECTION' },
+
+    // Online Store
+    { label: 'Blog posts', value: 'ARTICLE' },
+    { label: 'Blog titles', value: 'BLOG' },
+    { label: 'Pages', value: 'PAGE' },
+    { label: 'Filters', value: 'FILTER' },
+    // Metafields（探测性支持，避免默认暴露扫描入口）——如需扫描可手动添加
+    // { label: 'Metafields', value: 'METAFIELD' },
+    { label: 'Policies', value: 'SHOP_POLICY' },
+    { label: 'Store metadata', value: 'SHOP' },
+
+    // Content
+    { label: 'Menu', value: 'MENU' },
+
+    // Theme
+    { label: 'App embeds', value: 'ONLINE_STORE_THEME_APP_EMBED' },
+    { label: 'Section groups', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
+    { label: 'Static sections', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
+    { label: 'Templates', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
+    { label: 'Theme settings', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
+  ], []);
 
   // 加载状态
   const isScanning = scanProductsFetcher.state === 'submitting' || 

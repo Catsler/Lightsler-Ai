@@ -178,3 +178,8 @@
 - ✅ = 已完成任务
 - 🐛 = 需要修复的问题
 - 💡 = 未来的改进想法
+- [x] 官方分类对齐（Translate & Adapt）
+  - 调整 `RESOURCE_CATEGORIES` 映射：Products/Online Store/Content/Theme 四大类
+  - 移除非翻译项（Cookie banner、Default theme content、Notifications、Shipping & delivery）
+  - Menu 保留；Metaobjects 暂隐藏；Metafields 以探测方式处理（不默认暴露扫描入口）
+  - 首页资源类型下拉改为官方同名项（仅可翻译项）
