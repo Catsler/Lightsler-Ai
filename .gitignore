@@ -35,4 +35,5 @@ screenshoots/
 
 # Ignore shopify files created during app dev
 .shopify/*
-.shopify.lockbrowser-tools-mcp/
+.shopify.lock
+archive/*.tar.gz
