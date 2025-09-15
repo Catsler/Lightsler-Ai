@@ -98,6 +98,46 @@
 **KISS原则**: 最小改动 - 仅扩展数组配置
 **状态**: ✅ 已完成
 
+### Metafields 翻译功能实现（KISS方案C） - 2025-09-15 ✅ 已完成
+**实施原则**: 最小改动，复用现有函数，直接注册到Shopify
+**开发时间**: 2小时内完成
+**状态**: ✅ 已完成
+
+#### 实施任务 (按KISS方案C执行)：
+- [x] **修改fetchMetafieldsForProduct查询添加id字段** ✅
+  - 文件: `app/services/shopify-graphql.server.js:659-687`
+  - 添加metafield的GID支持
+
+- [x] **创建updateMetafieldTranslation helper函数** ✅
+  - 文件: `app/services/shopify-graphql.server.js:658-741`
+  - 获取digest、翻译注册逻辑
+  - 约60行代码，完全复用现有机制
+
+- [x] **实现/api/translate-product-metafields API** ✅
+  - 文件: `app/routes/api.translate-product-metafields.jsx` (新建)
+  - 类型过滤：single_line_text_field、multi_line_text_field、rich_text
+  - 批量翻译和注册逻辑
+  - 约130行代码
+
+- [x] **在产品详情页添加翻译Metafields按钮** ✅
+  - 文件: `app/routes/app.resource.$type.$id.jsx:145-211`
+  - 仅对PRODUCT类型显示按钮
+  - 使用Remix useFetcher处理异步请求
+  - 加载状态和结果提示
+
+#### 技术实现亮点：
+- **零数据库改动**: 不持久化译文，直接注册到Shopify
+- **类型安全过滤**: 白名单机制只翻译文本类型metafields
+- **富文本支持**: rich_text类型使用HTML保护机制
+- **错误处理**: 完整的错误提示和统计信息
+- **用户体验**: 加载状态、确认对话框、结果反馈
+
+#### 代码统计：
+- **新增文件**: 1个 (API路由)
+- **修改文件**: 2个 (GraphQL服务、产品详情页)
+- **总代码量**: 约200行
+- **构建验证**: ✅ npm run build 成功
+
 #### 实施任务：
 - [x] **扩展主题资源类型数组** - `api.scan-all.jsx` ✅
   - [x] 从2个类型扩展到7个完整类型

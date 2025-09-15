@@ -655,6 +655,91 @@ export async function fetchOptionsForProduct(admin, productGid, maxRetries = 3) 
   return options.map(opt => ({ name: opt.name, values: opt.values || [] }));
 }
 
+// 翻译单个metafield
+export async function updateMetafieldTranslation(admin, metafieldGid, translatedValue, targetLocale, maxRetries = 3) {
+  try {
+    console.log(`🔧 开始翻译metafield: ${metafieldGid} -> ${targetLocale}`);
+
+    // 第一步：获取metafield的可翻译内容digest
+    const data = await executeGraphQLWithRetry(
+      admin,
+      TRANSLATABLE_RESOURCE_QUERY,
+      { resourceId: metafieldGid },
+      maxRetries
+    );
+
+    const translatableContent = data.data.translatableResource?.translatableContent || [];
+    console.log(`📋 获取到 ${translatableContent.length} 个可翻译字段`);
+
+    if (translatableContent.length === 0) {
+      console.log('⚠️ 未找到可翻译内容，可能是metafield不支持翻译');
+      return {
+        success: false,
+        message: 'Metafield不支持翻译或未找到可翻译内容'
+      };
+    }
+
+    // 对于metafield，通常使用'value'作为可翻译字段的key
+    const valueContent = translatableContent.find(item => item.key === 'value');
+    if (!valueContent) {
+      console.log('❌ 未找到value字段的可翻译内容');
+      return {
+        success: false,
+        message: '未找到metafield的value字段可翻译内容'
+      };
+    }
+
+    // 第二步：准备翻译输入
+    const translationInput = {
+      locale: targetLocale,
+      key: 'value',
+      value: translatedValue,
+      translatableContentDigest: valueContent.digest
+    };
+
+    console.log('📤 准备翻译注册:', JSON.stringify(translationInput, null, 2));
+
+    // 第三步：注册翻译
+    const registerData = await executeGraphQLWithRetry(
+      admin,
+      TRANSLATIONS_REGISTER_MUTATION,
+      {
+        resourceId: metafieldGid,
+        translations: [translationInput]
+      },
+      maxRetries
+    );
+
+    console.log('📊 翻译注册响应:', JSON.stringify(registerData, null, 2));
+
+    if (registerData.data.translationsRegister.userErrors.length > 0) {
+      console.error('❌ 翻译注册失败:', registerData.data.translationsRegister.userErrors);
+      return {
+        success: false,
+        message: `翻译注册失败: ${registerData.data.translationsRegister.userErrors.map(e => e.message).join(', ')}`,
+        errors: registerData.data.translationsRegister.userErrors
+      };
+    }
+
+    const registeredTranslations = registerData.data.translationsRegister.translations || [];
+    console.log(`✅ Metafield翻译注册成功，注册了 ${registeredTranslations.length} 个翻译`);
+
+    return {
+      success: true,
+      message: 'Metafield翻译注册成功',
+      translations: registeredTranslations
+    };
+
+  } catch (error) {
+    console.error('❌ updateMetafieldTranslation错误:', error);
+    return {
+      success: false,
+      message: `翻译metafield失败: ${error.message}`,
+      error: error.message
+    };
+  }
+}
+
 // 获取单个产品的 metafields（按需懒加载）
 export async function fetchMetafieldsForProduct(admin, productGid, maxRetries = 3) {
   const QUERY = `#graphql
@@ -664,6 +749,7 @@ export async function fetchMetafieldsForProduct(admin, productGid, maxRetries = 
         metafields(first: $first) {
           edges {
             node {
+              id
               namespace
               key
               type
@@ -677,6 +763,7 @@ export async function fetchMetafieldsForProduct(admin, productGid, maxRetries = 
   const data = await executeGraphQLWithRetry(admin, QUERY, { id: productGid, first: 50 }, maxRetries);
   const edges = data?.data?.product?.metafields?.edges || [];
   return edges.map(({ node }) => ({
+    id: node.id,
     namespace: node.namespace,
     key: node.key,
     type: node.type,

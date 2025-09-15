@@ -1,6 +1,6 @@
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate, useSearchParams, useParams } from "@remix-run/react";
-import { Page, Button, BlockStack } from "@shopify/polaris";
+import { useLoaderData, useNavigate, useSearchParams, useParams, useFetcher } from "@remix-run/react";
+import { Page, Button, BlockStack, Badge, Banner, Card, Text } from "@shopify/polaris";
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { ResourceDetail } from "../components/ResourceDetail";
@@ -96,7 +96,8 @@ export default function ResourceDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
-  
+  const metafieldsFetcher = useFetcher();
+
   // 处理返回导航
   const handleBack = () => {
     // 保持语言参数
@@ -104,14 +105,14 @@ export default function ResourceDetailPage() {
     const backUrl = lang ? `/app?lang=${lang}` : '/app';
     navigate(backUrl);
   };
-  
+
   // 处理翻译操作
   const handleTranslate = () => {
     const lang = searchParams.get('lang') || 'zh-CN';
     // 调用翻译API
     navigate(`/app/translate?resourceId=${resource.id}&targetLang=${lang}`);
   };
-  
+
   // 处理编辑操作
   const handleEdit = () => {
     // 根据资源类型跳转到Shopify编辑页面
@@ -141,8 +142,53 @@ export default function ResourceDetailPage() {
   // 页面标题 - 包含图标和类型
   const pageTitle = `${resource.title}`;
   
+  // 翻译Metafields处理函数
+  const handleTranslateMetafields = () => {
+    if (resource.type !== 'PRODUCT') {
+      alert('只有产品资源支持Metafields翻译');
+      return;
+    }
+
+    const confirmed = confirm(`确定要翻译产品的Metafields到${currentLanguage}吗？`);
+    if (!confirmed) return;
+
+    const formData = new FormData();
+    formData.append('productGid', resource.fields.standard.gid);
+    formData.append('targetLanguage', currentLanguage);
+
+    metafieldsFetcher.submit(formData, {
+      method: 'POST',
+      action: '/api/translate-product-metafields'
+    });
+  };
+
+  // 处理翻译结果
+  const metafieldsResult = metafieldsFetcher.data;
+  const isTranslating = metafieldsFetcher.state === 'submitting' || metafieldsFetcher.state === 'loading';
+
+  // 显示翻译结果
+  if (metafieldsResult && metafieldsFetcher.state === 'idle') {
+    if (metafieldsResult.success) {
+      // 使用setTimeout确保在下一个事件循环中执行，避免渲染冲突
+      setTimeout(() => {
+        alert(`✅ Metafields翻译完成!\n\n统计信息:\n- 总计: ${metafieldsResult.stats.total} 个\n- 可翻译: ${metafieldsResult.stats.translatable} 个\n- 成功: ${metafieldsResult.stats.success} 个\n- 失败: ${metafieldsResult.stats.failed} 个`);
+      }, 100);
+    } else {
+      setTimeout(() => {
+        alert(`❌ 翻译失败: ${metafieldsResult.message}`);
+      }, 100);
+    }
+  }
+
   // 次要操作按钮
   const secondaryActions = [
+    // 只有产品资源才显示Metafields翻译按钮
+    ...(resource.type === 'PRODUCT' ? [{
+      content: isTranslating ? '翻译中...' : '翻译Metafields',
+      onAction: handleTranslateMetafields,
+      disabled: isTranslating,
+      loading: isTranslating
+    }] : []),
     {
       content: '查看原始数据',
       onAction: () => {
@@ -237,7 +283,3 @@ export function ErrorBoundary({ error }) {
     </Page>
   );
 }
-
-// 缺少必要导入的补充
-import { Banner, Card, Text } from "@shopify/polaris";
-import { Badge } from "@shopify/polaris";
