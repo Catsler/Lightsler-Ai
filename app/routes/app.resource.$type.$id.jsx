@@ -143,23 +143,34 @@ export default function ResourceDetailPage() {
   const pageTitle = `${resource.title}`;
   
   // 翻译Metafields处理函数
-  const handleTranslateMetafields = () => {
+  const handleTranslateMetafields = (analyzeOnly = false) => {
     if (resource.type !== 'PRODUCT') {
       alert('只有产品资源支持Metafields翻译');
       return;
     }
 
-    const confirmed = confirm(`确定要翻译产品的Metafields到${currentLanguage}吗？`);
+    const mode = analyzeOnly ? '分析' : '翻译';
+    const message = analyzeOnly
+      ? `将分析产品的Metafields规则匹配情况，不会实际翻译。\n\n这有助于了解哪些内容会被翻译、哪些会被跳过以及原因。`
+      : `确定要翻译产品的Metafields到${currentLanguage}吗？\n\n系统会智能识别并跳过不适合翻译的内容（如URL、代码、产品ID等）。`;
+
+    const confirmed = confirm(message);
     if (!confirmed) return;
 
     const formData = new FormData();
     formData.append('productGid', resource.fields.standard.gid);
     formData.append('targetLanguage', currentLanguage);
+    formData.append('analyzeOnly', analyzeOnly.toString());
 
     metafieldsFetcher.submit(formData, {
       method: 'POST',
       action: '/api/translate-product-metafields'
     });
+  };
+
+  // 分析Metafields处理函数
+  const handleAnalyzeMetafields = () => {
+    handleTranslateMetafields(true);
   };
 
   // 处理翻译结果
@@ -171,11 +182,40 @@ export default function ResourceDetailPage() {
     if (metafieldsResult.success) {
       // 使用setTimeout确保在下一个事件循环中执行，避免渲染冲突
       setTimeout(() => {
-        alert(`✅ Metafields翻译完成!\n\n统计信息:\n- 总计: ${metafieldsResult.stats.total} 个\n- 可翻译: ${metafieldsResult.stats.translatable} 个\n- 成功: ${metafieldsResult.stats.success} 个\n- 失败: ${metafieldsResult.stats.failed} 个`);
+        const { mode, stats, summary } = metafieldsResult;
+        const isAnalyzeMode = mode === 'analyze';
+
+        let message = `✅ Metafields${isAnalyzeMode ? '分析' : '翻译'}完成!\n\n`;
+        message += `📊 统计信息:\n`;
+        message += `- 总计: ${stats.total} 个\n`;
+        message += `- 可翻译: ${stats.translatable} 个\n`;
+
+        if (isAnalyzeMode) {
+          message += `- 跳过: ${stats.skipped} 个\n\n`;
+          message += `🔍 分析模式说明:\n`;
+          message += `- 此次只分析了翻译规则，未实际翻译\n`;
+          message += `- 白名单内容（如custom.specifications）将被翻译\n`;
+          message += `- 系统内容（如global.title_tag）会被跳过\n`;
+          message += `- URL、代码、产品ID等会被智能识别并跳过\n\n`;
+        } else {
+          message += `- 翻译成功: ${stats.translated} 个\n`;
+          message += `- 跳过: ${stats.skipped} 个\n`;
+          message += `- 失败: ${stats.failed} 个\n\n`;
+        }
+
+        // 显示前5个跳过原因
+        if (summary?.topReasons?.length > 0) {
+          message += `📋 主要决策原因:\n`;
+          summary.topReasons.slice(0, 3).forEach(([reason, count]) => {
+            message += `- ${reason}: ${count} 个\n`;
+          });
+        }
+
+        alert(message);
       }, 100);
     } else {
       setTimeout(() => {
-        alert(`❌ 翻译失败: ${metafieldsResult.message}`);
+        alert(`❌ ${metafieldsResult.mode === 'analyze' ? '分析' : '翻译'}失败: ${metafieldsResult.message}`);
       }, 100);
     }
   }
@@ -183,12 +223,20 @@ export default function ResourceDetailPage() {
   // 次要操作按钮
   const secondaryActions = [
     // 只有产品资源才显示Metafields翻译按钮
-    ...(resource.type === 'PRODUCT' ? [{
-      content: isTranslating ? '翻译中...' : '翻译Metafields',
-      onAction: handleTranslateMetafields,
-      disabled: isTranslating,
-      loading: isTranslating
-    }] : []),
+    ...(resource.type === 'PRODUCT' ? [
+      {
+        content: isTranslating ? '处理中...' : '翻译Metafields',
+        onAction: () => handleTranslateMetafields(false),
+        disabled: isTranslating,
+        loading: isTranslating
+      },
+      {
+        content: isTranslating ? '分析中...' : '分析Metafields',
+        onAction: handleAnalyzeMetafields,
+        disabled: isTranslating,
+        loading: isTranslating
+      }
+    ] : []),
     {
       content: '查看原始数据',
       onAction: () => {

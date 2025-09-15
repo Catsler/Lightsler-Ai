@@ -950,18 +950,9 @@ function Index() {
             onSelectionChange={handleResourceSelection}
             currentLanguage={selectedLanguage}
             onResourceClick={(resource) => {
-              // 统一路由处理 - Linus哲学：消除特殊情况
+              // 统一路由处理（KISS）：消除特殊分支，所有资源走通用详情页
               const resourceType = resource.resourceType.toLowerCase();
-              
-              // 所有资源使用统一路由格式
-              // Theme资源保持向后兼容，其他资源使用新路由
-              if (resourceType.includes('theme') || resourceType.includes('online_store')) {
-                // 保持Theme专用页面的向后兼容
-                navigate(`/app/theme/detail/${resource.id}?lang=${selectedLanguage}`);
-              } else {
-                // 所有其他资源使用统一路由
-                navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
-              }
+              navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
             }}
             onTranslateCategory={handleCategoryTranslation}
             onSyncCategory={handleCategorySync}

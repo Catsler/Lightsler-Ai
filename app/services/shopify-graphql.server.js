@@ -1548,3 +1548,17 @@ export async function fetchAllMenus(admin, maxRetries = 3) {
 export async function fetchAllFilters(admin, maxRetries = 3) {
   return await fetchResourcesByType(admin, RESOURCE_TYPES.FILTER, maxRetries);
 }
+
+/**
+ * 简化的 Metafield 翻译注册函数（别名）
+ * 为了保持与现有函数的一致性，提供一个更简洁的名称
+ * @param {Object} admin - Shopify Admin API 客户端
+ * @param {string} metafieldGid - Metafield 的 GID
+ * @param {string} translatedValue - 翻译后的值
+ * @param {string} locale - 目标语言代码
+ * @param {number} maxRetries - 最大重试次数
+ * @returns {Promise<Object>} 注册结果
+ */
+export async function registerMetafieldTranslation(admin, metafieldGid, translatedValue, locale, maxRetries = 3) {
+  return await updateMetafieldTranslation(admin, metafieldGid, translatedValue, locale, maxRetries);
+}

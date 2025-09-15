@@ -117,6 +117,9 @@ Shopify多语言翻译应用，基于Remix框架构建的嵌入式Shopify Admin�
 ```bash
 npm install                      # 安装依赖
 npm run setup                    # 初始化数据库（生成Prisma客户端 + 迁移）
+
+# 首次运行前的完整初始化
+npm install && npm run setup && npm run init-error-patterns
 ```
 
 ### 日常开发
@@ -495,6 +498,25 @@ GPT_API_URL=https://api.cursorai.art/v1  # GPT API地址
 REDIS_URL=redis://localhost:6379         # Redis（自动降级）
 QUEUE_CONCURRENCY=5                      # 队列并发数
 NODE_ENV=development|production          # 环境标识
+NODE_TLS_REJECT_UNAUTHORIZED=0           # 开发环境SSL绕过
+DATABASE_URL="file:./dev.db"             # SQLite数据库文件路径（可选）
+```
+
+**环境配置文件示例** (.env):
+```bash
+# Shopify应用配置
+SHOPIFY_API_KEY=fa2e9f646301c483f81570613924c495
+SHOPIFY_API_SECRET=your_secret_here
+
+# AI翻译配置
+GPT_API_KEY=your_gpt_key_here
+GPT_API_URL=https://api.cursorai.art/v1
+
+# 可选配置
+REDIS_URL=redis://localhost:6379
+QUEUE_CONCURRENCY=5
+NODE_ENV=development
+NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
 
 ## 关键架构决策
@@ -655,6 +677,9 @@ node view-translation-logs.js --from="2024-01-01" --to="2024-01-31"
 - ✅ 使用browser-tools验证前端功能和性能
 - ✅ 运行E2E测试 `npm run test:e2e`（需要配置E2E_STORAGE_STATE）
 - ✅ 测试关键功能流程（扫描→翻译→同步）
+- ✅ 验证环境变量配置完整性
+- ✅ 确保Redis连接或内存队列降级正常
+- ✅ 检查webhook注册状态 `curl /api/status`
 
 ### 关键调试命令
 
