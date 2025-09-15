@@ -147,6 +147,11 @@ function Index() {
   const [translatingCategories, setTranslatingCategories] = useState(new Set());
   const [syncingCategories, setSyncingCategories] = useState(new Set());
 
+  // Phase 2: 发布相关状态
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishingProgress, setPublishingProgress] = useState({ current: 0, total: 0 });
+  const [pendingTranslations, setPendingTranslations] = useState([]);
+
   // Language preference persistence and multi-tab sync
   useEffect(() => {
     // SSR and data validation
@@ -206,7 +211,11 @@ function Index() {
   const categoryFetcher4 = useFetcher();
   const categoryFetcher5 = useFetcher();
   const syncFetcher = useFetcher();
-  
+
+  // Phase 2: 发布相关fetchers
+  const publishFetcher = useFetcher();
+  const batchPublishFetcher = useFetcher();
+
   // 管理fetcher分配
   const categoryFetcherMap = useRef({});
   const availableFetchers = useRef([
@@ -433,6 +442,53 @@ function Index() {
     }
   }, [syncFetcher.state, syncFetcher.data, syncingCategories, addLog, showToast, loadStatus]);
 
+  // Phase 2: 处理发布响应
+  useEffect(() => {
+    if (publishFetcher.state === 'idle' && publishFetcher.data) {
+      setIsPublishing(false);
+
+      if (publishFetcher.data.success) {
+        const { published = 0, total = 0, errors = [] } = publishFetcher.data;
+        const successRate = total > 0 ? ((published / total) * 100).toFixed(1) : '100';
+
+        addLog(`✅ 发布完成: ${published}/${total} 成功 (${successRate}%)`, 'success');
+        showToast(`发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+
+        if (errors.length > 0) {
+          addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
+        }
+
+        // 刷新状态
+        loadStatus();
+      } else {
+        const errorMsg = publishFetcher.data.error || '发布失败';
+        addLog(`❌ 发布失败: ${errorMsg}`, 'error');
+        showToast(`发布失败: ${errorMsg}`, { isError: true });
+      }
+    }
+  }, [publishFetcher.state, publishFetcher.data, addLog, showToast, loadStatus]);
+
+  // 处理批量发布响应
+  useEffect(() => {
+    if (batchPublishFetcher.state === 'idle' && batchPublishFetcher.data) {
+      setIsPublishing(false);
+
+      if (batchPublishFetcher.data.success) {
+        const { published = 0, total = 0, successRate = '0%' } = batchPublishFetcher.data;
+
+        addLog(`✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`, 'success');
+        showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+
+        // 刷新状态
+        loadStatus();
+      } else {
+        const errorMsg = batchPublishFetcher.data.error || '批量发布失败';
+        addLog(`❌ 批量发布失败: ${errorMsg}`, 'error');
+        showToast(`批量发布失败: ${errorMsg}`, { isError: true });
+      }
+    }
+  }, [batchPublishFetcher.state, batchPublishFetcher.data, addLog, showToast, loadStatus]);
+
   // 页面加载时获取状态 - 只在首次加载时执行
   useEffect(() => {
     console.log('[Index Component] Initial useEffect - loading status');
@@ -443,7 +499,7 @@ function Index() {
   useEffect(() => {
     const interval = setInterval(() => {
       // 根据当前状态调整轮询频率
-      const isActiveOperation = isScanning || isTranslating || isClearing;
+      const isActiveOperation = isScanning || isTranslating || isClearing || isPublishing;
       const currentInterval = isActiveOperation ? 10000 : 60000; // 操作中10秒，空闲60秒
       
       if (currentInterval !== pollInterval) {
@@ -715,6 +771,46 @@ function Index() {
     showToast(`成功添加 ${languageCodes.length} 个语言`, { duration: 3000 });
   }, [addLog, showToast]);
 
+  // Phase 2: 发布处理函数
+  const publishPendingTranslations = useCallback(() => {
+    try {
+      setIsPublishing(true);
+      addLog('📤 开始发布待发布翻译...', 'info');
+
+      publishFetcher.submit({
+        language: selectedLanguage,
+        publishAll: "false" // 只发布当前语言
+      }, {
+        method: 'POST',
+        action: '/api/publish'
+      });
+    } catch (error) {
+      console.error('发布翻译失败:', error);
+      addLog('❌ 发布翻译失败，请检查网络连接', 'error');
+      setIsPublishing(false);
+    }
+  }, [addLog, publishFetcher, selectedLanguage]);
+
+  const publishAllPending = useCallback(() => {
+    try {
+      setIsPublishing(true);
+      addLog('📤 开始批量发布所有待发布翻译...', 'info');
+
+      batchPublishFetcher.submit({
+        batchSize: "5", // 每批5个，避免API限流
+        delayMs: "1000", // 批次间延迟1秒
+        filters: JSON.stringify({}) // 发布所有语言
+      }, {
+        method: 'POST',
+        action: '/api/batch-publish'
+      });
+    } catch (error) {
+      console.error('批量发布失败:', error);
+      addLog('❌ 批量发布失败，请检查网络连接', 'error');
+      setIsPublishing(false);
+    }
+  }, [addLog, batchPublishFetcher]);
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'pending': return <Badge tone="attention">待翻译</Badge>;
@@ -869,15 +965,33 @@ function Index() {
                   >
                     开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
                   </Button>
-                  <Button 
+                  <Button
                     url="/app/sync"
                     variant="primary"
                     tone="success"
                   >
                     同步管理
                   </Button>
-                  <Button 
-                    onClick={clearData} 
+                  <Button
+                    onClick={publishPendingTranslations}
+                    loading={isPublishing}
+                    variant="primary"
+                    tone="success"
+                    disabled={!stats.pendingTranslations}
+                  >
+                    发布翻译 ({stats.pendingTranslations || 0})
+                  </Button>
+                  <Button
+                    onClick={publishAllPending}
+                    loading={isPublishing}
+                    variant="secondary"
+                    tone="success"
+                    disabled={!stats.totalPendingTranslations}
+                  >
+                    批量发布 (全部{stats.totalPendingTranslations || 0})
+                  </Button>
+                  <Button
+                    onClick={clearData}
                     loading={isClearing}
                     variant="tertiary"
                     tone="critical"
@@ -950,9 +1064,18 @@ function Index() {
             onSelectionChange={handleResourceSelection}
             currentLanguage={selectedLanguage}
             onResourceClick={(resource) => {
-              // 统一路由处理（KISS）：消除特殊分支，所有资源走通用详情页
+              // 统一路由处理 - Linus哲学：消除特殊情况
               const resourceType = resource.resourceType.toLowerCase();
-              navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
+              
+              // 所有资源使用统一路由格式
+              // Theme资源保持向后兼容，其他资源使用新路由
+              if (resourceType.includes('theme') || resourceType.includes('online_store')) {
+                // 保持Theme专用页面的向后兼容
+                navigate(`/app/theme/detail/${resource.id}?lang=${selectedLanguage}`);
+              } else {
+                // 所有其他资源使用统一路由
+                navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
+              }
             }}
             onTranslateCategory={handleCategoryTranslation}
             onSyncCategory={handleCategorySync}

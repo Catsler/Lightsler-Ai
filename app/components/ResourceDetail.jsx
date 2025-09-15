@@ -8,7 +8,8 @@ import {
   InlineStack,
   Button,
   Divider,
-  Box
+  Box,
+  Checkbox
 } from '@shopify/polaris';
 import { createResourceAdapter } from '../utils/resource-adapters';
 import { STANDARD_TRANSLATION_MAP } from '../routes/api.resource-detail';
@@ -115,7 +116,39 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
   const adapter = useMemo(() => {
     return createResourceAdapter(resource.type);
   }, [resource.type]);
-  
+
+  // Theme JSON差异展示状态
+  const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
+
+  // 分析JSON字段的翻译状态（轻量版）
+  const analyzeThemeFieldsStatus = useMemo(() => {
+    const translation = resource?.translations?.[currentLanguage] || null;
+    const translationFields = translation?.fields || {};
+    const originalFields = resource?.fields?.extended?.dynamicFields || {};
+
+    const originalKeys = new Set(Object.keys(originalFields));
+    const translatedKeys = new Set(Object.keys(translationFields));
+
+    return {
+      translated: [...translatedKeys],
+      untranslated: [...originalKeys].filter(k => !translatedKeys.has(k)),
+      added: [...translatedKeys].filter(k => !originalKeys.has(k)),
+      total: originalKeys.size
+    };
+  }, [resource, currentLanguage]);
+
+  // 检查是否是高风险Theme路径
+  const isHighRiskTheme = useMemo(() => {
+    const resourceId = resource?.fields?.standard?.resourceId || '';
+    const HIGH_RISK_PATTERNS = [
+      /^sections\/(header|footer|announcement)/i,  // 全站可见区块
+      /^templates\/(index|product|collection)/i,   // 核心页面模板
+      /^config\/settings_data/i,                   // 全局设置
+      /^locales\//i                               // 语言文件本身
+    ];
+    return HIGH_RISK_PATTERNS.some(pattern => pattern.test(resourceId));
+  }, [resource]);
+
   // 获取显示配置
   const displayConfig = adapter.getDisplayConfig();
   const formattedResource = adapter.formatForDisplay(resource);
@@ -241,7 +274,112 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
       pushRow(key, `extra-${key}`, original, translated);
     }
 
-    // 扩展：JSON内容（只作为原文查看器保留）
+    // Theme JSON差异展示（轻量版）
+    const renderThemeJsonDiff = () => {
+      if (!displayConfig.isDynamic || !fields?.extended?.dynamicFields) return null;
+
+      const translation = resource?.translations?.[currentLanguage] || null;
+      const translationFields = translation?.fields || {};
+      const originalFields = fields.extended.dynamicFields;
+      const status = analyzeThemeFieldsStatus;
+
+      // 根据差异模式过滤字段
+      const fieldsToShow = showOnlyDifferences
+        ? Object.keys(originalFields).filter(key => status.translated.includes(key) || status.untranslated.includes(key))
+        : Object.keys(originalFields);
+
+      return (
+        <Box key="theme-json-diff">
+          <BlockStack gap="300">
+            <InlineStack align="space-between">
+              <Text variant="headingMd">Theme字段翻译状态</Text>
+              <Checkbox
+                label="仅显示差异"
+                checked={showOnlyDifferences}
+                onChange={setShowOnlyDifferences}
+              />
+            </InlineStack>
+
+            {/* 高风险路径提示 */}
+            {isHighRiskTheme && (
+              <Box padding="200" background="bg-fill-caution">
+                <BlockStack gap="100">
+                  <Text variant="bodySm" fontWeight="semibold">⚠️ 高影响区域</Text>
+                  <Text variant="bodySm" tone="subdued">
+                    此资源属于关键路径（如全局Header、核心模板等），翻译变更可能影响整个网站外观。建议发布前仔细预览。
+                  </Text>
+                </BlockStack>
+              </Box>
+            )}
+
+            {/* 统计信息 */}
+            <InlineStack gap="400">
+              <InlineStack gap="100">
+                <Text variant="bodySm">总字段:</Text>
+                <Badge>{status.total}</Badge>
+              </InlineStack>
+              <InlineStack gap="100">
+                <Text variant="bodySm">已翻译:</Text>
+                <Badge tone="success">{status.translated.length}</Badge>
+              </InlineStack>
+              <InlineStack gap="100">
+                <Text variant="bodySm">未翻译:</Text>
+                <Badge tone="warning">{status.untranslated.length}</Badge>
+              </InlineStack>
+              {status.added.length > 0 && (
+                <InlineStack gap="100">
+                  <Text variant="bodySm">新增:</Text>
+                  <Badge tone="info">{status.added.length}</Badge>
+                </InlineStack>
+              )}
+            </InlineStack>
+
+            {/* 字段列表 */}
+            <BlockStack gap="200">
+              {fieldsToShow.map(key => {
+                const original = originalFields[key];
+                const translated = translationFields[key];
+                const isTranslated = status.translated.includes(key);
+                const isUntranslated = status.untranslated.includes(key);
+
+                // 状态图标
+                const statusIcon = isTranslated ? '🟢' : (isUntranslated ? '⚪' : '🔵');
+                const statusText = isTranslated ? '已翻译' : (isUntranslated ? '未翻译' : '新增');
+
+                return (
+                  <Box key={key} padding="200" background="bg-surface-secondary" borderRadius="100">
+                    <BlockStack gap="100">
+                      <InlineStack align="space-between">
+                        <Text variant="bodySm" fontWeight="semibold">{key}</Text>
+                        <Text variant="bodyXs" tone="subdued">{statusIcon} {statusText}</Text>
+                      </InlineStack>
+
+                      {/* 原文 */}
+                      <Text variant="bodyXs" tone="subdued">原文:</Text>
+                      <Text variant="bodyXs" truncate>{
+                        typeof original === 'string' ? original : JSON.stringify(original)
+                      }</Text>
+
+                      {/* 译文 */}
+                      {isTranslated && (
+                        <>
+                          <Text variant="bodyXs" tone="subdued">译文:</Text>
+                          <Text variant="bodyXs" truncate>{
+                            typeof translated === 'string' ? translated : JSON.stringify(translated)
+                          }</Text>
+                        </>
+                      )}
+                    </BlockStack>
+                  </Box>
+                );
+              })}
+            </BlockStack>
+          </BlockStack>
+        </Box>
+      );
+    };
+
+    // 扩展：JSON内容（原有的查看器保留）
     const jsonViewer = displayConfig.isJSON && fields?.extended?.themeData ? (
       <Box key="json-viewer">
         <Text variant="headingMd">JSON内容（原文）</Text>
@@ -259,7 +397,8 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
             ))}
           </>
         )}
-        {jsonViewer}
+        {/* Theme JSON差异展示优先于原始JSON查看器 */}
+        {displayConfig.isDynamic ? renderThemeJsonDiff() : jsonViewer}
       </BlockStack>
     );
   };

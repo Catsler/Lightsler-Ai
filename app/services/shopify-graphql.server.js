@@ -4,6 +4,53 @@
  * Shopify GraphQL查询和变更操作
  */
 
+/**
+ * 清洗翻译值，确保数据有效
+ * @param {any} value - 待清洗的值
+ * @param {any} fallback - 回退值（可选）
+ * @returns {{value: string, skipped: boolean, reason?: string}} 清洗结果
+ */
+function sanitizeTranslationValue(value, fallback = null) {
+  // 处理字符串类型
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      return {
+        value: fallback || '',
+        skipped: true,
+        reason: 'empty_string'
+      };
+    }
+    return {
+      value: trimmed,
+      skipped: false
+    };
+  }
+
+  // 处理非字符串类型（转JSON）
+  if (value != null) {
+    const jsonString = JSON.stringify(value);
+    if (jsonString === '{}' || jsonString === '[]' || jsonString === 'null') {
+      return {
+        value: fallback || '',
+        skipped: true,
+        reason: 'empty_object'
+      };
+    }
+    return {
+      value: jsonString,
+      skipped: false
+    };
+  }
+
+  // null或undefined
+  return {
+    value: fallback || '',
+    skipped: true,
+    reason: 'null_value'
+  };
+}
+
 // 资源类型配置
 export const RESOURCE_TYPES = {
   // 现有资源类型
@@ -1254,6 +1301,13 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     console.log('🔧 第二步：准备翻译输入...');
     const translationInputs = [];
 
+    // 数据清洗统计
+    const sanitizationStats = {
+      total: 0,
+      skipped: 0,
+      reasons: {}
+    };
+
     // 使用字段映射配置来处理翻译
     console.log('🗺️ 字段映射配置:', fieldMapping);
     console.log('📥 收到的翻译数据:', Object.keys(translations).filter(key => translations[key]));
@@ -1265,17 +1319,28 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         console.log(`🔍 处理字段映射: ${translationKey} -> ${contentKey}`);
         const content = translatableContent.find(item => item.key === contentKey);
         if (content) {
+          // 应用数据清洗
+          sanitizationStats.total++;
+          const sanitizedValue = sanitizeTranslationValue(translations[translationKey]);
+
+          if (sanitizedValue.shouldSkip) {
+            sanitizationStats.skipped++;
+            sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
+            console.log(`⏭️ 跳过标准字段 "${contentKey}": ${sanitizedValue.reason}`);
+            continue;
+          }
+
           const translationInput = {
             locale: targetLocale,
             key: contentKey,
-            value: translations[translationKey],
+            value: sanitizedValue.value,
             translatableContentDigest: content.digest
           };
           translationInputs.push(translationInput);
           console.log(`✅ 成功添加翻译输入:`, {
             key: contentKey,
-            valueLength: translations[translationKey].length,
-            valuePreview: translations[translationKey].substring(0, 50) + '...'
+            valueLength: sanitizedValue.value.length,
+            valuePreview: sanitizedValue.value.substring(0, 50) + '...'
           });
         } else {
           console.log(`❌ 警告：未找到对应的可翻译内容，字段key: "${contentKey}"`);
@@ -1299,20 +1364,35 @@ export async function updateResourceTranslation(admin, resourceGid, translations
           
           if (content && fieldData) {
             // 提取value（可能是字符串或对象中的value属性）
-            const fieldValue = fieldData.value || fieldData;
-            
+            // 使用hasOwnProperty避免空字符串被误判为falsy
+            const fieldValue = Object.prototype.hasOwnProperty.call(fieldData, 'value')
+              ? fieldData.value
+              : fieldData;
+
+            // 应用数据清洗
+            sanitizationStats.total++;
+            const sanitizedValue = sanitizeTranslationValue(fieldValue);
+
+            if (sanitizedValue.shouldSkip) {
+              sanitizationStats.skipped++;
+              sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
+              console.log(`⏭️ 跳过Theme动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
+              continue;
+            }
+
             const translationInput = {
               locale: targetLocale,
               key: fieldKey,
-              value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
+              value: sanitizedValue.value,
               translatableContentDigest: fieldData.digest || content.digest
             };
             translationInputs.push(translationInput);
             console.log(`✅ 成功添加Theme动态字段翻译:`, {
               key: fieldKey,
-              valueType: typeof fieldValue,
-              hasDigest: !!fieldData.digest,
-              valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
+              valueType: typeof sanitizedValue.value,
+              hasDigest: !!(fieldData.digest || content.digest),
+              valuePreview: sanitizedValue.value.substring(0, 50) + '...',
+              originalValueType: typeof fieldValue
             });
           } else {
             console.log(`⚠️ Theme动态字段未找到可翻译内容: "${fieldKey}"`);
@@ -1327,18 +1407,29 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         for (const field of translations.translationFields.translatableFields) {
           if (field.key && field.value) {
             const content = translatableContent.find(item => item.key === field.key);
-            
+
             if (content) {
+              // 应用数据清洗
+              sanitizationStats.total++;
+              const sanitizedValue = sanitizeTranslationValue(field.value);
+
+              if (sanitizedValue.shouldSkip) {
+                sanitizationStats.skipped++;
+                sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
+                console.log(`⏭️ 跳过Theme translatable字段 "${field.key}": ${sanitizedValue.reason}`);
+                continue;
+              }
+
               const translationInput = {
                 locale: targetLocale,
                 key: field.key,
-                value: field.value,
+                value: sanitizedValue.value,
                 translatableContentDigest: field.digest || content.digest
               };
               translationInputs.push(translationInput);
               console.log(`✅ 成功添加Theme translatable字段:`, {
                 key: field.key,
-                valuePreview: field.value.substring(0, 50) + '...'
+                valuePreview: sanitizedValue.value.substring(0, 50) + '...'
               });
             }
           }
@@ -1353,17 +1444,31 @@ export async function updateResourceTranslation(admin, resourceGid, translations
           console.log(`🔍 处理标准动态字段: ${fieldKey}`);
           const content = translatableContent.find(item => item.key === fieldKey);
           if (content) {
+            // 标准化字段值
+            const standardizedValue = typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue);
+
+            // 应用数据清洗
+            sanitizationStats.total++;
+            const sanitizedValue = sanitizeTranslationValue(standardizedValue);
+
+            if (sanitizedValue.shouldSkip) {
+              sanitizationStats.skipped++;
+              sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
+              console.log(`⏭️ 跳过标准动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
+              continue;
+            }
+
             const translationInput = {
               locale: targetLocale,
               key: fieldKey,
-              value: typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue),
+              value: sanitizedValue.value,
               translatableContentDigest: content.digest
             };
             translationInputs.push(translationInput);
             console.log(`✅ 成功添加标准动态字段翻译:`, {
               key: fieldKey,
               valueType: typeof fieldValue,
-              valuePreview: (typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)).substring(0, 50) + '...'
+              valuePreview: sanitizedValue.value.substring(0, 50) + '...'
             });
           } else {
             console.log(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
@@ -1384,6 +1489,16 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         }
       };
     }
+
+    // 输出数据清洗统计报告
+    console.log('🧹 数据清洗统计报告:', {
+      总处理字段数: sanitizationStats.total,
+      跳过字段数: sanitizationStats.skipped,
+      有效字段数: sanitizationStats.total - sanitizationStats.skipped,
+      跳过原因分布: sanitizationStats.reasons,
+      清洗成功率: sanitizationStats.total > 0 ?
+        `${((sanitizationStats.total - sanitizationStats.skipped) / sanitizationStats.total * 100).toFixed(1)}%` : 'N/A'
+    });
 
     console.log(`🎯 准备注册 ${translationInputs.length} 个翻译`);
     console.log('📤 翻译输入详情:', JSON.stringify(translationInputs, null, 2));

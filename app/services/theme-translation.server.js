@@ -322,7 +322,10 @@ export async function translateThemeResource(resource, targetLang) {
         const translatedDynamic = {};
         
         for (const [key, fieldData] of Object.entries(contentFields.dynamicFields)) {
-          const fieldValue = fieldData.value || fieldData;
+          // 使用hasOwnProperty避免空字符串被误判为falsy
+          const fieldValue = Object.prototype.hasOwnProperty.call(fieldData, 'value')
+            ? fieldData.value
+            : fieldData;
           
           // 对Theme JSON Template使用更宽松的翻译策略
           let shouldTranslate = shouldTranslateThemeField(key, fieldValue);

@@ -116,21 +116,12 @@ export const action = async ({ request }) => {
           translations = await translateResourceWithLogging(resource, targetLanguage);
         }
         
-        // 保存翻译结果到数据库
+        // 保存翻译结果到数据库 (status: pending, 等待手动发布)
         await saveTranslation(resource.id, shop.id, targetLanguage, translations);
-        
-        // 使用保存的GID
-        const gid = resource.gid;
-        
-        // 更新到Shopify - 使用通用函数
-        const updateResult = await updateResourceTranslation(
-          admin, 
-          gid, 
-          translations, 
-          targetLanguage,
-          resource.resourceType.toUpperCase()
-        );
-        
+
+        // Phase 2: 不再自动同步到Shopify，改为pending状态等待手动发布
+        console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${targetLanguage}`);
+
         // 更新资源状态为完成
         await updateResourceStatus(resource.id, 'completed');
         

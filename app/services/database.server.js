@@ -244,12 +244,29 @@ export async function getTranslationStats(shopId, language = null) {
     where: translationWhere
   });
 
+  // Phase 2: 添加pending翻译统计
+  const pendingTranslations = await prisma.translation.count({
+    where: { ...translationWhere, syncStatus: 'pending' }
+  });
+
+  const syncedTranslations = await prisma.translation.count({
+    where: { ...translationWhere, syncStatus: 'synced' }
+  });
+
+  // 全局pending翻译统计（所有语言）
+  const totalPendingTranslations = await prisma.translation.count({
+    where: { shopId: shopId, syncStatus: 'pending' }
+  });
+
   // 如果指定了语言，添加语言特定的统计
   const result = {
     totalResources,
     pendingResources,
     completedResources,
-    totalTranslations
+    totalTranslations,
+    pendingTranslations,
+    syncedTranslations,
+    totalPendingTranslations
   };
 
   if (language) {

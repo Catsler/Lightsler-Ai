@@ -38,7 +38,7 @@ export function createTranslationRequestBody(text, targetLang, systemPrompt, max
       }
     ],
     temperature: 0.2,
-    max_tokens: maxTokens,
+    max_tokens: Math.max(1, Math.floor(Number(maxTokens) || 2000)), // 确保max_tokens为正整数
     top_p: 0.9,
     frequency_penalty: 0,
     presence_penalty: 0
@@ -120,7 +120,8 @@ export function extractTranslationFromResponse(apiResult) {
 export function calculateDynamicTokenLimit(text, targetLang, minTokens = 2000, maxTokens = 8000) {
   // 不同语言的token比率不同，韩语/日语需要更多token
   const tokenMultiplier = ['ja', 'ko', 'zh-CN', 'zh-TW'].includes(targetLang) ? 4 : 2.5;
-  return Math.min(Math.max(text.length * tokenMultiplier, minTokens), maxTokens);
+  // 确保返回整数，避免浮点数问题
+  return Math.floor(Math.min(Math.max(text.length * tokenMultiplier, minTokens), maxTokens));
 }
 
 /**

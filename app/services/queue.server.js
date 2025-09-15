@@ -221,14 +221,9 @@ if (translationQueue) {
         }
       };
       
-      // 更新到Shopify - 使用通用函数
-      const updateResult = await updateResourceTranslation(
-        adminGraphQL, 
-        gid, 
-        translations, 
-        language,
-        resource.resourceType.toUpperCase()
-      );
+      // Phase 2: 不再自动同步到Shopify，改为pending状态等待手动发布
+      // 翻译完成后设置为pending状态，等待用户审查后手动发布
+      console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);
       job.progress(90);
       
       // 更新资源状态为完成
