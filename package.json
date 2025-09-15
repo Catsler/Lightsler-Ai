@@ -81,5 +81,8 @@
     "minimatch": "9.0.5",
     "vite": "^5.4.8"
   },
-  "author": "isabe"
+  "author": "isabe",
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-arm64": "^4.50.1"
+  }
 }

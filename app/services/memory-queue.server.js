@@ -170,6 +170,35 @@ class MemoryQueue {
     // 简化实现，仅记录日志
     logger.debug(`Register memory queue event: ${event}`);
   }
+
+  // Bull队列兼容方法
+  async getJobs(types = ['waiting', 'active', 'completed', 'failed']) {
+    const result = [];
+    for (const type of types) {
+      if (type === 'waiting') result.push(...await this.getWaiting());
+      if (type === 'active') result.push(...await this.getActive());
+      if (type === 'completed') result.push(...await this.getCompleted());
+      if (type === 'failed') result.push(...await this.getFailed());
+    }
+    return result;
+  }
+
+  async getJobCounts() {
+    const allJobs = Array.from(jobs.values());
+    return {
+      waiting: allJobs.filter(j => j.status === 'waiting').length,
+      active: allJobs.filter(j => j.status === 'active').length,
+      completed: allJobs.filter(j => j.status === 'completed').length,
+      failed: allJobs.filter(j => j.status === 'failed').length
+    };
+  }
+
+  async empty() {
+    const count = jobs.size;
+    jobs.clear();
+    queue.length = 0;
+    return count;
+  }
 }
 
 export { MemoryQueue };

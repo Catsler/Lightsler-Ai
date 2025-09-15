@@ -72,8 +72,12 @@ export const action = async ({ request }) => {
     
     // 扫描主题相关资源
     const themeResourceTypes = [
-      'ONLINE_STORE_THEME',
-      'ONLINE_STORE_THEME_JSON_TEMPLATE'
+      'ONLINE_STORE_THEME_APP_EMBED',
+      'ONLINE_STORE_THEME_JSON_TEMPLATE',
+      'ONLINE_STORE_THEME_LOCALE_CONTENT',
+      'ONLINE_STORE_THEME_SECTION_GROUP',
+      'ONLINE_STORE_THEME_SETTINGS_CATEGORY',
+      'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS'
     ];
     
     for (const resourceType of themeResourceTypes) {

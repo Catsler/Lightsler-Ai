@@ -38,8 +38,9 @@ export const RESOURCE_CATEGORIES = {
     name: 'Content',
     icon: '📝',
     subcategories: {
-      MENU: { name: 'Menu', resources: ['MENU'] }
-      // Links 非官方列表项，保留内部使用：可按需加入
+      MENU: { name: 'Menu', resources: ['MENU'] },
+      LINKS: { name: 'Links', resources: ['LINK'] }
+      // Links 已加入，支持导航链接翻译
     }
   },
 
@@ -52,7 +53,8 @@ export const RESOURCE_CATEGORIES = {
       SECTION_GROUPS: { name: 'Section groups', resources: ['ONLINE_STORE_THEME_SECTION_GROUP'] },
       STATIC_SECTIONS: { name: 'Static sections', resources: ['ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS'] },
       TEMPLATES: { name: 'Templates', resources: ['ONLINE_STORE_THEME_JSON_TEMPLATE'] },
-      THEME_SETTINGS: { name: 'Theme settings', resources: ['ONLINE_STORE_THEME_SETTINGS_CATEGORY'] }
+      THEME_SETTINGS: { name: 'Theme settings', resources: ['ONLINE_STORE_THEME_SETTINGS_CATEGORY'] },
+      LOCALE_CONTENT: { name: 'Locale content', resources: ['ONLINE_STORE_THEME_LOCALE_CONTENT'] }
       // Default theme content（非翻译项）不纳入
     }
   }

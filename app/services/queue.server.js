@@ -107,13 +107,23 @@ if (!useMemoryQueue) {
         useMemoryQueue = true;
         // 创建内存队列替代
         const memQueue = new MemoryQueue('translation');
-        // 复制队列方法
-        translationQueue.add = memQueue.add.bind(memQueue);
-        translationQueue.process = memQueue.process.bind(memQueue);
-        translationQueue.getJobs = memQueue.getJobs.bind(memQueue);
-        translationQueue.getJobCounts = memQueue.getJobCounts.bind(memQueue);
-        translationQueue.clean = memQueue.clean.bind(memQueue);
-        translationQueue.empty = memQueue.empty.bind(memQueue);
+
+        // 验证内存队列接口完整性
+        if (!memQueue.getJobs || !memQueue.getJobCounts || !memQueue.empty) {
+          console.error('内存队列接口不完整，使用基础功能');
+          // 提供基础降级方案
+          translationQueue.getJobs = async () => [];
+          translationQueue.getJobCounts = async () => ({ waiting: 0, active: 0, completed: 0, failed: 0 });
+          translationQueue.empty = async () => 0;
+        } else {
+          // 原有的方法绑定逻辑保持不变
+          translationQueue.add = memQueue.add.bind(memQueue);
+          translationQueue.process = memQueue.process.bind(memQueue);
+          translationQueue.getJobs = memQueue.getJobs.bind(memQueue);
+          translationQueue.getJobCounts = memQueue.getJobCounts.bind(memQueue);
+          translationQueue.clean = memQueue.clean.bind(memQueue);
+          translationQueue.empty = memQueue.empty.bind(memQueue);
+        }
       }
     });
   } catch (error) {

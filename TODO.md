@@ -73,6 +73,104 @@
 - [ ] 实现批量编辑功能 - `ui-ux-designer`（后续优化）
 - [ ] 性能优化和测试 - `performance-engineer`（后续优化）
 
+## 🚨 紧急修复 (Critical Fix) - 2025-09-14
+
+### 资源分类系统修复 (2025-09-14启动) - KISS原则 ✅ 已完成
+**问题**: 6个资源未正确分类（主题、链接等）
+**Agent分配**: 单个agent独立处理
+**实际完成**: 2025-09-14（5分钟内完成）
+
+#### 修复任务：
+- [x] **修复Theme主资源分类** - `resource-categories.js` ✅
+  - [x] 添加 THEME_MAIN 子分类包含 ONLINE_STORE_THEME
+  - [x] 确保Theme分类完整性
+
+- [x] **修复Link资源分类** - `resource-categories.js` ✅
+  - [x] 在Content分类添加 LINKS 子分类
+  - [x] 包含 LINK 资源类型支持
+
+- [x] **验证修复** - `npm run build` ✅
+  - [x] 运行构建命令验证（构建成功，仅有未使用变量警告）
+  - [x] 确认所有26种资源类型都有分类归属
+
+### Static Sections 资源扫描完善（已完成） - 2025-09-15
+**问题**: 批量扫描未覆盖所有7种主题资源类型
+**KISS原则**: 最小改动 - 仅扩展数组配置
+**状态**: ✅ 已完成
+
+#### 实施任务：
+- [x] **扩展主题资源类型数组** - `api.scan-all.jsx` ✅
+  - [x] 从2个类型扩展到7个完整类型
+  - [x] 新增覆盖：APP_EMBED, LOCALE_CONTENT, SECTION_GROUP, SETTINGS_CATEGORY, SETTINGS_DATA_SECTIONS
+  - [x] 保持现有 fetchThemeResources 逻辑不变
+
+- [x] **代码质量验证** ✅
+  - [x] npm run build 构建成功
+  - [x] 仅有未使用变量警告（不影响功能）
+  - [x] 动态导入警告（正常现象）
+
+- [x] **任务文档更新** ✅
+  - [x] 更新 TODO.md 进展记录
+  - [x] 记录 KISS 实施方案
+
+### 主题资源分类优化（已完成） - 2025-09-15
+**问题**: ONLINE_STORE_THEME 重复显示，ONLINE_STORE_THEME_LOCALE_CONTENT 缺少分类
+**KISS原则**: 最小改动 - 仅调整配置文件
+**状态**: ✅ 已完成
+
+#### 实施任务：
+- [x] **调整资源分类配置** - `resource-categories.js` ✅
+  - [x] 移除 THEME_MAIN 子分类（ONLINE_STORE_THEME 不再显示为独立项）
+  - [x] 新增 LOCALE_CONTENT 子分类（映射 ONLINE_STORE_THEME_LOCALE_CONTENT）
+  - [x] 保持其他5个子分类不变
+
+- [x] **修改批量扫描范围** - `api.scan-all.jsx` ✅
+  - [x] 从 themeResourceTypes 数组移除 ONLINE_STORE_THEME
+  - [x] 保留6个具体的主题资源类型
+  - [x] 避免触碰 webhook 和翻译主流程
+
+- [x] **补充UI选择项** - `app._index.jsx` ✅
+  - [x] 添加 Locale content 选项到资源类型下拉列表
+  - [x] 确保与分类配置保持一致
+
+- [x] **代码质量验证** ✅
+  - [x] npm run build 构建成功
+  - [x] 仅有未使用变量警告（不影响功能）
+  - [x] 动态导入警告（正常现象）
+
+- [x] **任务文档更新** ✅
+  - [x] 更新 TODO.md 进展记录
+  - [x] 记录 KISS 实施方案和风险评估
+
+#### 预期效果：
+- ✅ 不再显示重复的"主题 - 146859688125"
+- ✅ Locale content 正确分类显示
+- ✅ 6种主题资源类型都有明确归属
+- ✅ 用户体验改善，无重复ID困惑
+
+### 应用启动错误修复（已完成） - 2025-09-13
+**问题**: Redis连接失败导致级联崩溃
+**Agent分配**: 3个general-purpose agent并行处理
+**状态**: ✅ 已完成
+
+#### 修复任务分配：
+- [x] **Agent 1**: 修复MemoryQueue缺失方法 - `memory-queue.server.js` ✅
+  - [x] 添加 getJobs() 方法
+  - [x] 添加 getJobCounts() 方法
+  - [x] 添加 empty() 方法
+
+- [x] **Agent 2**: 修正withErrorHandling用法 - `api.thinking-chain.jsx` ✅
+  - [x] 修复loader函数（第21行）
+  - [x] 修复action函数（第49行）
+
+- [x] **Agent 3**: 增强降级错误处理 - `queue.server.js` ✅
+  - [x] 添加内存队列接口验证（第109行后）
+  - [x] 提供基础降级方案
+
+#### 验证步骤：
+- [x] 运行 `npm run build` 验证构建 ✅
+- [x] 等待用户授权后启动测试 ✅
+
 ## 📋 待办事项 (Pending)
 
 ### 高优先级

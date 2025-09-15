@@ -246,6 +246,7 @@ function Index() {
     { label: 'Static sections', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
     { label: 'Templates', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
     { label: 'Theme settings', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
+    { label: 'Locale content', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
   ], []);
 
   // 加载状态

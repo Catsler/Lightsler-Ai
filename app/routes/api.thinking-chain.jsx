@@ -18,73 +18,77 @@ import { prisma } from '../db.server';
  * GET请求处理器
  * 获取思考链信息和优化建议
  */
-export const loader = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shopId = session.shop;
-  
-  const url = new URL(request.url);
-  const operation = url.searchParams.get('operation');
-  
-  switch (operation) {
-    case 'getSessionThinking':
-      return await getSessionThinkingChain(url.searchParams.get('sessionId'));
-    
-    case 'getOptimizationStatus':
-      return await getOptimizationStatus(shopId);
-    
-    case 'getScheduleSuggestions':
-      return await getScheduleSuggestionsForShop(shopId);
-    
-    default:
-      return json({
-        success: false,
-        error: '无效的操作',
-        supportedOperations: [
-          'getSessionThinking',
-          'getOptimizationStatus', 
-          'getScheduleSuggestions'
-        ]
-      }, { status: 400 });
-  }
-}, '获取思考链信息');
+export const loader = async ({ request }) => {
+  return withErrorHandling(async () => {
+    const { admin, session } = await authenticate.admin(request);
+    const shopId = session.shop;
+
+    const url = new URL(request.url);
+    const operation = url.searchParams.get('operation');
+
+    switch (operation) {
+      case 'getSessionThinking':
+        return await getSessionThinkingChain(url.searchParams.get('sessionId'));
+
+      case 'getOptimizationStatus':
+        return await getOptimizationStatus(shopId);
+
+      case 'getScheduleSuggestions':
+        return await getScheduleSuggestionsForShop(shopId);
+
+      default:
+        return json({
+          success: false,
+          error: '无效的操作',
+          supportedOperations: [
+            'getSessionThinking',
+            'getOptimizationStatus',
+            'getScheduleSuggestions'
+          ]
+        }, { status: 400 });
+    }
+  }, '获取思考链信息');
+};
 
 /**
  * POST请求处理器
  * 执行决策分析和优化操作
  */
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shopId = session.shop;
-  const data = await request.json();
-  
-  const { operation } = data;
-  
-  switch (operation) {
-    case 'analyzeDecision':
-      return await handleAnalyzeDecision(data, shopId);
-    
-    case 'optimizeSession':
-      return await handleOptimizeSession(data, shopId);
-    
-    case 'intelligentTranslate':
-      return await handleIntelligentTranslate(data, shopId);
-    
-    case 'getSchedule':
-      return await handleGetSchedule(data, shopId);
-    
-    default:
-      return json({
-        success: false,
-        error: '无效的操作',
-        supportedOperations: [
-          'analyzeDecision',
-          'optimizeSession',
-          'intelligentTranslate',
-          'getSchedule'
-        ]
-      }, { status: 400 });
-  }
-}, '执行思考链操作');
+export const action = async ({ request }) => {
+  return withErrorHandling(async () => {
+    const { admin, session } = await authenticate.admin(request);
+    const shopId = session.shop;
+    const data = await request.json();
+
+    const { operation } = data;
+
+    switch (operation) {
+      case 'analyzeDecision':
+        return await handleAnalyzeDecision(data, shopId);
+
+      case 'optimizeSession':
+        return await handleOptimizeSession(data, shopId);
+
+      case 'intelligentTranslate':
+        return await handleIntelligentTranslate(data, shopId);
+
+      case 'getSchedule':
+        return await handleGetSchedule(data, shopId);
+
+      default:
+        return json({
+          success: false,
+          error: '无效的操作',
+          supportedOperations: [
+            'analyzeDecision',
+            'optimizeSession',
+            'intelligentTranslate',
+            'getSchedule'
+          ]
+        }, { status: 400 });
+    }
+  }, '执行思考链操作');
+};
 
 /**
  * 分析单个资源的翻译决策
