@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate } from "@remix-run/react";
+import { useLoaderData, useNavigate, useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -11,9 +11,17 @@ import {
   Button,
   Divider
 } from "@shopify/polaris";
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import ThemeTranslationCompare from '../components/ThemeTranslationCompare';
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+
+const DEFAULT_LANGUAGES = [
+  { code: 'zh-CN', name: '中文' },
+  { code: 'en', name: 'English' },
+  { code: 'ja', name: '日本語' }
+];
 
 // Theme资源查询监控统计
 const queryMetrics = {
@@ -211,10 +219,26 @@ export const loader = async ({ request, params }) => {
 export default function ThemeDetailPage() {
   const { resource, queryInfo } = useLoaderData();
   const navigate = useNavigate();
+  const fetcher = useFetcher();
 
-  // 处理contentFields JSON数据
-  const contentFields = resource.contentFields || {};
-  
+  // Theme资源数据归一化函数 - 提取实际的模块化数据
+  const normalizeThemeFields = (fields) => {
+    if (fields?.dynamicFields) {
+      if (typeof fields.dynamicFields === 'string') {
+        try {
+          return JSON.parse(fields.dynamicFields);
+        } catch (error) {
+          console.warn('[Theme数据归一化] JSON解析失败:', error);
+          return fields || {};
+        }
+      }
+      return fields.dynamicFields;
+    }
+    return fields || {};
+  };
+
+  const contentFields = normalizeThemeFields(resource.contentFields);
+
   // 获取翻译统计
   const translationStats = {
     total: resource.translations?.length || 0,
@@ -222,31 +246,151 @@ export default function ThemeDetailPage() {
     synced: resource.translations?.filter(t => t.syncStatus === 'synced').length || 0
   };
 
-  // 渲染Theme特定字段
-  const renderThemeContent = () => {
-    if (!contentFields || Object.keys(contentFields).length === 0) {
-      return (
-        <Text variant="bodySm" tone="subdued">
-          暂无Theme特定内容
-        </Text>
-      );
+  const hasTranslations = translationStats.total > 0;
+
+  const availableLanguages = useMemo(() => {
+    const languageMap = new Map(DEFAULT_LANGUAGES.map(lang => [lang.code, lang.name]));
+
+    (resource.translations || []).forEach((translation) => {
+      if (translation?.language) {
+        const label = translation.languageLabel || translation.languageName || translation.language;
+        languageMap.set(translation.language, label);
+      }
+    });
+
+    return Array.from(languageMap.entries()).map(([code, name]) => ({
+      code,
+      name: name || code
+    }));
+  }, [resource.translations]);
+
+  const initialTargetLanguage = useMemo(() => {
+    // 首先检查URL参数
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlLang = urlParams.get('lang');
+      if (urlLang) {
+        console.log('[初始语言] 从URL获取:', urlLang);
+        return urlLang;
+      }
     }
 
-    return (
-      <BlockStack gap="200">
-        {Object.entries(contentFields).map(([key, value]) => (
-          <InlineStack key={key} align="space-between">
-            <Text variant="bodySm" fontWeight="semibold">
-              {key}:
-            </Text>
-            <Text variant="bodySm" tone="subdued">
-              {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-            </Text>
-          </InlineStack>
-        ))}
-      </BlockStack>
+    // 然后使用第一个非中文翻译，避免总是默认中文
+    const nonChineseTranslation = resource.translations?.find(item =>
+      item?.language && item.language !== 'zh-CN'
+    )?.language;
+
+    if (nonChineseTranslation) {
+      console.log('[初始语言] 使用非中文翻译:', nonChineseTranslation);
+      return nonChineseTranslation;
+    }
+
+    // 最后使用现有翻译或默认语言
+    const existing = resource.translations?.find(item => item?.language)?.language;
+    const result = existing || availableLanguages[0]?.code || 'zh-CN';
+    console.log('[初始语言] 使用默认:', result);
+    return result;
+  }, [resource.translations, availableLanguages]);
+
+  // 添加当前语言状态管理
+  const [currentLanguage, setCurrentLanguage] = useState(initialTargetLanguage);
+
+  // 确保 currentLanguage 跟随 initialTargetLanguage 更新
+  useEffect(() => {
+    if (initialTargetLanguage !== currentLanguage) {
+      console.log('[语言同步] 更新状态:', currentLanguage, '->', initialTargetLanguage);
+      setCurrentLanguage(initialTargetLanguage);
+    }
+  }, [initialTargetLanguage, currentLanguage]);
+
+  // 智能默认视图：URL参数 > 有翻译默认compare > 无翻译默认list
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlView = urlParams.get('view');
+      if (urlView === 'compare' || urlView === 'list') {
+        return urlView;
+      }
+    }
+    return hasTranslations ? 'compare' : 'list';
+  });
+  const canTranslate = resource.metadata?.canTranslate !== false;
+  const isLoading = fetcher.state === 'submitting';
+
+  const updateUrlView = useCallback((newView) => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', newView);
+      window.history.pushState({}, '', url);
+    }
+  }, []);
+
+  const handleViewModeChange = useCallback((newMode) => {
+    setViewMode(newMode);
+    updateUrlView(newMode);
+  }, [updateUrlView]);
+
+  const handleRetranslate = useCallback(() => {
+    console.log('[重新翻译] 当前语言状态:', {
+      currentLanguage,
+      initialTargetLanguage,
+      resourceTranslations: resource.translations?.map(t => ({ language: t.language, status: t.status }))
+    });
+    fetcher.submit(
+      {
+        action: "retranslate",
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        language: currentLanguage
+      },
+      { method: "post", action: "/api/translate-queue" }
     );
-  };
+  }, [resource.id, resource.resourceType, currentLanguage, initialTargetLanguage, resource.translations, fetcher]);
+
+  const handleSync = useCallback(() => {
+    fetcher.submit(
+      {
+        action: "sync",
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        language: currentLanguage
+      },
+      { method: "post", action: "/api/publish" }
+    );
+  }, [resource.id, resource.resourceType, currentLanguage, fetcher]);
+
+  const handleDelete = useCallback(() => {
+    if (confirm('确定删除所有翻译记录吗？此操作不可恢复。')) {
+      fetcher.submit(
+        {
+          action: "delete",
+          resourceId: resource.id
+        },
+        { method: "post", action: "/api/clear" }
+      );
+    }
+  }, [resource.id, fetcher]);
+
+  const handleTranslateField = useCallback((translateRequest) => {
+    if (!translateRequest?.language) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('language', translateRequest.language);
+    formData.append('resourceIds', JSON.stringify([resource.id]));
+    formData.append('clearCache', 'false');
+
+    fetcher.submit(formData, {
+      method: "post",
+      action: "/api/translate"
+    });
+  }, [resource.id, fetcher]);
+
+  const handleSaveTranslations = useCallback((saveRequest) => {
+    console.log('保存Theme翻译:', saveRequest);
+    alert('保存功能正在开发中，目前请使用完整翻译后再同步到Shopify');
+  }, []);
 
   // 渲染翻译列表
   const renderTranslations = () => {
@@ -324,6 +468,25 @@ export default function ThemeDetailPage() {
         icon: ArrowLeftIcon,
         onAction: () => navigate('/app')
       }}
+      primaryAction={canTranslate ? {
+        content: '重新翻译',
+        onAction: handleRetranslate,
+        loading: isLoading
+      } : undefined}
+      secondaryActions={[
+        {
+          content: '同步到Shopify',
+          onAction: handleSync,
+          loading: isLoading,
+          disabled: isLoading
+        },
+        {
+          content: '删除翻译',
+          onAction: handleDelete,
+          destructive: true,
+          disabled: isLoading
+        }
+      ]}
     >
       <Layout>
         <Layout.Section>
@@ -381,14 +544,6 @@ export default function ThemeDetailPage() {
               </BlockStack>
             </Card>
 
-            {/* Theme内容卡片 */}
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd">Theme内容</Text>
-                {renderThemeContent()}
-              </BlockStack>
-            </Card>
-
             {/* 翻译统计卡片 */}
             <Card>
               <BlockStack gap="300">
@@ -413,67 +568,66 @@ export default function ThemeDetailPage() {
         </Layout.Section>
 
         <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
-            {/* 操作按钮卡片 */}
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd">操作</Text>
-                <BlockStack gap="200">
-                  <Button variant="primary" size="large">
-                    重新翻译
-                  </Button>
-                  <Button variant="secondary" size="large">
-                    同步到Shopify
-                  </Button>
-                  <Button variant="plain" size="large" tone="critical">
-                    删除翻译
-                  </Button>
-                </BlockStack>
-              </BlockStack>
-            </Card>
-
-            {/* Sequential Thinking信息卡片 */}
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd">智能信息</Text>
-                
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">风险评分:</Text>
-                  <Badge tone={resource.riskScore > 0.7 ? 'critical' : resource.riskScore > 0.4 ? 'caution' : 'success'}>
-                    {Math.round(resource.riskScore * 100)}%
-                  </Badge>
-                </InlineStack>
-
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">错误次数:</Text>
-                  <Text variant="bodySm">{resource.errorCount || 0}</Text>
-                </InlineStack>
-
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">内容版本:</Text>
-                  <Text variant="bodySm">v{resource.contentVersion}</Text>
-                </InlineStack>
-
-                {resource.lastScannedAt && (
-                  <InlineStack align="space-between">
-                    <Text variant="bodySm" fontWeight="semibold">最后扫描:</Text>
-                    <Text variant="bodySm" tone="subdued">
-                      {new Date(resource.lastScannedAt).toLocaleDateString('zh-CN')}
-                    </Text>
-                  </InlineStack>
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm">状态信息</Text>
+              <InlineStack gap="100">
+                <Badge tone={resource.riskScore > 0.7 ? 'critical' : resource.riskScore > 0.4 ? 'caution' : 'success'}>
+                  风险: {Math.round(resource.riskScore * 100)}%
+                </Badge>
+                <Badge>v{resource.contentVersion}</Badge>
+                {resource.errorCount > 0 && (
+                  <Badge tone="critical">错误: {resource.errorCount}</Badge>
                 )}
-              </BlockStack>
-            </Card>
-          </BlockStack>
+              </InlineStack>
+              {resource.lastScannedAt && (
+                <Text variant="bodySm" tone="subdued">
+                  最后扫描: {new Date(resource.lastScannedAt).toLocaleDateString('zh-CN')}
+                </Text>
+              )}
+            </BlockStack>
+          </Card>
         </Layout.Section>
 
         <Layout.Section>
           {/* 翻译详情卡片 */}
           <Card>
             <BlockStack gap="300">
-              <Text variant="headingMd">翻译详情</Text>
+              <InlineStack align="space-between">
+                <Text variant="headingMd">翻译详情</Text>
+                {hasTranslations && (
+                  <Button
+                    variant="tertiary"
+                    size="slim"
+                    onClick={() => handleViewModeChange(viewMode === 'list' ? 'compare' : 'list')}
+                  >
+                    {viewMode === 'list' ? '切换到对比视图' : '切换到列表视图'}
+                  </Button>
+                )}
+              </InlineStack>
               <Divider />
-              {renderTranslations()}
+              {viewMode === 'compare' ? (
+                <ThemeTranslationCompare
+                  originalData={contentFields ?? {}}
+                  translatedData={(() => {
+                    const currentTranslation = resource.translations?.find(
+                      t => t.language === currentLanguage
+                    );
+                    return normalizeThemeFields(currentTranslation?.translationFields);
+                  })()}
+                  targetLanguage={currentLanguage}
+                  loading={isLoading}
+                  availableLanguages={availableLanguages}
+                  onTranslate={handleTranslateField}
+                  onSave={handleSaveTranslations}
+                  onLanguageChange={(newLang) => {
+                    console.log('[语言切换] 从组件收到:', newLang, '-> 当前状态:', currentLanguage);
+                    setCurrentLanguage(newLang);
+                  }}
+                />
+              ) : (
+                renderTranslations()
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>

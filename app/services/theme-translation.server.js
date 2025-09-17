@@ -4,7 +4,27 @@
  * 与其他资源翻译逻辑完全独立，避免相互影响
  */
 
-import { translateText, postProcessTranslation } from './translation.server.js';
+import { translateTextWithFallback, postProcessTranslation } from './translation.server.js';
+
+// 验证必需函数是否正确导入
+if (typeof translateTextWithFallback !== 'function') {
+  throw new Error('translateTextWithFallback未正确导入，请检查translation.server.js的导出');
+}
+if (typeof postProcessTranslation !== 'function') {
+  throw new Error('postProcessTranslation未正确导入，请检查translation.server.js的导出');
+}
+
+async function translateThemeValue(text, targetLang) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  const result = await translateTextWithFallback(text, targetLang);
+  if (!result.success && result.error) {
+    console.warn(`[Theme翻译] 字段翻译失败，保留原文`, { targetLang, error: result.error });
+  }
+  return result.text;
+}
 
 // Theme可翻译字段规则 - 基于Shopify官方文档和最佳实践
 const THEME_TRANSLATABLE_PATTERNS = [
@@ -38,7 +58,22 @@ const THEME_TRANSLATABLE_PATTERNS = [
   // 更通用的模式 - 捕获更多可能包含文本的字段
   /^(.+\.)?(value|content_value|text_value)$/i,
   /^(.+\.)?(item|field|column|row|section).*?(text|content|title|label)$/i,
-  /^(.+\.)?(tab_label|tab_title|tab_content)$/i
+  /^(.+\.)?(tab_label|tab_title|tab_content)$/i,
+
+  // 新增常见UI模式 - 提高覆盖率
+  /^(.+\.)?(summary|excerpt|preview|intro|overview)$/i,
+  /^(.+\.)?(footer_text|copyright|legal|disclaimer)$/i,
+  /^(.+\.)?(quote|testimonial|review|comment)$/i,
+  /^(.+\.)?(announcement|promo|promotion|offer)$/i,
+  /^(.+\.)?(menu|dropdown|option|choice).*?(text|label)$/i,
+  /^(.+\.)?(badge|status|tag|category).*?(text|label)$/i,
+  /^(.+\.)?(instruction|step|guide|tutorial).*?(text|title)$/i,
+  /^(.+\.)?(empty_state|no_results|not_found).*?(text|message)$/i,
+
+  // 更宽泛的文本检测模式
+  /.*_(text|title|label|heading|description|content|message)$/i,
+  /.*text$/i,
+  /.*(title|label|heading)$/i
 ];
 
 // Theme技术字段（不翻译）- 这些字段应该保持原值
@@ -139,20 +174,30 @@ function shouldTranslateThemeField(key, value) {
       console.log(`[Theme翻译] 跳过品牌名: ${key} = "${value}"`);
       return false;
     }
-    
+
     // 对于有多个单词的文本，考虑翻译
     if (value.split(' ').length > 1) {
       console.log(`[Theme翻译] 检测到多词文本内容，需要翻译: ${key} = "${value}"`);
       return true;
     }
-    
+
     // 对于单个词但看起来像占位符的，也考虑翻译
     if (value.length >= 4 && /^[A-Z][a-z]+/.test(value)) {
       console.log(`[Theme翻译] 检测到可能的UI文本，需要翻译: ${key} = "${value}"`);
       return true;
     }
+
+    // 9. 新增：对于短文本也考虑翻译（提高覆盖率）
+    // 只要不是明显的技术值，就考虑翻译
+    if (value.length >= 2 && value.length <= 20 &&
+        !/^[0-9#.]/.test(value) && // 不是数字或颜色
+        !/^\w+\.(jpg|png|gif|svg|webp|css|js)$/i.test(value) && // 不是文件名
+        !/^(true|false|null|undefined)$/i.test(value)) { // 不是布尔值
+      console.log(`[Theme翻译] 检测到短文本，考虑翻译: ${key} = "${value}"`);
+      return true;
+    }
   }
-  
+
   console.log(`[Theme翻译] 跳过字段: ${key} = "${value}"`);
   return false;
 }
@@ -236,7 +281,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
         const { protectedText, protectedMap } = protectLiquidVariables(value);
         
         // 翻译文本
-        let translatedText = await translateText(protectedText, targetLang);
+        let translatedText = await translateThemeValue(protectedText, targetLang);
         
         // 恢复Liquid变量
         translatedText = restoreLiquidVariables(translatedText, protectedMap);
@@ -348,7 +393,7 @@ export async function translateThemeResource(resource, targetLang) {
           if (shouldTranslate) {
             try {
               const { protectedText, protectedMap } = protectLiquidVariables(fieldValue);
-              let translatedText = await translateText(protectedText, targetLang);
+              let translatedText = await translateThemeValue(protectedText, targetLang);
               translatedText = restoreLiquidVariables(translatedText, protectedMap);
               
               // 保留digest用于后续注册
@@ -379,7 +424,7 @@ export async function translateThemeResource(resource, targetLang) {
           if (shouldTranslateThemeField(field.key, field.value)) {
             try {
               const { protectedText, protectedMap } = protectLiquidVariables(field.value);
-              let translatedText = await translateText(protectedText, targetLang);
+              let translatedText = await translateThemeValue(protectedText, targetLang);
               translatedText = restoreLiquidVariables(translatedText, protectedMap);
               
               translatedFields.push({
@@ -406,7 +451,7 @@ export async function translateThemeResource(resource, targetLang) {
       // 处理本地化内容
       if (contentFields.localeContent) {
         try {
-          result.translationFields.localeContent = await translateText(
+          result.translationFields.localeContent = await translateThemeValue(
             contentFields.localeContent, 
             targetLang
           );
@@ -427,7 +472,7 @@ export async function translateThemeResource(resource, targetLang) {
         if (shouldTranslateThemeField(key, value)) {
           try {
             const { protectedText, protectedMap } = protectLiquidVariables(value);
-            let translatedText = await translateText(protectedText, targetLang);
+            let translatedText = await translateThemeValue(protectedText, targetLang);
             translatedText = restoreLiquidVariables(translatedText, protectedMap);
             translatedText = await postProcessTranslation(translatedText, targetLang, value);
             
@@ -452,7 +497,7 @@ export async function translateThemeResource(resource, targetLang) {
       for (const [key, value] of Object.entries(contentFields)) {
         if (typeof value === 'string' && shouldTranslateThemeField(key, value)) {
           try {
-            result.translationFields[key] = await translateText(value, targetLang);
+            result.translationFields[key] = await translateThemeValue(value, targetLang);
           } catch (error) {
             console.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);
             result.translationFields[key] = value;

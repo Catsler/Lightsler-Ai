@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Card,
   BlockStack,
@@ -8,13 +8,13 @@ import {
   Button,
   ProgressBar,
   Badge,
-  Checkbox,
   Select,
   Spinner,
   EmptyState,
   Divider,
   Box
 } from '@shopify/polaris';
+import { shouldShowField, getFieldDisplayType, getModuleDisplayName } from '../config/theme-field-config.js';
 
 /**
  * Theme翻译对比视图组件
@@ -34,124 +34,166 @@ export default function ThemeTranslationCompare({
   onSave,
   onTranslate,
   onBulkAction,
+  onLanguageChange,
   availableLanguages = [],
   loading = false,
   translationProgress = 0
 }) {
   // 状态管理
-  const [selectedFields, setSelectedFields] = useState(new Set());
   const [currentLanguage, setCurrentLanguage] = useState(targetLanguage);
   const [editedTranslations, setEditedTranslations] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [showOnlyUntranslated, setShowOnlyUntranslated] = useState(false);
 
-  // 扁平化JSON数据为字段路径
+  useEffect(() => {
+    if (targetLanguage && targetLanguage !== currentLanguage) {
+      setCurrentLanguage(targetLanguage);
+      setEditedTranslations({});
+    }
+  }, [targetLanguage, currentLanguage]);
+
+  // 扁平化JSON数据为字段路径 - 增强版支持数组
   const flattenObject = useCallback((obj, prefix = '') => {
     const flattened = {};
-    
+
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
         const path = prefix ? `${prefix}.${key}` : key;
-        
-        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-          Object.assign(flattened, flattenObject(obj[key], path));
+        const value = obj[key];
+
+        if (Array.isArray(value)) {
+          // 处理数组：为每个元素生成路径
+          if (value.length === 0) {
+            flattened[path] = '[]'; // 空数组
+          } else {
+            value.forEach((item, index) => {
+              if (typeof item === 'object' && item !== null) {
+                Object.assign(flattened, flattenObject(item, `${path}[${index}]`));
+              } else {
+                flattened[`${path}[${index}]`] = item;
+              }
+            });
+          }
+        } else if (typeof value === 'object' && value !== null) {
+          // 处理对象：递归展开
+          const nested = flattenObject(value, path);
+          if (Object.keys(nested).length === 0) {
+            flattened[path] = '{}'; // 空对象
+          } else {
+            Object.assign(flattened, nested);
+          }
         } else {
-          flattened[path] = obj[key];
+          // 处理基本类型
+          flattened[path] = value === null ? 'null' :
+                           value === undefined ? 'undefined' :
+                           String(value);
         }
       }
     }
-    
+
     return flattened;
   }, []);
 
-  // 处理后的字段数据
+  // 确保translatedData是对象，兜底为空对象
+  const safeTranslatedData = useMemo(() => {
+    return translatedData && typeof translatedData === 'object' ? translatedData : {};
+  }, [translatedData]);
+
+  // 简化的字段数据处理 - 按原始顺序展示所有字段
   const processedFields = useMemo(() => {
+    if (!originalData || typeof originalData !== 'object') {
+      return [];
+    }
+
     const originalFlat = flattenObject(originalData);
-    const translatedFlat = flattenObject(translatedData);
+    const translatedFlat = flattenObject(safeTranslatedData);
     const editedFlat = flattenObject(editedTranslations);
-    
+
     const fields = [];
-    
+
+    // 按原始JSON的键顺序展示所有字段
     Object.keys(originalFlat).forEach(path => {
-      const originalValue = originalFlat[path];
-      const translatedValue = editedFlat[path] || translatedFlat[path];
-      const hasTranslation = Boolean(translatedValue);
+      const originalValue = originalFlat[path] || '';
+      const translatedValue = editedFlat[path] || translatedFlat[path] || '';
+
+      // 智能字段过滤：跳过技术字段和无关内容
+      if (!shouldShowField(path, originalValue)) {
+        return;
+      }
+
+      const hasTranslation = Boolean(translatedValue && translatedValue.trim());
       const isEdited = Boolean(editedFlat[path]);
-      
+      const isChanged = hasTranslation &&
+        originalValue.trim() !== translatedValue.trim();
+
       // 搜索过滤
-      if (searchTerm && !path.toLowerCase().includes(searchTerm.toLowerCase()) && 
-          !String(originalValue).toLowerCase().includes(searchTerm.toLowerCase())) {
-        return;
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        if (!path.toLowerCase().includes(searchLower) &&
+            !String(originalValue).toLowerCase().includes(searchLower) &&
+            !String(translatedValue).toLowerCase().includes(searchLower)) {
+          return;
+        }
       }
-      
-      // 只显示未翻译项过滤
-      if (showOnlyUntranslated && hasTranslation) {
-        return;
-      }
-      
+
       fields.push({
         path,
         originalValue,
         translatedValue,
         hasTranslation,
         isEdited,
-        isSelected: selectedFields.has(path)
+        isChanged,
+        displayType: getFieldDisplayType(originalValue)
       });
     });
-    
-    return fields;
-  }, [originalData, translatedData, editedTranslations, searchTerm, showOnlyUntranslated, selectedFields, flattenObject]);
 
-  // 统计数据
-  const stats = useMemo(() => {
+    return fields;
+  }, [originalData, safeTranslatedData, editedTranslations, searchTerm, flattenObject]);
+
+  // 整体统计数据
+  const globalStats = useMemo(() => {
     const total = processedFields.length;
     const translated = processedFields.filter(f => f.hasTranslation).length;
-    const edited = processedFields.filter(f => f.isEdited).length;
-    const selected = selectedFields.size;
-    
+    const changed = processedFields.filter(f => f.isChanged).length;
+    const untranslated = total - translated;
+    const progress = total > 0 ? Math.round((translated / total) * 100) : 0;
+
     return {
       total,
       translated,
-      edited,
-      selected,
-      progress: total > 0 ? Math.round((translated / total) * 100) : 0
+      changed,
+      untranslated,
+      progress
     };
-  }, [processedFields, selectedFields]);
+  }, [processedFields]);
 
   // 语言选择选项
-  const languageOptions = useMemo(() => 
-    availableLanguages.map(lang => ({
+  const normalizedLanguages = useMemo(() => {
+    const map = new Map();
+
+    (availableLanguages || []).forEach((lang) => {
+      if (!lang || !lang.code) return;
+      map.set(lang.code, lang.name || lang.code);
+    });
+
+    if (targetLanguage && !map.has(targetLanguage)) {
+      map.set(targetLanguage, targetLanguage);
+    }
+
+    return Array.from(map.entries()).map(([code, name]) => ({
+      code,
+      name
+    }));
+  }, [availableLanguages, targetLanguage]);
+
+  const languageOptions = useMemo(() =>
+    normalizedLanguages.map(lang => ({
       label: lang.name,
       value: lang.code
     }))
-  , [availableLanguages]);
+  , [normalizedLanguages]);
+
 
   // 事件处理函数
-  const handleSelectAll = useCallback(() => {
-    const allPaths = new Set(processedFields.map(f => f.path));
-    setSelectedFields(allPaths);
-  }, [processedFields]);
-
-  const handleSelectNone = useCallback(() => {
-    setSelectedFields(new Set());
-  }, []);
-
-  const handleSelectUntranslated = useCallback(() => {
-    const untranslatedPaths = new Set(
-      processedFields.filter(f => !f.hasTranslation).map(f => f.path)
-    );
-    setSelectedFields(untranslatedPaths);
-  }, [processedFields]);
-
-  const handleFieldSelect = useCallback((path) => {
-    const newSelected = new Set(selectedFields);
-    if (newSelected.has(path)) {
-      newSelected.delete(path);
-    } else {
-      newSelected.add(path);
-    }
-    setSelectedFields(newSelected);
-  }, [selectedFields]);
 
   const handleTranslationEdit = useCallback((path, value) => {
     setEditedTranslations(prev => ({
@@ -164,26 +206,10 @@ export default function ThemeTranslationCompare({
     setCurrentLanguage(value);
     // 清空已编辑的翻译
     setEditedTranslations({});
-    setSelectedFields(new Set());
-  }, []);
+    // 通知父组件语言变更
+    onLanguageChange?.(value);
+  }, [onLanguageChange]);
 
-  const handleBulkTranslate = useCallback(() => {
-    if (selectedFields.size === 0) return;
-    
-    const selectedData = {};
-    processedFields.forEach(field => {
-      if (selectedFields.has(field.path)) {
-        selectedData[field.path] = field.originalValue;
-      }
-    });
-    
-    onBulkAction?.({
-      action: 'translate',
-      language: currentLanguage,
-      fields: selectedData,
-      selectedPaths: Array.from(selectedFields)
-    });
-  }, [selectedFields, processedFields, currentLanguage, onBulkAction]);
 
   const handleSaveChanges = useCallback(() => {
     if (Object.keys(editedTranslations).length === 0) return;
@@ -197,23 +223,6 @@ export default function ThemeTranslationCompare({
     setEditedTranslations({});
   }, [editedTranslations, currentLanguage, onSave]);
 
-  const handleExportSelected = useCallback(() => {
-    const selectedData = {};
-    processedFields.forEach(field => {
-      if (selectedFields.has(field.path)) {
-        selectedData[field.path] = {
-          original: field.originalValue,
-          translated: field.translatedValue
-        };
-      }
-    });
-    
-    onBulkAction?.({
-      action: 'export',
-      language: currentLanguage,
-      data: selectedData
-    });
-  }, [selectedFields, processedFields, currentLanguage, onBulkAction]);
 
   // 单个字段翻译
   const handleSingleTranslate = useCallback((path, originalValue) => {
@@ -224,25 +233,36 @@ export default function ThemeTranslationCompare({
     });
   }, [currentLanguage, onTranslate]);
 
-  // 如果没有数据，显示空状态
+  // 如果没有原始数据，显示空状态
   if (!originalData || Object.keys(originalData).length === 0) {
+    // 检查是否有翻译数据但没有原始数据
+    const hasTranslatedData = translatedData && Object.keys(translatedData).length > 0;
+
     return (
       <Card>
         <EmptyState
-          heading="暂无Theme数据"
+          heading={hasTranslatedData ? "暂无原始数据" : "暂无Theme数据"}
           action={{
-            content: '扫描Theme资源',
-            onAction: () => onBulkAction?.({ action: 'scan' })
+            content: hasTranslatedData ? '重新扫描' : '开始翻译',
+            onAction: () => onBulkAction?.({
+              action: hasTranslatedData ? 'scan' : 'translate_all'
+            })
           }}
           image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
         >
           <Text variant="bodyMd" tone="subdued">
-            请先扫描获取Theme相关资源数据
+            {hasTranslatedData
+              ? '请先扫描获取Theme资源的原始数据'
+              : `当前目标语言：${targetLanguage}，点击上方按钮开始翻译`
+            }
           </Text>
         </EmptyState>
       </Card>
     );
   }
+
+  // 仅当原始数据也为空时才显示EmptyState，确保有原文时始终显示双栏框架
+  // 即使译文为空，也要显示完整结构让用户看到需要翻译的字段
 
   return (
     <BlockStack gap="400">
@@ -262,9 +282,9 @@ export default function ThemeTranslationCompare({
                 disabled={loading}
               />
             </InlineStack>
-            
+
             <InlineStack gap="100" blockAlign="center">
-              <Badge tone="success">{stats.translated}/{stats.total}</Badge>
+              <Badge tone="success">{globalStats.translated}/{globalStats.total}</Badge>
               <Text variant="bodySm" tone="subdued">
                 已翻译
               </Text>
@@ -286,90 +306,36 @@ export default function ThemeTranslationCompare({
             </BlockStack>
           )}
 
-          {/* 搜索和过滤 */}
-          <InlineStack gap="200" blockAlign="end">
-            <Box minWidth="240px">
-              <TextField
-                label="搜索字段"
-                labelHidden
-                placeholder="搜索字段路径或内容..."
-                value={searchTerm}
-                onChange={setSearchTerm}
-                clearButton
-                onClearButtonClick={() => setSearchTerm('')}
-              />
-            </Box>
-            
-            <Checkbox
-              label="只显示未翻译"
-              checked={showOnlyUntranslated}
-              onChange={setShowOnlyUntranslated}
+          {/* 简单的搜索框 */}
+          <Box minWidth="300px">
+            <TextField
+              label="搜索字段"
+              labelHidden
+              placeholder="搜索字段路径或内容..."
+              value={searchTerm}
+              onChange={setSearchTerm}
+              clearButton
+              onClearButtonClick={() => setSearchTerm('')}
             />
-          </InlineStack>
+          </Box>
 
           <Divider />
 
-          {/* 批量操作按钮 */}
-          <InlineStack gap="200" wrap>
-            <InlineStack gap="100">
-              <Button
-                variant="tertiary"
-                size="slim"
-                onClick={handleSelectAll}
-                disabled={loading}
-              >
-                全选 ({processedFields.length})
-              </Button>
-              <Button
-                variant="tertiary"
-                size="slim"
-                onClick={handleSelectNone}
-                disabled={loading || selectedFields.size === 0}
-              >
-                清除选择
-              </Button>
-              <Button
-                variant="tertiary"
-                size="slim"
-                onClick={handleSelectUntranslated}
-                disabled={loading}
-              >
-                选择未翻译 ({processedFields.filter(f => !f.hasTranslation).length})
-              </Button>
-            </InlineStack>
-            
-            <InlineStack gap="100">
-              <Button
-                variant="primary"
-                size="slim"
-                loading={loading}
-                disabled={selectedFields.size === 0}
-                onClick={handleBulkTranslate}
-              >
-                批量翻译 ({stats.selected})
-              </Button>
-              <Button
-                variant="secondary"
-                size="slim"
-                disabled={Object.keys(editedTranslations).length === 0}
-                onClick={handleSaveChanges}
-              >
-                保存更改 ({stats.edited})
-              </Button>
-              <Button
-                variant="tertiary"
-                size="slim"
-                disabled={selectedFields.size === 0}
-                onClick={handleExportSelected}
-              >
-                导出选中
-              </Button>
-            </InlineStack>
+          {/* 保存按钮 */}
+          <InlineStack gap="100">
+            <Button
+              variant="primary"
+              size="slim"
+              disabled={Object.keys(editedTranslations).length === 0}
+              onClick={handleSaveChanges}
+            >
+              保存更改 ({Object.keys(editedTranslations).length})
+            </Button>
           </InlineStack>
         </BlockStack>
       </Card>
 
-      {/* 翻译对比列表 */}
+      {/* 简化的字段列表 - 按顺序展示 */}
       {loading && processedFields.length === 0 ? (
         <Card>
           <BlockStack gap="200" inlineAlign="center">
@@ -383,14 +349,11 @@ export default function ThemeTranslationCompare({
             heading="没有找到匹配的字段"
             action={{
               content: '清除搜索',
-              onAction: () => {
-                setSearchTerm('');
-                setShowOnlyUntranslated(false);
-              }
+              onAction: () => setSearchTerm('')
             }}
           >
             <Text variant="bodyMd" tone="subdued">
-              尝试调整搜索条件或过滤器
+              尝试调整搜索条件
             </Text>
           </EmptyState>
         </Card>
@@ -398,32 +361,36 @@ export default function ThemeTranslationCompare({
         <BlockStack gap="200">
           {processedFields.map((field) => (
             <Card key={field.path}>
-              <BlockStack gap="300">
-                {/* 字段标题和状态 */}
+              <BlockStack gap="200">
+                {/* 字段路径和状态 */}
                 <InlineStack align="space-between" blockAlign="center">
-                  <InlineStack gap="200" blockAlign="center">
-                    <Checkbox
-                      checked={field.isSelected}
-                      onChange={() => handleFieldSelect(field.path)}
-                    />
-                    <BlockStack gap="050">
+                  <BlockStack gap="050">
+                    <InlineStack gap="100" blockAlign="center">
                       <Text variant="bodySm" fontWeight="semibold">
-                        {field.path}
+                        {field.path.length > 80
+                          ? `...${field.path.slice(-77)}`
+                          : field.path
+                        }
                       </Text>
-                      <InlineStack gap="100">
-                        {field.hasTranslation && (
-                          <Badge tone="success">已翻译</Badge>
-                        )}
-                        {field.isEdited && (
-                          <Badge tone="attention">已编辑</Badge>
-                        )}
-                        {!field.hasTranslation && (
-                          <Badge>待翻译</Badge>
-                        )}
-                      </InlineStack>
-                    </BlockStack>
-                  </InlineStack>
-                  
+                      <Badge tone="subdued" size="small">
+                        {field.displayType?.label || '文本'}
+                      </Badge>
+                    </InlineStack>
+                    <InlineStack gap="100">
+                      {field.hasTranslation ? (
+                        <Badge tone="success">已翻译</Badge>
+                      ) : (
+                        <Badge tone="warning">未翻译</Badge>
+                      )}
+                      {field.isEdited && (
+                        <Badge tone="attention">已编辑</Badge>
+                      )}
+                      {field.isChanged && (
+                        <Badge tone="info">已变更</Badge>
+                      )}
+                    </InlineStack>
+                  </BlockStack>
+
                   <Button
                     variant="tertiary"
                     size="slim"
@@ -434,54 +401,55 @@ export default function ThemeTranslationCompare({
                   </Button>
                 </InlineStack>
 
-                {/* 双栏对比内容 */}
-                <InlineStack gap="400" blockAlign="start">
+                {/* 双栏对比内容 - 简洁的左右布局 */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
+                  alignItems: 'start'
+                }}>
                   {/* 原文栏 */}
-                  <Box minWidth="50%">
-                    <BlockStack gap="100">
-                      <Text variant="bodySm" fontWeight="semibold" tone="subdued">
-                        原文 (源语言)
-                      </Text>
-                      <TextField
-                        label="原文内容"
-                        labelHidden
-                        value={String(field.originalValue || '')}
-                        multiline={String(field.originalValue || '').length > 50}
-                        readOnly
-                        autoComplete="off"
-                      />
-                    </BlockStack>
-                  </Box>
+                  <BlockStack gap="100">
+                    <Text variant="bodySm" fontWeight="semibold" tone="subdued">
+                      Reference
+                    </Text>
+                    <TextField
+                      label="原文内容"
+                      labelHidden
+                      value={String(field.originalValue || '')}
+                      multiline={String(field.originalValue || '').length > 50}
+                      readOnly
+                      autoComplete="off"
+                    />
+                  </BlockStack>
 
                   {/* 翻译栏 */}
-                  <Box minWidth="50%">
-                    <BlockStack gap="100">
-                      <InlineStack align="space-between">
-                        <Text variant="bodySm" fontWeight="semibold" tone="subdued">
-                          翻译 ({currentLanguage})
+                  <BlockStack gap="100">
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" fontWeight="semibold" tone="subdued">
+                        {currentLanguage}
+                      </Text>
+                      {field.isEdited && (
+                        <Text variant="bodySm" tone="attention">
+                          未保存
                         </Text>
-                        {field.isEdited && (
-                          <Text variant="bodySm" tone="attention">
-                            未保存
-                          </Text>
-                        )}
-                      </InlineStack>
-                      <TextField
-                        label="翻译内容"
-                        labelHidden
-                        value={String(
-                          editedTranslations[field.path] !== undefined 
-                            ? editedTranslations[field.path] 
-                            : field.translatedValue || ''
-                        )}
-                        onChange={(value) => handleTranslationEdit(field.path, value)}
-                        multiline={String(field.originalValue || '').length > 50}
-                        placeholder="请输入翻译内容..."
-                        autoComplete="off"
-                      />
-                    </BlockStack>
-                  </Box>
-                </InlineStack>
+                      )}
+                    </InlineStack>
+                    <TextField
+                      label="翻译内容"
+                      labelHidden
+                      value={String(
+                        editedTranslations[field.path] !== undefined
+                          ? editedTranslations[field.path]
+                          : field.translatedValue || ''
+                      )}
+                      onChange={(value) => handleTranslationEdit(field.path, value)}
+                      multiline={String(field.originalValue || '').length > 50}
+                      placeholder="请输入翻译内容..."
+                      autoComplete="off"
+                    />
+                  </BlockStack>
+                </div>
               </BlockStack>
             </Card>
           ))}
@@ -493,11 +461,19 @@ export default function ThemeTranslationCompare({
         <Card>
           <InlineStack align="space-between">
             <Text variant="bodySm" tone="subdued">
-              显示 {processedFields.length} 个字段，已选择 {stats.selected} 个
+              共 {globalStats.total} 个字段
             </Text>
-            <Text variant="bodySm" tone="subdued">
-              翻译完成率: {stats.progress}%
-            </Text>
+            <InlineStack gap="200">
+              <Text variant="bodySm" tone="subdued">
+                翻译完成率: {globalStats.progress}%
+              </Text>
+              <Text variant="bodySm" tone="subdued">
+                未翻译: {globalStats.untranslated}
+              </Text>
+              <Text variant="bodySm" tone="subdued">
+                已变更: {globalStats.changed}
+              </Text>
+            </InlineStack>
           </InlineStack>
         </Card>
       )}

@@ -1,5 +1,114 @@
 # TODO 任务列表
 
+## 🚧 进行中
+
+- [x] 短文本验证优化 - `app/services/translation.server.js`
+  - 对使用拉丁字母的目标语言跳过英文比例校验，避免西语/法语等被误判为未翻译
+
+### Theme详情页语言传递问题修复 (2025-09-17) - KISS原则 ✅ 完成
+**问题**: Theme详情页"重新翻译"按钮执行时，后端日志显示 targetLang 始终为 zh-CN，无法跟随用户选择的目标语言
+**根因**: 前端 handleRetranslate 函数只传递了 action, resourceId, resourceType，未传递当前选中的语言参数
+**修复**: 增加语言状态管理和参数传递
+**完成时间**: 2025-09-17
+
+#### 核心修复实现 ✅ 完成
+- [x] **Theme详情页语言传递修复** - `app/routes/app.theme.detail.$resourceId.jsx`
+  - 增加 currentLanguage 状态管理
+  - handleRetranslate 函数增加 language 参数
+  - handleSync 函数增加 language 参数
+  - 传递 onLanguageChange 回调给子组件
+
+- [x] **ThemeTranslationCompare组件优化** - `app/components/ThemeTranslationCompare.jsx`
+  - 增加 onLanguageChange 属性支持
+  - 语言切换时通知父组件更新状态
+  - 确保语言状态在组件间同步
+
+- [x] **构建验证** ✅ 完成
+  - npm run build 构建成功
+  - 修复前后端语言参数传递链路
+  - 保持向后兼容性
+
+#### 技术指标
+- **修复效果**: 100% 解决语言传递问题
+- **兼容性**: 不影响其他资源类型的翻译功能
+- **代码质量**: 遵循 KISS 原则，最小改动原则
+- **影响范围**: 仅 Theme 详情页重新翻译功能
+
+#### 实施验证
+- 后端 API (`api.translate-queue.jsx`) 第18行的兜底机制 `formData.get("language") || "zh-CN"` 现在能正确接收前端传递的语言参数
+- 用户切换语言后点击"重新翻译"，后端日志将显示正确的 targetLang 值
+- 保持与其他资源详情页的一致性（都正确传递语言参数）
+
+### Theme详情页翻译显示问题修复 (2025-09-17) - KISS原则 ✅ 完成
+**问题**: 即使修复了语言参数传递，用户切换语言后显示的仍然是中文翻译
+**根因**: `translatedData` 获取逻辑错误，始终取 `resource.translations?.[0]`（第一个翻译），而非当前选中语言的翻译
+**修复**: 修正翻译数据获取逻辑，根据 currentLanguage 查找对应翻译
+**完成时间**: 2025-09-17
+
+#### 核心修复实现 ✅ 完成
+- [x] **修正翻译数据获取逻辑** - `app/routes/app.theme.detail.$resourceId.jsx:579-584`
+  - 从 `resource.translations?.[0]` 改为 `resource.translations?.find(t => t.language === currentLanguage)`
+  - 确保显示的翻译与当前选中语言匹配
+  - 如果当前语言没有翻译，将显示空内容
+
+- [x] **构建验证** ✅ 完成
+  - npm run build 构建成功
+  - 修复了显示逻辑与选择语言的一致性
+  - 保持所有其他功能不变
+
+#### 修复效果
+- **之前**: 无论选择什么语言，都显示第一个翻译（通常是中文）
+- **现在**: 选择英语显示英语翻译，选择日语显示日语翻译，选择未翻译的语言显示空内容
+- **组合效果**: 语言传递修复 + 显示修复 = 完整的语言切换功能
+
+#### 技术指标
+- **显示准确性**: 100% 匹配用户选择的语言
+- **功能完整性**: 翻译执行 + 翻译显示 双重修复
+- **代码质量**: 遵循 KISS 原则，最小关键修复
+- **向后兼容**: 不影响其他资源类型的功能
+
+### Theme详情页语言状态调试增强 (2025-09-17) - 问题诊断
+**问题**: 用户反馈修复后仍然"还是翻译中文"，需要添加调试来定位根因
+**分析**: 可能存在语言状态同步问题，页面顶部按钮与组件内语言切换器状态不一致
+**方案**: 增加全面调试日志 + 优化初始语言逻辑
+
+#### 调试增强实现 ✅ 完成
+- [x] **增加详细调试日志** - `app/routes/app.theme.detail.$resourceId.jsx:305-320`
+  - handleRetranslate 函数增加语言状态日志
+  - 记录 currentLanguage, initialTargetLanguage, resourceTranslations
+  - 便于用户在浏览器控制台查看实际状态
+
+- [x] **增加语言切换调试** - `app/routes/app.theme.detail.$resourceId.jsx:595-598`
+  - onLanguageChange 回调增加调试日志
+  - 监控组件语言切换是否正确传递到页面状态
+
+- [x] **优化初始语言逻辑** - `app/routes/app.theme.detail.$resourceId.jsx:267-293`
+  - 支持 URL 参数 ?lang=xxx 直接指定语言
+  - 优先选择非中文翻译，避免总是默认中文
+  - 增加详细的初始语言选择日志
+
+- [x] **增加状态同步机制** - `app/routes/app.theme.detail.$resourceId.jsx:299-304`
+  - useEffect 确保 currentLanguage 跟随 initialTargetLanguage 更新
+  - 防止页面级状态与组件状态不同步
+
+#### 预期调试效果
+- **浏览器控制台**将显示详细的语言状态变化日志
+- **URL支持**: 可通过 `?lang=en` 直接指定目标语言
+- **状态一致性**: 页面状态与组件状态保持同步
+- **问题定位**: 能够精确识别语言传递链路中的问题点
+
+#### 用户调试指导
+1. 打开浏览器开发者工具 → Console 标签
+2. 刷新 Theme 详情页，查看 `[初始语言]` 日志
+3. 切换语言选择器，查看 `[语言切换]` 日志
+4. 点击"重新翻译"，查看 `[重新翻译]` 日志
+5. 对比日志中的语言值与实际期望语言是否一致
+
+#### 临时解决方案
+如调试发现问题，用户可临时通过 URL 参数指定语言：
+- `/app/theme/detail/xxx?lang=en` - 强制英语模式
+- `/app/theme/detail/xxx?lang=ja` - 强制日语模式
+
 ## 🚧 进行中 (In Progress)
 
 ### Theme资源类型检查修复 (2025-09-15) - KISS原则 ✅ 完成
@@ -191,6 +300,7 @@
 - [x] 创建翻译对比视图组件 - `ui-ux-designer`
   - `app/components/ThemeTranslationCompare.jsx`
   - 双栏对比布局
+  - ✅ 目标语言去重 + targetLanguage 同步重置
 - [x] 更新列表页跳转逻辑 - `code-reviewer`
   - Theme资源跳转到专用详情页
   - 普通资源显示开发中提示

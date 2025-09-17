@@ -598,15 +598,38 @@ Intel|AMD|NVIDIA|Qualcomm|Bluetooth|WiFi|USB|HDMI|4K|5G|AI|ML|VR|AR|NFT等。
 }
 
 export async function translateText(text, targetLang, retryCount = 0) {
-  // 使用增强版翻译函数，但保持向后兼容
-  const result = await translateTextEnhanced(text, targetLang, retryCount);
-  
-  // 如果翻译失败但有回退文本，记录警告
-  if (!result.success && result.text !== text) {
-    console.warn(`翻译失败但返回了不同的文本: ${result.error}`);
+  const result = await translateTextWithFallback(text, targetLang, { retryCount });
+
+  if (!result.success) {
+    throw new TranslationError(`翻译失败: ${result.error || '未知错误'}`, {
+      code: result.errorCode || 'TRANSLATION_FAILED',
+      category: 'TRANSLATION',
+      retryable: result.retryable ?? true,
+      context: {
+        targetLang,
+        retryCount,
+        isOriginal: result.isOriginal ?? false
+      }
+    });
   }
-  
-  // 向后兼容：只返回文本
+
+  const normalizedOriginal = (text || '').trim().toLowerCase();
+  const normalizedTranslated = (result.text || '').trim().toLowerCase();
+
+  if ((result.isOriginal || normalizedOriginal === normalizedTranslated) && normalizedOriginal) {
+    throw new TranslationError('翻译未生效，返回原文', {
+      code: 'TRANSLATION_NOT_EFFECTIVE',
+      category: 'TRANSLATION',
+      retryable: true,
+      context: {
+        targetLang,
+        retryCount,
+        originalSample: (text || '').trim().slice(0, 200),
+        translatedSample: (result.text || '').trim().slice(0, 200)
+      }
+    });
+  }
+
   return result.text;
 }
 
@@ -648,6 +671,8 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
 
   // 构建翻译提示词 - 加强完整性要求并明确HTML/CSS保护
   const systemPrompt = `你是一个专业的电商翻译助手。请将用户提供的文本完全翻译成${getLanguageName(targetLang)}。
+
+⚠️ 重要：若原文并无"__PROTECTED_"前缀，则不要生成此类占位符。FAQ、URL、PDF等常见缩写可保留或翻译为对应语言常用表达。
 
 🔴 最重要的要求：
 - 必须将所有内容100%翻译成${getLanguageName(targetLang)}
@@ -813,6 +838,12 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
     // 检查是否真的被翻译了（简单检查）
     const isTranslated = await validateTranslation(text, translatedText, targetLang);
 
+    // 轻量防御检查：原文无占位符但译文有占位符时回退
+    if (!text.includes('__PROTECTED_') && translatedText.includes('__PROTECTED_')) {
+      logger.warn('检测到异常占位符生成，回退到原文', { originalText: text, translatedText });
+      return { success: false, text, error: '异常占位符检测', isOriginal: true, language: targetLang };
+    }
+
     // 记录翻译成功
     logger.logTranslationSuccess(text, translatedText, {
       processingTime,
@@ -944,22 +975,28 @@ async function validateTranslationCompleteness(originalText, translatedText, tar
     const englishChars = (translatedText.match(/[a-zA-Z]/g) || []).length;
     const totalChars = translatedText.length;
     const actualEnglishRatio = englishChars / Math.max(totalChars, 1);
-    
-    // 对于不同内容类型使用不同的英文比例阈值
-    let englishThreshold = 0.7; // 默认70%
-    if (isProductContent) {
-      englishThreshold = 0.8; // 产品描述允许80%英文（品牌词、型号等）
-    } else if (isTechnicalContent) {
-      englishThreshold = 0.75; // 技术内容允许75%英文
+
+    const latinScriptLanguages = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'fi', 'pl', 'tr', 'ro', 'cs', 'sk', 'hu', 'bg', 'et', 'lv', 'lt']);
+    const normalizedTargetLang = (targetLang || '').toLowerCase();
+    const shouldCheckEnglishRatio = !latinScriptLanguages.has(normalizedTargetLang) && !normalizedTargetLang.startsWith('zh');
+
+    if (shouldCheckEnglishRatio) {
+      // 对于不同内容类型使用不同的英文比例阈值
+      let englishThreshold = 0.7; // 默认70%
+      if (isProductContent) {
+        englishThreshold = 0.8; // 产品描述允许80%英文（品牌词、型号等）
+      } else if (isTechnicalContent) {
+        englishThreshold = 0.75; // 技术内容允许75%英文
+      }
+
+      if (actualEnglishRatio > englishThreshold) {
+        return {
+          isComplete: false,
+          reason: `短文本英文内容过多，英文比例: ${(actualEnglishRatio * 100).toFixed(1)}% (阈值: ${(englishThreshold * 100).toFixed(1)}%)`
+        };
+      }
     }
-    
-    if (actualEnglishRatio > englishThreshold) {
-      return {
-        isComplete: false,
-        reason: `短文本英文内容过多，英文比例: ${(actualEnglishRatio * 100).toFixed(1)}% (阈值: ${(englishThreshold * 100).toFixed(1)}%)`
-      };
-    }
-    
+
     console.log(`✅ 短文本验证通过: ${originalText.length} -> ${translatedText.length} 字符`);
     return {
       isComplete: true,
@@ -2838,7 +2875,7 @@ async function translateTitleWithEnhancedPrompt(title, targetLang) {
 }
 
 // 带降级的翻译函数
-async function translateTextWithFallback(text, targetLang, options = {}) {
+export async function translateTextWithFallback(text, targetLang, options = {}) {
   const {
     retryCount = 0
   } = options;

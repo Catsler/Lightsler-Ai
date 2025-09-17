@@ -12,6 +12,8 @@ export const action = async ({ request }) => {
     const formData = await request.formData();
     
     // 参数验证
+    const action = formData.get("action");
+    const singleResourceId = formData.get("resourceId");
     const params = {
       language: formData.get("language") || "zh-CN",
       resourceIds: formData.get("resourceIds") || "[]",
@@ -25,13 +27,20 @@ export const action = async ({ request }) => {
     
     const targetLanguage = params.language;
     let resourceIds;
-    try {
-      resourceIds = JSON.parse(params.resourceIds);
-    } catch (error) {
-      return validationErrorResponse([{
-        field: 'resourceIds',
-        message: 'resourceIds 必须是有效的JSON格式'
-      }]);
+
+    // 处理重新翻译按钮传递的单个资源ID
+    if (action === "retranslate" && singleResourceId) {
+      resourceIds = [singleResourceId];
+      console.log('[重新翻译] 处理单个资源:', { action, singleResourceId, targetLanguage });
+    } else {
+      try {
+        resourceIds = JSON.parse(params.resourceIds);
+      } catch (error) {
+        return validationErrorResponse([{
+          field: 'resourceIds',
+          message: 'resourceIds 必须是有效的JSON格式'
+        }]);
+      }
     }
     const mode = params.mode;
     
