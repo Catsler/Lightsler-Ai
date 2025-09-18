@@ -1,6 +1,7 @@
 import { authenticate } from "../shopify.server.js";
 import { translateResourceWithLogging, getTranslationStats, translationLogger } from "../services/translation.server.js";
 import { translateThemeResource } from "../services/theme-translation.server.js";
+import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
 import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
 
@@ -16,7 +17,9 @@ export const action = async ({ request }) => {
     const params = {
       language: formData.get("language") || "zh-CN",
       resourceIds: formData.get("resourceIds") || "[]",
-      clearCache: formData.get("clearCache") === "true"
+      clearCache: formData.get("clearCache") === "true",
+      forceRelatedTranslation: formData.get("forceRelatedTranslation") === "true",
+      userRequested: formData.get("userRequested") === "true"
     };
     
     const validationErrors = validateRequiredParams(params, ['language']);
@@ -51,7 +54,45 @@ export const action = async ({ request }) => {
     }
     
     const resourcesToTranslate = allResources.filter(r => resourceIds.includes(r.id));
-    
+
+    const OPTION_RESOURCE_TYPES = new Set(['PRODUCT_OPTION', 'product_option', 'PRODUCT_OPTION_VALUE', 'product_option_value']);
+    const METAFIELD_RESOURCE_TYPES = new Set(['PRODUCT_METAFIELD', 'product_metafield']);
+
+    const collectRelatedResourceIds = (product) => {
+      if (!product || product.resourceType !== 'PRODUCT') {
+        return [];
+      }
+
+      const productId = product.id || '';
+      const productResourceId = product.resourceId || '';
+      const productGid = product.gid || '';
+
+      return allResources
+        .filter((candidate) => {
+          const candidateType = candidate.resourceType || '';
+          if (!OPTION_RESOURCE_TYPES.has(candidateType) && !METAFIELD_RESOURCE_TYPES.has(candidateType)) {
+            return false;
+          }
+
+          const candidateResourceId = candidate.resourceId || '';
+          const contentFields = candidate.contentFields || {};
+
+          const matchesByResourceId =
+            (productId && (candidateResourceId.startsWith(`${productId}-`) || candidateResourceId.endsWith(`-${productId}`))) ||
+            (productResourceId && candidateResourceId.startsWith(`${productResourceId}-`));
+
+          const matchesByContent =
+            (contentFields.productId && contentFields.productId === productId) ||
+            (contentFields.productGid && contentFields.productGid === productGid) ||
+            (contentFields.parentProductId && contentFields.parentProductId === productId);
+
+          return matchesByResourceId || matchesByContent;
+        })
+        .map((candidate) => candidate.id);
+    };
+
+    const clearedResourceIds = new Set();
+
     console.log('翻译请求详情:', {
       targetLanguage,
       selectedResourceIds: resourceIds,
@@ -70,13 +111,32 @@ export const action = async ({ request }) => {
     if (clearCache) {
       console.log('清除缓存：删除现有翻译记录');
       const { deleteTranslations } = await import("../services/database.server.js");
-      
+
       for (const resource of resourcesToTranslate) {
-        try {
-          await deleteTranslations(resource.id, targetLanguage);
-          console.log(`已清除资源 ${resource.id} 的 ${targetLanguage} 翻译缓存`);
-        } catch (error) {
-          console.error(`清除资源 ${resource.id} 缓存失败:`, error);
+        const targetIds = [resource.id];
+
+        if (resource.resourceType === 'PRODUCT') {
+          const relatedIds = collectRelatedResourceIds(resource);
+          targetIds.push(...relatedIds);
+        }
+
+        for (const targetId of targetIds) {
+          if (!targetId || clearedResourceIds.has(targetId)) {
+            continue;
+          }
+
+          try {
+            await deleteTranslations(targetId, targetLanguage);
+            clearedResourceIds.add(targetId);
+            try {
+              await clearTranslationCache(targetId);
+            } catch (cacheError) {
+              console.warn(`清除资源 ${targetId} 内存缓存失败:`, cacheError);
+            }
+            console.log(`已清除资源 ${targetId} 的 ${targetLanguage} 翻译缓存`);
+          } catch (error) {
+            console.error(`清除资源 ${targetId} 缓存失败:`, error);
+          }
         }
       }
     }
@@ -108,12 +168,21 @@ export const action = async ({ request }) => {
           'SHOP_POLICY'
         ];
         
+        const resourceInput = resource.resourceType === 'PRODUCT'
+          ? {
+              ...resource,
+              userRequested: params.userRequested || clearCache,
+              forceRelatedTranslation: params.forceRelatedTranslation || clearCache,
+              admin  // 传递admin用于GraphQL回退
+            }
+          : resource;
+
         if (themeResourceTypes.includes(resource.resourceType)) {
           console.log(`使用Theme资源翻译函数处理: ${resource.resourceType}`);
-          translations = await translateThemeResource(resource, targetLanguage);
+          translations = await translateThemeResource(resourceInput, targetLanguage);
         } else {
-          // 使用标准翻译函数
-          translations = await translateResourceWithLogging(resource, targetLanguage);
+          // 使用标准翻译函数，传递admin参数以支持产品关联翻译
+          translations = await translateResourceWithLogging(resourceInput, targetLanguage, admin);
         }
         
         // 保存翻译结果到数据库 (status: pending, 等待手动发布)

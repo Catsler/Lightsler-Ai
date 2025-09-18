@@ -412,28 +412,40 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
   const [metafieldsState, setMetafieldsState] = useState({ loading: false, data: [] });
 
   const loadOptions = useCallback(async () => {
-    if (!productGid || optionsState.data.length > 0 || optionsState.loading) return;
+    if (!productGid) return;
     setOptionsState({ loading: true, data: [] });
     try {
-      const res = await fetch(`/api/product-options?gid=${encodeURIComponent(productGid)}`);
+      const res = await fetch(`/api/product-options?gid=${encodeURIComponent(productGid)}&lang=${encodeURIComponent(currentLanguage)}`);
       const json = await res.json();
       setOptionsState({ loading: false, data: json?.data?.options || [] });
     } catch {
       setOptionsState({ loading: false, data: [] });
     }
-  }, [productGid, optionsState]);
+  }, [productGid, currentLanguage]);
 
   const loadMetafields = useCallback(async () => {
-    if (!productGid || metafieldsState.data.length > 0 || metafieldsState.loading) return;
+    if (!productGid) return;
     setMetafieldsState({ loading: true, data: [] });
     try {
-      const res = await fetch(`/api/product-metafields?gid=${encodeURIComponent(productGid)}`);
+      const res = await fetch(`/api/product-metafields?gid=${encodeURIComponent(productGid)}&lang=${encodeURIComponent(currentLanguage)}`);
       const json = await res.json();
       setMetafieldsState({ loading: false, data: json?.data?.metafields || [] });
     } catch {
       setMetafieldsState({ loading: false, data: [] });
     }
-  }, [productGid, metafieldsState]);
+  }, [productGid, currentLanguage]);
+
+  useEffect(() => {
+    if (showOptions) {
+      loadOptions();
+    }
+  }, [showOptions, loadOptions]);
+
+  useEffect(() => {
+    if (showMetafields) {
+      loadMetafields();
+    }
+  }, [showMetafields, loadMetafields]);
   
   // 渲染元数据
   const renderMetadata = () => {
@@ -484,7 +496,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
                 <Text variant="headingMd">资源内容</Text>
                 <InlineStack gap="200">
                   <Button primary onClick={onTranslate} disabled={!resource.metadata?.canTranslate}>
-                    翻译此资源
+                    重新翻译
                   </Button>
                   <Button onClick={onEdit} disabled={!resource.metadata?.canEdit}>
                     编辑内容
@@ -506,13 +518,13 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
                 <Text variant="headingMd">产品扩展</Text>
                 <InlineStack gap="200">
                   <Button
-                    onClick={() => { setShowOptions(v => !v); if (!showOptions) loadOptions(); }}
+                    onClick={() => setShowOptions(v => !v)}
                     size="slim"
                   >
                     {showOptions ? '收起选项' : '展开选项'}
                   </Button>
                   <Button
-                    onClick={() => { setShowMetafields(v => !v); if (!showMetafields) loadMetafields(); }}
+                    onClick={() => setShowMetafields(v => !v)}
                     size="slim"
                   >
                     {showMetafields ? '收起Metafields' : '展开Metafields'}
@@ -523,19 +535,30 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
                   <BlockStack gap="150">
                     {optionsState.loading ? (
                       <Text variant="bodySm" tone="subdued">加载选项中...</Text>
-                    ) : (
-                      optionsState.data.length > 0 ? (
-                        optionsState.data.map((opt, idx) => (
+                    ) : optionsState.data.length > 0 ? (
+                      optionsState.data.map((opt, idx) => {
+                        const originalValues = Array.isArray(opt.values)
+                          ? opt.values.join(', ')
+                          : (typeof opt.values === 'string' ? opt.values : '');
+                        const translatedValues = Array.isArray(opt.translatedValues)
+                          ? opt.translatedValues.join(', ')
+                          : (typeof opt.translatedValues === 'string' ? opt.translatedValues : null);
+
+                        const optionLabel = opt.translatedName
+                          ? `选项: ${opt.name} / ${opt.translatedName}`
+                          : `选项: ${opt.name}`;
+
+                        return (
                           <BilingualRow
                             key={`opt-${idx}`}
-                            label={`选项: ${opt.name}`}
-                            original={Array.isArray(opt.values) ? opt.values.join(', ') : ''}
-                            translated={null}
+                            label={optionLabel}
+                            original={originalValues}
+                            translated={translatedValues}
                           />
-                        ))
-                      ) : (
-                        <Text variant="bodySm" tone="subdued">无选项</Text>
-                      )
+                        );
+                      })
+                    ) : (
+                      <Text variant="bodySm" tone="subdued">无选项</Text>
                     )}
                   </BlockStack>
                 )}
@@ -551,7 +574,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
                             key={`mf-${idx}`}
                             label={`${mf.namespace}.${mf.key}`}
                             original={mf.value}
-                            translated={null}
+                            translated={mf.translatedValue || null}
                           />
                         ))
                       ) : (

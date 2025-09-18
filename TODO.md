@@ -2,6 +2,30 @@
 
 ## 🚧 进行中
 
+### 资源详情页翻译按钮404错误修复 (2025-09-17) - KISS原则 ✅ 完成
+**问题**: 除JSON资源外，其他资源类型详情页翻译按钮点击后跳转404
+**根因**: handleTranslate函数使用navigate()导航到不存在的路由 `/app/translate`
+**修复**: 改用fetcher.submit()调用正确的API端点 `/api/translate`
+**完成时间**: 2025-09-17
+
+#### 核心修复实现 ✅ 完成
+- [x] **修复handleTranslate函数** - `app/routes/app.resource.$type.$id.jsx:110-126`
+  - 添加translateFetcher useFetcher钩子
+  - 替换错误的navigate()为fetcher.submit()
+  - 使用FormData提交到正确的API端点
+  - 保持最小改动原则，不改变组件接口
+
+- [x] **构建验证** ✅ 完成
+  - 运行npm run lint检查代码规范
+  - 运行npm run build验证构建成功
+  - 修复影响所有非JSON资源类型
+
+#### 技术指标
+- **影响范围**: PRODUCT、COLLECTION、PAGE、ARTICLE等所有资源详情页
+- **修复方式**: 最小改动，复用现有API调用模式
+- **兼容性**: 不破坏现有功能，保持用户体验一致
+- **代码质量**: 遵循KISS原则，仅修改必要代码
+
 - [x] 短文本验证优化 - `app/services/translation.server.js`
   - 对使用拉丁字母的目标语言跳过英文比例校验，避免西语/法语等被误判为未翻译
 
@@ -110,6 +134,48 @@
 - `/app/theme/detail/xxx?lang=ja` - 强制日语模式
 
 ## 🚧 进行中 (In Progress)
+
+### 产品关联翻译保存流程修复 (2025-09-18) - KISS原则 ✅ 完成
+**问题**: Product Options和Metafields翻译成功但不显示在目标语言页面
+**根因分析**:
+- Options调用`translateResource()`仅返回翻译对象，未保存到数据库
+- Metafields直接调用`registerMetafieldTranslation`绕过本地数据库
+- 导致翻译结果未进入pending→手动发布的标准流程
+**修复策略**: 让所有资源走统一流程：翻译→保存到本地DB(pending状态)→手动发布
+**完成时间**: 2025-09-18
+
+#### 核心修复实现 ✅ 完成
+- [x] **修复Options翻译保存逻辑** - `app/services/product-translation-enhanced.server.js:279-303`
+  - 在`translateProductOptionsIfExists`函数中添加`saveTranslation`调用
+  - 翻译完成后保存到本地数据库，设置pending状态
+  - 修复导入路径：`./database.server.js`
+
+- [x] **修复Metafields翻译保存逻辑** - `app/services/product-translation-enhanced.server.js:372-424`
+  - 在`translateProductMetafieldsIfExists`函数中改用本地保存
+  - 调用`getOrCreateResource`创建Metafield资源记录
+  - 构造翻译对象并保存到本地数据库，而非直接注册到Shopify
+
+- [x] **构建验证** ✅ 完成
+  - `npm run build`构建成功
+  - 修复了导入路径错误
+  - 确保所有动态导入正确解析
+
+#### 技术实现要点
+- **统一工作流**: Options和Metafields现在都遵循：翻译→本地保存(pending)→手动发布
+- **最小改动**: 仅修改保存逻辑，不改变翻译算法和API接口
+- **向后兼容**: 保持现有产品翻译功能完全不变
+- **错误隔离**: Options/Metafields翻译失败不影响产品主体翻译
+
+#### 修复效果验证
+- **修复前**: Options和Metafields翻译成功但目标语言页面看不到
+- **修复后**: 翻译结果保存到本地数据库，可通过发布流程推送到Shopify
+- **数据流**: 产品主体翻译 + Options翻译 + Metafields翻译 → 统一pending状态 → 手动发布
+
+#### 技术指标
+- **代码改动**: 2处关键保存逻辑修改
+- **功能完整性**: 产品关联内容翻译完整纳入统一工作流
+- **质量保证**: 遵循KISS原则，不破坏现有架构
+- **测试验证**: 完整翻译→发布流程待用户验证
 
 ### Theme资源类型检查修复 (2025-09-15) - KISS原则 ✅ 完成
 **问题**: Theme详情页误判“此资源不是Theme类型”

@@ -1885,14 +1885,15 @@ function generateContentHash(resource) {
 
 /**
  * 增强版翻译资源函数，包含详细日志
+ * 支持产品关联内容的自动翻译
  */
-export async function translateResourceWithLogging(resource, targetLang) {
+export async function translateResourceWithLogging(resource, targetLang, admin) {
   const resourceId = resource.id || resource.resourceId || 'unknown';
-  
+
   // 先检查内存缓存
   const contentHash = resource.contentHash || generateContentHash(resource);
   const cachedTranslation = await getCachedTranslation(resourceId, targetLang, contentHash);
-  
+
   if (cachedTranslation) {
     translationLogger.log('info', `使用缓存的翻译: ${resource.title}`, {
       resourceId,
@@ -1900,13 +1901,29 @@ export async function translateResourceWithLogging(resource, targetLang) {
       targetLanguage: targetLang,
       cacheHit: true
     });
-    
+
     // 更新缓存统计
     const cache = getMemoryCache();
     const stats = cache.getStats();
     translationLogger.log('debug', '缓存命中统计', stats);
-    
+
     return cachedTranslation;
+  }
+
+  // 检查是否为产品资源，如果是且启用了关联翻译，使用增强版函数
+  if (resource.resourceType?.toUpperCase() === 'PRODUCT' && admin) {
+    const { translateProductWithRelated, isRelatedTranslationEnabled } = await import('./product-translation-enhanced.server.js');
+
+    if (isRelatedTranslationEnabled()) {
+      translationLogger.log('info', `使用增强版产品翻译: ${resource.title}`, {
+        resourceId,
+        resourceType: resource.resourceType,
+        targetLanguage: targetLang,
+        relatedTranslationEnabled: true
+      });
+
+      return await translateProductWithRelated(resource, targetLang, admin);
+    }
   }
   
   // Sequential Thinking: 智能决策是否需要翻译
@@ -4478,6 +4495,57 @@ export async function translateResource(resource, targetLang) {
     );
     
     console.log(`✅ SEO描述翻译完成: "${resource.seoDescription}" -> "${translated.seoDescTrans}"`);
+  }
+
+  const contentFields = resource.contentFields || {};
+  const dynamicTranslationFields = {};
+
+  switch ((resource.resourceType || '').toUpperCase()) {
+    case 'PRODUCT_OPTION':
+    case 'PRODUCT_OPTION_VALUE':
+      if (contentFields.name) {
+        dynamicTranslationFields.name = await translateText(contentFields.name, targetLang);
+        dynamicTranslationFields.name = await postProcessTranslation(
+          dynamicTranslationFields.name,
+          targetLang,
+          contentFields.name
+        );
+      }
+      if (Array.isArray(contentFields.values) && contentFields.values.length > 0) {
+        dynamicTranslationFields.values = [];
+        for (const value of contentFields.values) {
+          if (typeof value !== 'string' || !value.trim()) {
+            dynamicTranslationFields.values.push(value);
+            continue;
+          }
+          const translatedValue = await translateText(value, targetLang);
+          dynamicTranslationFields.values.push(
+            await postProcessTranslation(translatedValue, targetLang, value)
+          );
+        }
+      }
+      break;
+
+    case 'PRODUCT_METAFIELD':
+      if (typeof contentFields.value === 'string' && contentFields.value.trim()) {
+        const translatedValue = await translateText(contentFields.value, targetLang);
+        dynamicTranslationFields.value = await postProcessTranslation(
+          translatedValue,
+          targetLang,
+          contentFields.value
+        );
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  if (Object.keys(dynamicTranslationFields).length > 0) {
+    translated.translationFields = {
+      ...(translated.translationFields || {}),
+      ...dynamicTranslationFields
+    };
   }
 
   // 输出关键字段验证总结

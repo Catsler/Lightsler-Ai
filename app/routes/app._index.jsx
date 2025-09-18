@@ -625,10 +625,12 @@ function Index() {
       fetcher.submit({
         language: selectedLanguage,
         resourceIds: JSON.stringify(resourceIds),
-        clearCache: clearCache.toString()
-      }, { 
-        method: 'POST', 
-        action: '/api/translate' 
+        clearCache: clearCache.toString(),
+        forceRelatedTranslation: 'true',
+        userRequested: 'true'
+      }, {
+        method: 'POST',
+        action: '/api/translate'
       });
       
     } catch (error) {
@@ -707,10 +709,12 @@ function Index() {
       translateFetcher.submit({
         language: selectedLanguage,
         resourceIds: JSON.stringify(resourceIds),
-        clearCache: clearCache.toString()
-      }, { 
-        method: 'POST', 
-        action: '/api/translate' 
+        clearCache: clearCache.toString(),
+        forceRelatedTranslation: 'true',
+        userRequested: 'true'
+      }, {
+        method: 'POST',
+        action: '/api/translate'
       });
     } catch (error) {
       console.error('翻译失败:', error);

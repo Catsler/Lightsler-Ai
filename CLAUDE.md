@@ -176,6 +176,7 @@ npm run test:e2e:headed          # 运行有界面测试
 node test-resource-types.js      # 资源类型测试
 node test-multi-language.js      # 多语言测试
 node test-sequential-thinking.js # AI系统测试
+node test-product-related-translation.js # 产品关联翻译测试（options+metafields）
 
 # 性能测试套件
 node test-language-switching-performance.js      # 语言切换性能测试
@@ -591,6 +592,64 @@ NODE_TLS_REJECT_UNAUTHORIZED=0
 - **错误预防**: `error-prevention-guard.server.js` - 风险评估
 - **质量分析**: `quality-error-analyzer.server.js` - 多维度评估
 - **自动恢复**: `auto-recovery.server.js` - 智能修复
+
+### 产品关联翻译系统（Enhanced Product Translation）
+
+**功能简介**：自动翻译产品的关联内容（options + metafields），无需架构改动。
+
+#### 🚀 启用方法
+```bash
+# 在 .env 文件中启用功能
+ENABLE_PRODUCT_RELATED_TRANSLATION=true
+
+# 重启应用使配置生效
+npm run dev
+```
+
+#### 🎯 工作原理
+1. **零架构改动**: 基于现有API组合调用，不修改核心翻译管线
+2. **异步处理**: 关联内容翻译不阻塞产品主体翻译
+3. **故障隔离**: Options/Metafields翻译失败不影响产品主体
+4. **智能过滤**: 自动识别可翻译的Metafields，跳过技术字段
+
+#### 📋 翻译流程
+```
+产品翻译请求 → translateResourceWithLogging()
+├── 翻译产品主体（title, description, SEO等）✅
+├── 检测是否为产品 + 功能已启用
+└── 异步触发关联翻译:
+    ├── 获取并翻译Product Options
+    └── 获取并翻译Product Metafields
+```
+
+#### 🔧 核心文件
+- `product-translation-enhanced.server.js` - 关联翻译包装服务
+- `translation.server.js` - 主翻译入口集成点
+- `api.translate.jsx` - API路由调用点
+
+#### ✅ 测试验证
+```bash
+# 运行完整功能测试
+node test-product-related-translation.js
+
+# 测试内容包括:
+# - 环境变量配置检查
+# - 服务模块加载测试
+# - 翻译函数集成测试
+# - 配置开关功能测试
+```
+
+#### 📊 使用场景
+- **完整产品翻译**: 一次调用翻译产品的所有内容
+- **多变体产品**: 自动翻译颜色、尺寸等选项名称
+- **元字段翻译**: 翻译产品描述补充、规格参数等
+- **SEO优化**: 确保产品页面的所有可见内容都被翻译
+
+#### ⚠️ 注意事项
+1. **首次使用前**: 确保已扫描产品资源和options（`/api/scan-all`）
+2. **Metafields过滤**: 系统会智能跳过SKU、ID等技术字段
+3. **性能考虑**: 关联翻译异步进行，不影响主体翻译速度
+4. **错误监控**: 查看应用日志以确认关联翻译状态
 
 ## 故障排查
 

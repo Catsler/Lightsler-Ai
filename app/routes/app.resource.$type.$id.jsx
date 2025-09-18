@@ -1,5 +1,6 @@
 import { json } from "@remix-run/node";
 import { useLoaderData, useNavigate, useSearchParams, useParams, useFetcher } from "@remix-run/react";
+import { useEffect } from "react";
 import { Page, Button, BlockStack, Badge, Banner, Card, Text } from "@shopify/polaris";
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
@@ -97,6 +98,7 @@ export default function ResourceDetailPage() {
   const [searchParams] = useSearchParams();
   const params = useParams();
   const metafieldsFetcher = useFetcher();
+  const translateFetcher = useFetcher();
 
   // 处理返回导航
   const handleBack = () => {
@@ -108,10 +110,74 @@ export default function ResourceDetailPage() {
 
   // 处理翻译操作
   const handleTranslate = () => {
-    const lang = searchParams.get('lang') || 'zh-CN';
-    // 调用翻译API
-    navigate(`/app/translate?resourceId=${resource.id}&targetLang=${lang}`);
+    const urlLanguage = searchParams.get('lang') || 'zh-CN';
+    const translations = resource.translations || {};
+
+    // 通过不区分大小写的匹配方式查找已存在的翻译记录
+    const matchedEntry = Object.entries(translations).find(([key]) => key.toLowerCase() === urlLanguage.toLowerCase());
+    const matchedLanguageKey = matchedEntry?.[0];
+    const translationRecord = matchedEntry?.[1];
+
+    const status = translationRecord?.status?.toLowerCase();
+    const syncStatus = translationRecord?.syncStatus?.toLowerCase();
+    const isRetranslate = status === 'completed' || status === 'synced' || syncStatus === 'synced';
+    const targetLanguage = matchedLanguageKey || urlLanguage;
+
+    translateFetcher.submit(
+      {
+        language: targetLanguage,
+        resourceIds: JSON.stringify([resource.id]),
+        clearCache: isRetranslate ? 'true' : 'false',
+        forceRelatedTranslation: 'true',
+        userRequested: 'true'
+      },
+      {
+        method: 'POST',
+        action: '/api/translate'
+      }
+    );
   };
+
+  // 监听翻译状态变化，提供用户反馈
+  useEffect(() => {
+    if (translateFetcher.type !== 'done' || !translateFetcher.data) {
+      return;
+    }
+
+    const { success, message, data } = translateFetcher.data;
+    const results = data?.results || [];
+    const translatedRecords = results.filter((result) => result.success && result.translations && result.translations.skipped !== true);
+    const skippedRecords = results.filter((result) => result.translations?.skipped);
+    const hasFailures = results.some((result) => result.success === false);
+
+    const showToast = (text, isError = false) => {
+      if (typeof shopify !== 'undefined' && shopify?.toast) {
+        shopify.toast.show(text, { isError });
+      } else if (isError) {
+        console.error(text);
+      } else {
+        console.log(text);
+      }
+    };
+
+    if (success && translatedRecords.length > 0 && !hasFailures) {
+      showToast('翻译成功！正在刷新页面...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      return;
+    }
+
+    if (success && results.length > 0 && skippedRecords.length === results.length) {
+      const skipMessage = skippedRecords[0]?.translations?.reason || message || '内容未变化，已智能跳过翻译';
+      showToast(skipMessage, false);
+      return;
+    }
+
+    const failure = results.find((result) => result.success === false);
+    const errorMessage = failure?.error || message || '翻译失败，请重试';
+    showToast(`翻译失败: ${errorMessage}`, true);
+  }, [translateFetcher.type, translateFetcher.data]);
 
   // 处理编辑操作
   const handleEdit = () => {
@@ -272,8 +338,15 @@ export default function ResourceDetailPage() {
         )}
         
         {/* 主要内容 - 使用通用组件 */}
-        <ResourceDetail 
-          resource={resource} 
+        <ResourceDetail
+          resource={{
+            ...resource,
+            metadata: {
+              ...resource.metadata,
+              // 控制按钮状态：翻译进行中时禁用按钮
+              canTranslate: resource.metadata.canTranslate && translateFetcher.state === 'idle'
+            }
+          }}
           currentLanguage={currentLanguage}
           translatableKeys={translatableKeys}
           onTranslate={handleTranslate}
