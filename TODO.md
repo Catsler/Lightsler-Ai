@@ -2,6 +2,53 @@
 
 ## 🚧 进行中
 
+### URL Handle 翻译禁用 (2025-01-19) - KISS原则 ✅ 完成
+**问题**: 系统自动翻译 URL handle 并同步到 Shopify，违反 SEO 最佳实践
+**根因**: translateResource 和 translateThemeResource 函数会调用 translateUrlHandle
+**修复**: 禁用 handle 翻译，保持 URL 稳定性
+**完成时间**: 2025-01-19
+
+#### 核心修复实现 ✅ 完成
+- [x] **禁用 translateResource 中的 handle 翻译** - `app/services/translation.server.js:4386-4392`
+  - 注释掉 translateUrlHandle 调用
+  - handleTrans 始终设为 null
+  - 添加 SEO 最佳实践说明注释
+
+- [x] **禁用 translateThemeResource 中的 handle 翻译** - `app/services/translation.server.js:4634-4639`
+  - 同样注释掉 translateUrlHandle 调用
+  - 保持主题资源 URL 不变
+
+- [x] **注释 GraphQL 字段映射** - `app/services/shopify-graphql.server.js`
+  - 注释所有 FIELD_MAPPINGS 中的 handleTrans 映射
+  - 确保即使有历史数据也不会同步到 Shopify
+
+- [x] **标注 translateUrlHandle 为 deprecated** - `app/services/translation.server.js:450-461`
+  - 添加详细的 @deprecated 注释
+  - 说明保留函数仅供未来手动场景使用
+
+- [x] **创建数据清理脚本** - `scripts/cleanup-handle-translations.js`
+  - 清理数据库中所有 handleTrans 数据
+  - 避免历史数据意外同步
+
+- [x] **构建验证** ✅ 完成
+  - 运行 npm run build 验证构建成功
+  - 确保修改不影响其他功能
+
+#### 技术指标
+- **影响范围**: 所有包含 handle 字段的资源类型
+- **修复方式**: 最小改动，符合 KISS 原则
+- **SEO 保护**: URL 保持稳定，不破坏外链和索引
+- **数据安全**: 清理历史翻译数据，防止意外同步
+
+#### 使用说明
+```bash
+# 清理历史 handle 翻译数据
+node scripts/cleanup-handle-translations.js
+
+# 验证修复效果
+npm run build
+```
+
 ### 资源详情页翻译按钮404错误修复 (2025-09-17) - KISS原则 ✅ 完成
 **问题**: 除JSON资源外，其他资源类型详情页翻译按钮点击后跳转404
 **根因**: handleTranslate函数使用navigate()导航到不存在的路由 `/app/translate`

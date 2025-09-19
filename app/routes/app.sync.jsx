@@ -216,7 +216,7 @@ export default function SyncManagementPage() {
                       label="选择语言"
                       options={[
                         { label: "所有语言", value: "" },
-                        ...languages.map(lang => ({
+                        ...(Array.isArray(languages) ? languages : []).map(lang => ({
                           label: `${lang.name} (${lang.code})`,
                           value: lang.code
                         }))

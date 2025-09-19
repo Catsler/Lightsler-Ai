@@ -26,10 +26,9 @@ function withErrorHandling(handler) {
  * 批量发布API - 支持更高级的批量发布功能
  * 包含进度跟踪、部分失败处理等高级功能
  */
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const formData = await request.formData();
+export const action = withErrorHandling(async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  const formData = await request.formData();
 
     const batchSize = parseInt(formData.get("batchSize")) || 10; // 每批处理数量
     const delayMs = parseInt(formData.get("delayMs")) || 1000; // 批次间延迟
@@ -208,5 +207,4 @@ export const action = async ({ request }) => {
       processingTime: new Date() - (results.batches[0]?.startTime || new Date())
     });
 
-  });
-};
+});

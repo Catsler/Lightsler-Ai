@@ -447,6 +447,17 @@ function intelligentSegmentation(text, targetLang) {
   return finalWords.join(rules.connector);
 }
 
+/**
+ * @deprecated 不再自动翻译 URL handle（SEO 最佳实践）
+ * 保留此函数仅供未来手动/审核场景使用
+ * 自动翻译功能已禁用 - 2025-01-19
+ *
+ * URL handle 应保持原始状态以维护：
+ * - SEO 排名稳定性
+ * - 外部链接有效性
+ * - 用户书签和分享链接
+ * - Shopify 平台最佳实践
+ */
 export async function translateUrlHandle(handle, targetLang, retryCount = 0) {
   console.log(`[translateUrlHandle] 函数被调用: handle="${handle}", targetLang="${targetLang}", retry=${retryCount}`);
   
@@ -4383,17 +4394,12 @@ export async function translateResource(resource, targetLang) {
     console.log(`✅ 描述内容后处理完成`);
   }
 
-  // 翻译URL handle
+  // URL handle 不再翻译（SEO最佳实践）
+  // 保持原始URL以维护SEO稳定性和外链有效性
+  // @deprecated 自动翻译handle功能已禁用 - 2025-01-19
   if (resource.handle) {
-    console.log(`🔗 开始翻译URL handle: "${resource.handle}" (${targetLang})`);
-    try {
-      translated.handleTrans = await translateUrlHandle(resource.handle, targetLang);
-      console.log(`✅ URL handle翻译完成: "${resource.handle}" -> "${translated.handleTrans}"`);
-    } catch (error) {
-      console.error(`❌ URL handle翻译失败:`, error.message);
-      // 翻译失败时使用原handle
-      translated.handleTrans = resource.handle;
-    }
+    console.log(`🔗 URL handle保持原始值: "${resource.handle}" (不翻译)`);
+    translated.handleTrans = null; // 始终为null，不推送到Shopify
   }
 
   // 翻译摘要（主要用于文章）
@@ -4636,8 +4642,11 @@ export async function translateResource(resource, targetLang) {
     translated.titleTrans = await postProcessTranslation(translated.titleTrans, targetLang, resource.title);
   }
 
+  // URL handle 不再翻译（SEO最佳实践）
+  // @deprecated 自动翻译handle功能已禁用 - 2025-01-19
   if (resource.handle) {
-    translated.handleTrans = await translateUrlHandle(resource.handle, targetLang);
+    console.log(`🔗 Theme资源URL handle保持原始值: "${resource.handle}" (不翻译)`);
+    translated.handleTrans = null; // 始终为null，不推送到Shopify
   }
 
   // 处理Theme资源的特殊字段

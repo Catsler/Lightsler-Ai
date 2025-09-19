@@ -55,8 +55,8 @@ export const loader = async ({ request }) => {
   });
   
   // 格式化语言列表供Select组件使用
-  const supportedLanguages = shop?.languages?.length > 0
-    ? shop.languages.map(lang => ({
+  const supportedLanguages = (shop?.languages ?? []).length > 0
+    ? (shop?.languages ?? []).map(lang => ({
         label: lang.name,
         value: lang.code
       }))
@@ -759,7 +759,7 @@ function Index() {
   }, [selectedResources.length, resources]);
   
   // 处理语言更新
-  const handleLanguagesUpdated = useCallback((languages) => {
+  const handleLanguagesUpdated = useCallback((languages = []) => {
     // 更新可用语言列表
     const formattedLanguages = languages.map(lang => ({
       label: lang.label || lang.name,

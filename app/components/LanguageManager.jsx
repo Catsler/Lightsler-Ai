@@ -32,6 +32,7 @@ export function LanguageManager({
   const fetcher = useFetcher();
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedLanguages, setSelectedLanguages] = useState([]);
@@ -45,29 +46,60 @@ export function LanguageManager({
   // 加载语言数据
   const loadLanguageData = useCallback(() => {
     setLoading(true);
+    setError('');
     fetcher.load('/api/locales?action=combined');
   }, []);
 
+  const normalizeLanguageData = useCallback((data) => ({
+    shop: {
+      locales: data?.shop?.locales ?? [],
+      count: data?.shop?.count ?? 0
+    },
+    available: {
+      locales: data?.available?.locales ?? [],
+      grouped: data?.available?.grouped ?? {},
+      total: data?.available?.total ?? 0
+    },
+    database: {
+      languages: data?.database?.languages ?? [],
+      count: data?.database?.count ?? 0
+    },
+    limit: {
+      currentCount: data?.limit?.currentCount ?? 0,
+      maxLimit: data?.limit?.maxLimit ?? 20,
+      canAddMore: data?.limit?.canAddMore ?? true,
+      remainingSlots: data?.limit?.remainingSlots ?? 20
+    }
+  }), []);
+
   // 处理fetcher响应
   useEffect(() => {
-    if (fetcher.data && fetcher.state === 'idle') {
-      setLoading(false);
-      if (fetcher.data.success) {
-        setLanguageData(fetcher.data.data);
-        // 通知父组件语言更新
-        if (onLanguagesUpdated) {
-          onLanguagesUpdated(fetcher.data.data.database.languages);
-        }
-      }
+    if (fetcher.state !== 'idle' || !fetcher.data) {
+      return;
     }
-  }, [fetcher.data, fetcher.state, onLanguagesUpdated]);
+
+    setLoading(false);
+
+    if (!fetcher.data.success) {
+      setError(fetcher.data.message || '加载语言数据失败');
+      return;
+    }
+
+    const normalizedData = normalizeLanguageData(fetcher.data.data);
+    setLanguageData(normalizedData);
+    setError('');
+
+    if (onLanguagesUpdated) {
+      onLanguagesUpdated(normalizedData.database.languages);
+    }
+  }, [fetcher.data, fetcher.state, normalizeLanguageData, onLanguagesUpdated]);
 
   // 打开模态框时加载数据
   useEffect(() => {
-    if (showModal && !languageData.available.locales.length) {
+    if (showModal && ((languageData?.available?.locales?.length ?? 0) === 0)) {
       loadLanguageData();
     }
-  }, [showModal, languageData.available.locales.length, loadLanguageData]);
+  }, [showModal, languageData?.available?.locales?.length, loadLanguageData]);
 
   // 启用选中的语言
   const enableSelectedLanguages = async () => {
@@ -111,24 +143,24 @@ export function LanguageManager({
 
   // 过滤语言列表
   const getFilteredLanguages = () => {
-    let languages = [];
+    const grouped = languageData?.available?.grouped ?? {};
+    const all = languageData?.available?.locales ?? [];
 
-    if (selectedRegion === 'all') {
-      languages = languageData.available.locales;
-    } else {
-      const grouped = languageData.available.grouped || {};
-      languages = grouped[selectedRegion] || [];
+    let languages = selectedRegion === 'all'
+      ? all
+      : grouped[selectedRegion] ?? [];
+
+    if (!searchTerm) {
+      return languages;
     }
 
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      languages = languages.filter(lang => 
-        lang.label.toLowerCase().includes(term) ||
-        lang.value.toLowerCase().includes(term)
-      );
-    }
+    const term = searchTerm.toLowerCase();
 
-    return languages;
+    return languages.filter(lang => {
+      const label = lang.label?.toLowerCase() ?? '';
+      const value = lang.value?.toLowerCase() ?? '';
+      return label.includes(term) || value.includes(term);
+    });
   };
 
   // 切换语言选择
@@ -136,13 +168,15 @@ export function LanguageManager({
     setSelectedLanguages(prev => {
       if (prev.includes(code)) {
         return prev.filter(c => c !== code);
-      } else {
-        // 检查是否超过限制
-        if (prev.length >= languageData.limit.remainingSlots) {
-          return prev;
-        }
-        return [...prev, code];
       }
+
+      const remainingSlots = languageData?.limit?.remainingSlots ?? 0;
+
+      if (remainingSlots <= 0 || prev.length >= remainingSlots) {
+        return prev;
+      }
+
+      return [...prev, code];
     });
   };
 
@@ -156,6 +190,17 @@ export function LanguageManager({
     { label: '大洋洲', value: 'Oceania' },
     { label: '其他', value: 'Other' }
   ];
+
+  const remainingSlots = languageData?.limit?.remainingSlots ?? 0;
+  const currentCount = languageData?.limit?.currentCount ?? 0;
+  const maxLimit = languageData?.limit?.maxLimit ?? 0;
+  const canAddMore = languageData?.limit?.canAddMore ?? true;
+  const selectionProgress = remainingSlots <= 0
+    ? 100
+    : Math.min((selectedLanguages.length / remainingSlots) * 100, 100);
+  const selectionTone = remainingSlots > 0 && selectedLanguages.length >= remainingSlots ? 'critical' : 'primary';
+  const remainingSelectable = Math.max(remainingSlots - selectedLanguages.length, 0);
+  const filteredLanguages = getFilteredLanguages();
 
   return (
     <>
@@ -194,13 +239,18 @@ export function LanguageManager({
         <Modal.Section>
           <BlockStack gap="400">
             {/* 语言限制提示 */}
+            {error && (
+              <Banner tone="critical">
+                <Text variant="bodySm">{error}</Text>
+              </Banner>
+            )}
             <Banner
-              title={`语言配额: ${languageData.limit.currentCount} / ${languageData.limit.maxLimit}`}
-              tone={languageData.limit.remainingSlots <= 3 ? 'warning' : 'info'}
+              title={`语言配额: ${currentCount} / ${maxLimit}`}
+              tone={remainingSlots <= 3 ? 'warning' : 'info'}
             >
               <Text variant="bodySm">
-                {languageData.limit.canAddMore 
-                  ? `还可以添加 ${languageData.limit.remainingSlots} 个语言`
+                {canAddMore
+                  ? `还可以添加 ${remainingSlots} 个语言`
                   : '已达到最大语言数量限制'}
               </Text>
             </Banner>
@@ -210,7 +260,7 @@ export function LanguageManager({
               <BlockStack gap="300">
                 <Text variant="headingMd">已启用的语言 ({languageData.shop.count})</Text>
                 <InlineStack gap="200" wrap>
-                  {languageData.shop.locales.map(locale => (
+                  {(languageData?.shop?.locales ?? []).map(locale => (
                     <Badge
                       key={locale.value}
                       tone={locale.isPrimary ? 'success' : locale.isPublished ? 'info' : undefined}
@@ -250,10 +300,10 @@ export function LanguageManager({
               <BlockStack gap="300">
                 <InlineStack align="space-between">
                   <Text variant="headingMd">
-                    可添加的语言 ({getFilteredLanguages().length})
+                    可添加的语言 ({filteredLanguages.length})
                   </Text>
                   <Text variant="bodySm" tone="subdued">
-                    已选择: {selectedLanguages.length} / {languageData.limit.remainingSlots}
+                    已选择: {selectedLanguages.length} / {remainingSlots}
                   </Text>
                 </InlineStack>
 
@@ -264,10 +314,10 @@ export function LanguageManager({
                 ) : (
                   <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                     <BlockStack gap="100">
-                      {getFilteredLanguages().map(locale => {
+                      {filteredLanguages.map(locale => {
                         const isSelected = selectedLanguages.includes(locale.value);
-                        const isDisabled = !isSelected && 
-                          selectedLanguages.length >= languageData.limit.remainingSlots;
+                        const canSelectMore = remainingSlots > 0 && selectedLanguages.length < remainingSlots;
+                        const isDisabled = !isSelected && !canSelectMore;
 
                         return (
                           <div
@@ -317,11 +367,11 @@ export function LanguageManager({
                 <BlockStack gap="200">
                   <Text variant="headingSm">选择进度</Text>
                   <ProgressBar
-                    progress={(selectedLanguages.length / languageData.limit.remainingSlots) * 100}
-                    tone={selectedLanguages.length === languageData.limit.remainingSlots ? 'critical' : 'primary'}
+                    progress={selectionProgress}
+                    tone={selectionTone}
                   />
                   <Text variant="bodySm" tone="subdued">
-                    已选择 {selectedLanguages.length} 个语言，还可选择 {languageData.limit.remainingSlots - selectedLanguages.length} 个
+                    {`已选择 ${selectedLanguages.length} 个语言，还可选择 ${remainingSelectable} 个`}
                   </Text>
                 </BlockStack>
               </Card>

@@ -1,23 +1,36 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Remix + Vite + Prisma stack organizes core code under `app/`, where Remix routes live in `app/routes/*.jsx`, service logic in `app/services/*.js`, and shared UI in `app/components/`. Utilities and hooks belong in `app/utils/` to keep routes lean. Static assets reside in `public/`, database schema and migrations in `prisma/`, documentation in `docs/`, automation scripts in `scripts/`, and Shopify extension workspaces in `extensions/`. Integration or exploratory tests may live under `public/` when a standalone HTML harness is easier than a Remix route.
+- Remix + Vite + Prisma. Core code lives in `app/`.
+- Routes: `app/routes/*.jsx`. Services: `app/services/*.js`. Shared UI: `app/components/`. Utilities/hooks: `app/utils/`.
+- Static assets: `public/`. Prisma schema/migrations: `prisma/`. Docs: `docs/`. Scripts: `scripts/`. Shopify extensions: `extensions/`.
+- Tests: prefer `tests/**` mirroring app folders; co-locate with routes when helpful. Some exploratory/integration tests may live in `public/` via standalone HTML.
 
 ## Build, Test, and Development Commands
-- `npm run build` — Compile Remix through Vite and output production assets to `build/`.
-- `npm run start` — Serve the compiled app with `remix-serve`; keep the approved tunnel URL unchanged.
-- `npm run setup` — Execute Prisma generate plus migrate deploy to sync schema changes.
-- `npm run lint` — Run ESLint with cache; resolve reported issues or add focused disables.
-- `shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000` — Only when explicitly authorized, starts Shopify dev with the fixed tunnel.
+- `npm run build` — Compile Remix via Vite; outputs to `build/`.
+- `npm run start` — Serve compiled app with `remix-serve` (keep the approved tunnel URL unchanged).
+- `npm run setup` — Run `prisma generate` and `prisma migrate deploy` to sync schema.
+- `npm run lint` — Run ESLint with cache; fix or add minimal, focused disables.
+- Shopify dev (authorized only): `shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000`.
+- Tests: use `vitest` or `jest`. If a `npm run test` script is present, run it; otherwise invoke the chosen runner directly.
 
 ## Coding Style & Naming Conventions
-Follow ESLint and Prettier defaults committed to the repo; prefer 2-space indentation and trailing commas where supported. Name React components in `PascalCase.jsx`, utilities or services in `camelCase.js` or `kebab-case.js`, and constants in `UPPER_SNAKE_CASE`. Group imports as third-party first, then internal modules, avoiding deep relative chains by using configured tsconfig paths.
+- ESLint + Prettier defaults; 2-space indentation; prefer trailing commas.
+- Components: `PascalCase.jsx`. Utilities/services: `camelCase.js` or `kebab-case.js`. Constants: `UPPER_SNAKE_CASE`.
+- Imports: third‑party first, then internal. Avoid deep relative chains; prefer configured path aliases.
 
 ## Testing Guidelines
-Adopt `vitest` or `jest` for unit coverage; mirror application folders under `tests/**` or co-locate with routes when that improves context. Prioritize deterministic tests for `app/services/*.server.js` and `app/utils/*.js`, and add regression cases whenever fixing integration bugs. Expose a future `npm run test` script before adding automated checks to CI.
+- Framework: `vitest` or `jest`. Mirror app folders under `tests/**` or co-locate near routes when context helps.
+- Prioritize deterministic tests for `app/services/*.server.js` and `app/utils/*.js`. Add regression tests when fixing bugs.
+- Keep tests fast, isolated, and explicit about inputs/outputs.
 
 ## Commit & Pull Request Guidelines
-Write commits using imperative Conventional Commit syntax, e.g. `feat(app): add translation queue api` or `fix(services): handle webhook error`. Keep each commit focused and include lint or schema updates produced by your change. PRs must explain motivation, link relevant issues, list validation steps, supply screenshots or logs for UX or CLI updates, and note any follow-up tasks.
+- Conventional Commits (imperative): e.g., `feat(app): add translation queue api`, `fix(services): handle webhook error`.
+- Keep commits focused; include lint fixes or Prisma artifacts caused by your change.
+- PRs must include: motivation, linked issues, validation steps, and screenshots/logs for UX/CLI changes. Note any follow‑ups.
 
 ## Security & Configuration Tips
-Never commit credentials; rely on environment variables or the tracked `shopify.app.toml` placeholders. Run `npm run setup` after pulling migrations to keep the local SQLite database aligned. Validate and throttle webhook or GraphQL inputs, and capture errors through `app/services/*error*.server.js` utilities for consistent observability.
+- Never commit credentials; use environment variables or `shopify.app.toml` placeholders.
+- After pulling migrations, run `npm run setup` to keep the local SQLite DB aligned.
+- Validate and throttle webhook/GraphQL inputs; funnel errors through `app/services/*error*.server.js` for consistent observability.
+

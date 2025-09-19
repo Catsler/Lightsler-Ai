@@ -34,10 +34,9 @@ function withErrorHandling(handler) {
  * 发布API - 将pending状态的翻译同步到Shopify
  * 支持单个翻译发布和批量发布
  */
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const formData = await request.formData();
+export const action = withErrorHandling(async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  const formData = await request.formData();
 
     // 参数验证
     const params = {
@@ -218,5 +217,4 @@ export const action = async ({ request }) => {
       details: results.details
     });
 
-  });
-};
+});

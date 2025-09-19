@@ -91,35 +91,35 @@ export const FIELD_MAPPINGS = {
   [RESOURCE_TYPES.PRODUCT]: {
     titleTrans: 'title',
     descTrans: 'body_html',
-    handleTrans: 'handle',
+    // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
   },
   [RESOURCE_TYPES.COLLECTION]: {
     titleTrans: 'title',
     descTrans: 'body_html',
-    handleTrans: 'handle',
+    // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
   },
   [RESOURCE_TYPES.ARTICLE]: {
     titleTrans: 'title',
     descTrans: 'body_html',
-    handleTrans: 'handle',
+    // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     summaryTrans: 'summary_html',
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
   },
   [RESOURCE_TYPES.BLOG]: {
     titleTrans: 'title',
-    handleTrans: 'handle',
+    // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
   },
   [RESOURCE_TYPES.PAGE]: {
     titleTrans: 'title',
     descTrans: 'body_html', // 修正：Page资源在translatableContent中使用'body_html'作为主要内容字段
-    handleTrans: 'handle',
+    // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
   },
