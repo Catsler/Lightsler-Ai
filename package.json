@@ -17,6 +17,7 @@
     "setup": "prisma generate && prisma migrate deploy",
     "init-error-patterns": "node init-error-patterns.js",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "test:api-contracts": "node --test --loader ./tests/api/jsx-loader.mjs --experimental-test-module-mocks \"tests/api/**/*.test.js\"",
     "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",

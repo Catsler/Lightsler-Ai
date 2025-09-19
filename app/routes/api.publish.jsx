@@ -2,6 +2,7 @@ import { authenticate } from "../shopify.server.js";
 import { collectError, ERROR_TYPES } from "../services/error-collector.server.js";
 import prisma from "../db.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
+import { ensureValidResourceGid } from "../services/resource-gid-resolver.server.js";
 
 // 本地工具函数
 function successResponse(data) {
@@ -123,9 +124,61 @@ export const action = withErrorHandling(async ({ request }) => {
       details: []
     };
 
+    const resourceResolutionCache = new Map();
+
     // 逐个发布翻译
     for (const translation of translationsToPublish) {
       try {
+        const resource = translation.resource;
+        const cacheKey = resource?.id || translation.resourceId;
+        let resolution = cacheKey ? resourceResolutionCache.get(cacheKey) : null;
+
+        if (!resolution) {
+          resolution = await ensureValidResourceGid(admin, resource);
+          if (cacheKey) {
+            resourceResolutionCache.set(cacheKey, resolution);
+          }
+
+          if (resolution.success && resource) {
+            resource.gid = resolution.gid;
+          }
+        }
+
+        if (!resolution?.success || !resolution.gid) {
+          const reason = resolution?.reason || 'RESOURCE_GID_RESOLUTION_FAILED';
+          console.warn('⚠️ 无法解析资源GID，跳过发布', {
+            translationId: translation.id,
+            resourceTitle: resource?.title,
+            resourceType: resource?.resourceType,
+            reason,
+            details: resolution?.details || {}
+          });
+
+          results.errors.push({
+            translationId: translation.id,
+            resourceTitle: resource?.title,
+            language: translation.language,
+            error: `资源标识解析失败: ${reason}`
+          });
+
+          await collectError({
+            errorType: ERROR_TYPES.SYNC,
+            errorCategory: 'PUBLISH_ERROR',
+            errorCode: 'RESOURCE_GID_UNRESOLVED',
+            message: `Unable to resolve gid for resource ${translation.resourceId}: ${reason}`,
+            stack: null,
+            operation: 'api.publish',
+            resourceId: translation.resourceId,
+            resourceType: resource?.resourceType,
+            language: translation.language,
+            shopId: translation.shopId
+          });
+
+          continue;
+        }
+
+        const resolvedGid = resolution.gid;
+
         // 更新状态为syncing
         await prisma.translation.update({
           where: { id: translation.id },
@@ -149,10 +202,10 @@ export const action = withErrorHandling(async ({ request }) => {
         // 调用Shopify GraphQL API同步翻译
         const updateResult = await updateResourceTranslation(
           admin,
-          translation.resource.gid,
+          resolvedGid,
           translationData,
           translation.language,
-          translation.resource.resourceType.toUpperCase()
+          (translation.resource.resourceType || '').toUpperCase()
         );
 
         // 更新状态为synced

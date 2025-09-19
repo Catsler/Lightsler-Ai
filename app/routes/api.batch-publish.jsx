@@ -2,6 +2,7 @@ import { authenticate } from "../shopify.server.js";
 import { collectError, ERROR_TYPES } from "../services/error-collector.server.js";
 import prisma from "../db.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
+import { ensureValidResourceGid } from "../services/resource-gid-resolver.server.js";
 
 // 本地工具函数
 function successResponse(data) {
@@ -82,6 +83,8 @@ export const action = withErrorHandling(async ({ request }) => {
       batches: []
     };
 
+    const resourceResolutionCache = new Map();
+
     // 逐批处理
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
@@ -98,6 +101,61 @@ export const action = withErrorHandling(async ({ request }) => {
       // 并发处理批次内的翻译
       const batchPromises = batch.map(async (translation) => {
         try {
+          const resource = translation.resource;
+          const cacheKey = resource?.id || translation.resourceId;
+          let resolutionPromise = cacheKey ? resourceResolutionCache.get(cacheKey) : null;
+
+          if (!resolutionPromise) {
+            resolutionPromise = ensureValidResourceGid(admin, resource);
+            if (cacheKey) {
+              resourceResolutionCache.set(cacheKey, resolutionPromise);
+            }
+          }
+
+          const resolution = await resolutionPromise;
+
+          if (!resolution?.success || !resolution.gid) {
+            const reason = resolution?.reason || 'RESOURCE_GID_RESOLUTION_FAILED';
+            console.warn('⚠️ 批量发布时资源GID解析失败，跳过该条', {
+              translationId: translation.id,
+              resourceTitle: resource?.title,
+              resourceType: resource?.resourceType,
+              reason,
+              details: resolution?.details || {},
+              batch: batchIndex + 1
+            });
+
+            const errorInfo = {
+              translationId: translation.id,
+              resourceTitle: resource?.title,
+              language: translation.language,
+              error: `资源标识解析失败: ${reason}`
+            };
+
+            batchResult.errors.push(errorInfo);
+            results.errors.push(errorInfo);
+
+            await collectError({
+              errorType: ERROR_TYPES.SYNC,
+              errorCategory: 'BATCH_PUBLISH_ERROR',
+              errorCode: 'RESOURCE_GID_UNRESOLVED',
+              message: `Unable to resolve gid for resource ${translation.resourceId}: ${reason}`,
+              stack: null,
+              operation: 'api.batch-publish',
+              resourceId: translation.resourceId,
+              resourceType: resource?.resourceType,
+              language: translation.language,
+              shopId: translation.shopId,
+              batchIndex: batchIndex + 1
+            });
+
+            return { success: false, translationId: translation.id, error: reason };
+          }
+
+          if (resource) {
+            resource.gid = resolution.gid;
+          }
+
           // 标记为处理中
           await prisma.translation.update({
             where: { id: translation.id },
@@ -119,10 +177,10 @@ export const action = withErrorHandling(async ({ request }) => {
           // 调用Shopify API
           await updateResourceTranslation(
             admin,
-            translation.resource.gid,
+            resolution.gid,
             translationData,
             translation.language,
-            translation.resource.resourceType.toUpperCase()
+            (translation.resource.resourceType || '').toUpperCase()
           );
 
           // 标记为已同步

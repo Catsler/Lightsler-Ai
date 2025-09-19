@@ -18,12 +18,14 @@ function sanitizeTranslationValue(value, fallback = null) {
       return {
         value: fallback || '',
         skipped: true,
+        shouldSkip: true,
         reason: 'empty_string'
       };
     }
     return {
       value: trimmed,
-      skipped: false
+      skipped: false,
+      shouldSkip: false
     };
   }
 
@@ -34,12 +36,14 @@ function sanitizeTranslationValue(value, fallback = null) {
       return {
         value: fallback || '',
         skipped: true,
+        shouldSkip: true,
         reason: 'empty_object'
       };
     }
     return {
       value: jsonString,
-      skipped: false
+      skipped: false,
+      shouldSkip: false
     };
   }
 
@@ -47,6 +51,7 @@ function sanitizeTranslationValue(value, fallback = null) {
   return {
     value: fallback || '',
     skipped: true,
+    shouldSkip: true,
     reason: 'null_value'
   };
 }
@@ -686,11 +691,13 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
 
 // 获取单个产品的选项（按需懒加载）
 export async function fetchOptionsForProduct(admin, productGid, maxRetries = 3) {
+  // 兼容不同版本Schema：仅请求 product.options 的 id/name/values
   const QUERY = `#graphql
     query ProductOptions($id: ID!) {
       product(id: $id) {
         id
         options {
+          id
           name
           values
         }
@@ -699,7 +706,12 @@ export async function fetchOptionsForProduct(admin, productGid, maxRetries = 3) 
   `;
   const data = await executeGraphQLWithRetry(admin, QUERY, { id: productGid }, maxRetries);
   const options = data?.data?.product?.options || [];
-  return options.map(opt => ({ name: opt.name, values: opt.values || [] }));
+  return options.map(opt => ({
+    id: opt.id || null,
+    name: opt.name,
+    values: Array.isArray(opt.values) ? opt.values : [],
+    valueNodes: []
+  }));
 }
 
 // 翻译单个metafield
@@ -1237,6 +1249,8 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     let fieldMapping = typeof resourceType === 'string' 
       ? (ALL_FIELD_MAPPINGS[resourceType] || FIELD_MAPPINGS[resourceType])
       : resourceType;
+
+    const hasTranslationFields = translations && translations.translationFields && Object.keys(translations.translationFields).length > 0;
       
     // 检查是否为动态字段资源（Theme相关）
     if (fieldMapping && fieldMapping.dynamic) {
@@ -1266,8 +1280,12 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       }
     }
       
-    if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
+    if ((!fieldMapping || Object.keys(fieldMapping).length === 0) && !hasTranslationFields) {
       throw new Error(`不支持的资源类型或无效的字段映射: ${resourceType}`);
+    }
+
+    if (!fieldMapping) {
+      fieldMapping = {};
     }
     
     console.log('🚀 开始注册资源翻译:', {
@@ -1490,6 +1508,27 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       };
     }
 
+    // 在提交前移除空值并去重（按 key）
+    const nonEmpty = translationInputs.filter(t => typeof t.value === 'string' ? t.value.trim() !== '' : t.value != null);
+    const dedupedMap = new Map();
+    for (const item of nonEmpty) {
+      const existing = dedupedMap.get(item.key);
+      if (!existing) {
+        dedupedMap.set(item.key, item);
+        continue;
+      }
+      // 选择更“有信息量”的值：长度更长者优先
+      const existingLen = (existing.value || '').length;
+      const currentLen = (item.value || '').length;
+      if (currentLen > existingLen) {
+        dedupedMap.set(item.key, item);
+      }
+    }
+    const beforeCount = translationInputs.length;
+    const afterCount = dedupedMap.size;
+    const removedCount = beforeCount - afterCount;
+    const translationInputsFinal = Array.from(dedupedMap.values());
+
     // 输出数据清洗统计报告
     console.log('🧹 数据清洗统计报告:', {
       总处理字段数: sanitizationStats.total,
@@ -1497,11 +1536,14 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       有效字段数: sanitizationStats.total - sanitizationStats.skipped,
       跳过原因分布: sanitizationStats.reasons,
       清洗成功率: sanitizationStats.total > 0 ?
-        `${((sanitizationStats.total - sanitizationStats.skipped) / sanitizationStats.total * 100).toFixed(1)}%` : 'N/A'
+        `${((sanitizationStats.total - sanitizationStats.skipped) / sanitizationStats.total * 100).toFixed(1)}%` : 'N/A',
+      去重前条数: beforeCount,
+      去重后条数: afterCount,
+      去重移除条数: removedCount
     });
 
-    console.log(`🎯 准备注册 ${translationInputs.length} 个翻译`);
-    console.log('📤 翻译输入详情:', JSON.stringify(translationInputs, null, 2));
+    console.log(`🎯 准备注册 ${translationInputsFinal.length} 个翻译`);
+    console.log('📤 翻译输入详情:', JSON.stringify(translationInputsFinal, null, 2));
 
     // 第三步：注册翻译（分批处理）
     console.log('💾 第三步：注册翻译到Shopify...');
@@ -1513,8 +1555,8 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     
     // 将翻译输入分成多批
     const chunks = [];
-    for (let i = 0; i < translationInputs.length; i += BATCH_SIZE) {
-      chunks.push(translationInputs.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < translationInputsFinal.length; i += BATCH_SIZE) {
+      chunks.push(translationInputsFinal.slice(i, i + BATCH_SIZE));
     }
     
     console.log(`📦 将 ${translationInputs.length} 个翻译分成 ${chunks.length} 批处理，每批最多 ${BATCH_SIZE} 个`);

@@ -444,48 +444,74 @@ function Index() {
 
   // Phase 2: 处理发布响应
   useEffect(() => {
-    if (publishFetcher.state === 'idle' && publishFetcher.data) {
-      setIsPublishing(false);
+    if (publishFetcher.state !== 'idle') {
+      return;
+    }
 
-      if (publishFetcher.data.success) {
-        const { published = 0, total = 0, errors = [] } = publishFetcher.data;
-        const successRate = total > 0 ? ((published / total) * 100).toFixed(1) : '100';
+    const responseData = publishFetcher.data;
+    if (!responseData) {
+      return;
+    }
 
-        addLog(`✅ 发布完成: ${published}/${total} 成功 (${successRate}%)`, 'success');
-        showToast(`发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+    setIsPublishing(false);
 
-        if (errors.length > 0) {
-          addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
-        }
+    if (typeof responseData !== 'object' || !('success' in responseData)) {
+      addLog('❌ 发布失败: API响应格式异常', 'error');
+      showToast('发布失败: API响应格式异常', { isError: true });
+      return;
+    }
 
-        // 刷新状态
-        loadStatus();
-      } else {
-        const errorMsg = publishFetcher.data.error || '发布失败';
-        addLog(`❌ 发布失败: ${errorMsg}`, 'error');
-        showToast(`发布失败: ${errorMsg}`, { isError: true });
+    if (responseData.success) {
+      const { published = 0, total = 0, errors = [] } = responseData;
+      const successRate = total > 0 ? ((published / total) * 100).toFixed(1) : '100';
+
+      addLog(`✅ 发布完成: ${published}/${total} 成功 (${successRate}%)`, 'success');
+      showToast(`发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+
+      if (errors.length > 0) {
+        addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
       }
+
+      // 刷新状态
+      loadStatus();
+    } else {
+      const errorMsg = responseData.error || '发布失败';
+      addLog(`❌ 发布失败: ${errorMsg}`, 'error');
+      showToast(`发布失败: ${errorMsg}`, { isError: true });
     }
   }, [publishFetcher.state, publishFetcher.data, addLog, showToast, loadStatus]);
 
   // 处理批量发布响应
   useEffect(() => {
-    if (batchPublishFetcher.state === 'idle' && batchPublishFetcher.data) {
-      setIsPublishing(false);
+    if (batchPublishFetcher.state !== 'idle') {
+      return;
+    }
 
-      if (batchPublishFetcher.data.success) {
-        const { published = 0, total = 0, successRate = '0%' } = batchPublishFetcher.data;
+    const responseData = batchPublishFetcher.data;
+    if (!responseData) {
+      return;
+    }
 
-        addLog(`✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`, 'success');
-        showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+    setIsPublishing(false);
 
-        // 刷新状态
-        loadStatus();
-      } else {
-        const errorMsg = batchPublishFetcher.data.error || '批量发布失败';
-        addLog(`❌ 批量发布失败: ${errorMsg}`, 'error');
-        showToast(`批量发布失败: ${errorMsg}`, { isError: true });
-      }
+    if (typeof responseData !== 'object' || !('success' in responseData)) {
+      addLog('❌ 批量发布失败: API响应格式异常', 'error');
+      showToast('批量发布失败: API响应格式异常', { isError: true });
+      return;
+    }
+
+    if (responseData.success) {
+      const { published = 0, total = 0, successRate = '0%' } = responseData;
+
+      addLog(`✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`, 'success');
+      showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+
+      // 刷新状态
+      loadStatus();
+    } else {
+      const errorMsg = responseData.error || '批量发布失败';
+      addLog(`❌ 批量发布失败: ${errorMsg}`, 'error');
+      showToast(`批量发布失败: ${errorMsg}`, { isError: true });
     }
   }, [batchPublishFetcher.state, batchPublishFetcher.data, addLog, showToast, loadStatus]);
 

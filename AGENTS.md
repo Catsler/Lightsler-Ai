@@ -1,5 +1,5 @@
 # Repository Guidelines
-
+# 永远中文回答
 ## Project Structure & Module Organization
 - Remix + Vite + Prisma. Core code lives in `app/`.
 - Routes: `app/routes/*.jsx`. Services: `app/services/*.js`. Shared UI: `app/components/`. Utilities/hooks: `app/utils/`.
