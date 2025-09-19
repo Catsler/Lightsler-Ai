@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import {
-  Badge, 
-  BlockStack, 
-  Box, 
-  Button, 
-  Card, 
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Card,
   Checkbox,
   Collapsible,
   Grid,
@@ -14,6 +14,7 @@ import {
 } from '@shopify/polaris';
 import { ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
 import { RESOURCE_CATEGORIES, organizeResourcesByCategory } from '../config/resource-categories';
+import { filterResourcesForList } from '../utils/resource-filters';
 
 /**
  * 资源分类展示组件 - 网格布局版本
@@ -39,11 +40,9 @@ export function ResourceCategoryDisplay({
   const [expandedProducts, setExpandedProducts] = useState({}); // productId -> bool
   const [productOptionsMap, setProductOptionsMap] = useState({}); // productId -> { loading, options }
   
-  // 过滤掉顶层的产品选项类资源（改为仅在产品行内展开显示）
-  const filteredResources = resources.filter((r) => {
-    const t = String(r?.resourceType || '').toUpperCase();
-    return t !== 'PRODUCT_OPTION' && t !== 'PRODUCT_OPTION_VALUE';
-  });
+  // 过滤掉产品关联资源（产品选项、Metafields等），改为在产品详情页统一管理
+  // 使用统一的过滤函数，便于维护和扩展
+  const filteredResources = filterResourcesForList(resources);
 
   // 按分类组织资源
   const organizedResources = organizeResourcesByCategory(filteredResources);
@@ -190,6 +189,12 @@ export function ResourceCategoryDisplay({
                 目标语言: {getLanguageBadge()}
               </Badge>
             </InlineStack>
+            {/* 用户提示：产品关联资源会自动翻译 */}
+            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
+              <Text variant="bodySm" tone="subdued">
+                💡 产品的选项和Metafields会随产品一起翻译，无需单独选择
+              </Text>
+            </Box>
           </BlockStack>
           {onSelectionChange && (
             <Button

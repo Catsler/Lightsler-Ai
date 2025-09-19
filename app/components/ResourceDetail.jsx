@@ -190,7 +190,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
           </Box>
           <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px' }}>
             <Text variant="bodySm" tone="subdued">译文（{currentLanguage}）</Text>
-            <Box paddingBlockStart="100">{renderValue(translated, false, false)}</Box>
+            <Box paddingBlockStart="100">{renderValue(translated, isHtml, false)}</Box>
           </Box>
         </div>
       </Box>

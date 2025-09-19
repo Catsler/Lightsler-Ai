@@ -12,7 +12,7 @@ export const RESOURCE_CATEGORIES = {
       COLLECTIONS: { name: 'Collections', resources: ['COLLECTION'] },
       PRODUCTS: { name: 'Products', resources: ['PRODUCT'] },
       // 可选扩展：产品扩展（不直接作为翻译主类目）
-      PRODUCT_EXT: { name: 'Product extensions', resources: ['PRODUCT_OPTION', 'PRODUCT_OPTION_VALUE', 'SELLING_PLAN', 'SELLING_PLAN_GROUP'] }
+      PRODUCT_EXT: { name: 'Product extensions', resources: ['PRODUCT_OPTION', 'PRODUCT_OPTION_VALUE', 'PRODUCT_METAFIELD', 'SELLING_PLAN', 'SELLING_PLAN_GROUP'] }
     }
   },
 

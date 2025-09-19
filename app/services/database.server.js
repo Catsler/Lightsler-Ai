@@ -67,14 +67,16 @@ export async function saveResources(shopId, resources) {
         shopId_resourceType_resourceId: {
           shopId: shopId,
           resourceType: resource.resourceType,
-          resourceId: resource.id
+          // 优先使用显式的resourceId，回退到id（向后兼容）
+          resourceId: resource.resourceId || resource.id
         }
       },
       update: resourceData,
       create: {
         shopId: shopId,
         resourceType: resource.resourceType,
-        resourceId: resource.id,
+        // 优先使用显式的resourceId，回退到id（向后兼容）
+        resourceId: resource.resourceId || resource.id,
         ...resourceData
       }
     });

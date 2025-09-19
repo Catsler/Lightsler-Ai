@@ -384,12 +384,14 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
           logger.debug(`保存临时Options资源到数据库: ${desiredResourceId}`);
 
           const resourceToSave = [{
-            id: option.id && !option.id.endsWith('-temp') ? option.id : undefined,
+            // 临时资源不传id，让Prisma自动生成cuid作为内部主键
+            id: undefined,
             resourceType: 'PRODUCT_OPTION',
             gid: option.id,
             title: option.title || '',
             description: option.contentFields?.name || '',
             contentFields: updatedContentFields,
+            // 使用生成的resourceId作为Shopify业务标识符
             resourceId: desiredResourceId
           }];
 
