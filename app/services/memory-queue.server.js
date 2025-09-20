@@ -4,189 +4,342 @@
 
 import { logger } from '../utils/logger.server.js';
 
-// 内存队列存储
-const jobs = new Map();
-const queue = [];
-let jobIdCounter = 1;
-let isProcessing = false;
-
-/**
- * 简单的内存任务队列
- */
 class MemoryQueue {
-  constructor(name) {
+  constructor(name, options = {}) {
     this.name = name;
+    this.options = options;
     this.processors = new Map();
+    this.jobs = new Map();
+    this.queue = [];
+    this.jobIdCounter = 1;
+    this.isProcessing = false;
+    this.runningTasks = new Set();
+    this.listeners = new Map();
+    this.defaultConcurrency = Math.max(1, options.defaultConcurrency || 1);
   }
 
-  // 添加任务处理器
   process(jobType, concurrency, processor) {
     if (typeof concurrency === 'function') {
       processor = concurrency;
       concurrency = 1;
     }
-    
-    this.processors.set(jobType, { processor, concurrency });
-    logger.info(`Register memory queue processor: ${jobType} (concurrency: ${concurrency})`);
+
+    const resolvedConcurrency = Math.max(1, Number(concurrency) || this.defaultConcurrency);
+    this.processors.set(jobType, {
+      processor,
+      concurrency: resolvedConcurrency,
+      active: 0
+    });
+
+    logger.info(`Register memory queue processor: ${jobType} (concurrency: ${resolvedConcurrency})`);
   }
 
-  // 添加任务到队列
   async add(jobType, data, options = {}) {
-    const jobId = jobIdCounter++;
+    const jobId = this.jobIdCounter++;
     const job = {
       id: jobId,
+      name: jobType,
       type: jobType,
       data,
-      options,
-      status: 'waiting',
+      opts: {
+        attempts: options.attempts ?? 3,
+        backoff: options.backoff ?? 'exponential',
+        delay: options.delay ?? 0,
+        removeOnComplete: options.removeOnComplete,
+        removeOnFail: options.removeOnFail,
+        ...options
+      },
+      status: options.delay ? 'delayed' : 'waiting',
       progress: 0,
       createdAt: new Date(),
       attempts: 0,
-      maxAttempts: options.attempts || 3
+      maxAttempts: options.attempts ?? 3,
+      result: undefined,
+      error: undefined,
+      resolveFinished: null,
+      rejectFinished: null,
+      finishedPromise: null
     };
 
-    jobs.set(jobId, job);
-    queue.push(job);
+    job.finishedPromise = new Promise((resolve, reject) => {
+      job.resolveFinished = resolve;
+      job.rejectFinished = reject;
+    });
+
+    this.jobs.set(jobId, job);
+
+    const enqueueJob = () => {
+      job.status = 'waiting';
+      this.queue.push(job);
+      this.processQueue();
+    };
+
+    if (job.opts.delay && job.opts.delay > 0) {
+      logger.info(`Schedule delayed memory queue job: ${jobType} (ID: ${jobId}, delay: ${job.opts.delay}ms)`);
+      setTimeout(() => {
+        enqueueJob();
+      }, job.opts.delay);
+    } else {
+      enqueueJob();
+    }
 
     logger.info(`Add memory queue job: ${jobType} (ID: ${jobId})`);
 
-    // 启动处理器
-    this.processQueue();
-
-    return {
-      id: jobId,
-      progress: () => job.progress,
-      finished: () => new Promise((resolve, reject) => {
-        const checkStatus = () => {
-          const currentJob = jobs.get(jobId);
-          if (currentJob.status === 'completed') {
-            resolve(currentJob.result);
-          } else if (currentJob.status === 'failed') {
-            reject(new Error(currentJob.error));
-          } else {
-            setTimeout(checkStatus, 100);
-          }
-        };
-        checkStatus();
-      })
-    };
+    return this.createPublicJob(job);
   }
 
-  // 处理队列
   async processQueue() {
-    if (isProcessing) return;
-    isProcessing = true;
+    if (this.isProcessing) {
+      return;
+    }
 
-    while (queue.length > 0) {
-      const job = queue.shift();
-      const processor = this.processors.get(job.type);
+    this.isProcessing = true;
 
-      if (!processor) {
-        logger.warn(`Processor not found: ${job.type}`);
-        continue;
+    while (this.queue.length > 0 || this.runningTasks.size > 0) {
+      let scheduled = false;
+
+      while (this.queue.length > 0) {
+        const job = this.queue[0];
+        const processor = this.processors.get(job.type);
+
+        if (!processor) {
+          logger.warn(`Processor not found for job type: ${job.type}`);
+          this.queue.shift();
+          job.status = 'failed';
+          job.error = 'Processor not registered';
+          job.failedAt = new Date();
+          job.rejectFinished?.(new Error(job.error));
+          this.emit('failed', this.createPublicJob(job), new Error(job.error));
+          continue;
+        }
+
+        const limit = processor.concurrency ?? this.defaultConcurrency;
+        if (processor.active >= limit) {
+          break;
+        }
+
+        this.queue.shift();
+        scheduled = true;
+        processor.active += 1;
+
+        const task = this.executeJob(job, processor)
+          .catch((error) => {
+            logger.error(`Memory queue job执行异常: ${error?.message || error}`);
+          })
+          .finally(() => {
+            processor.active = Math.max(0, processor.active - 1);
+            this.runningTasks.delete(task);
+          });
+
+        this.runningTasks.add(task);
       }
 
-      try {
-        logger.info(`Processing memory queue job: ${job.type} (ID: ${job.id})`);
-        job.status = 'active';
-        
-        // 创建job对象，模拟Bull.js接口
-        const jobObj = {
-          id: job.id,
-          data: job.data,
-          progress: (value) => {
-            job.progress = value;
-          }
-        };
+      if (this.runningTasks.size === 0) {
+        break;
+      }
 
-        const result = await processor.processor(jobObj);
-        
-        job.status = 'completed';
-        job.result = result;
-        job.completedAt = new Date();
-
-        logger.info(`Memory queue job completed: ${job.type} (ID: ${job.id})`);
-
-      } catch (error) {
-        job.attempts++;
-        logger.error(`Memory queue job failed: ${job.type} (ID: ${job.id}) - ${error.message}`);
-
-        if (job.attempts < job.maxAttempts) {
-          logger.info(`Retry job: ${job.type} (ID: ${job.id}, attempt: ${job.attempts}/${job.maxAttempts})`);
-          queue.push(job); // 重新排队
-        } else {
-          job.status = 'failed';
-          job.error = error.message;
-          job.failedAt = new Date();
-        }
+      if (!scheduled) {
+        await Promise.race(Array.from(this.runningTasks));
       }
     }
 
-    isProcessing = false;
+    if (this.runningTasks.size > 0) {
+      await Promise.allSettled(Array.from(this.runningTasks));
+    }
+
+    this.isProcessing = false;
   }
 
-  // 获取任务
+  async executeJob(job, processor) {
+    const publicJob = this.createPublicJob(job);
+
+    try {
+      job.status = 'active';
+      job.startedAt = new Date();
+      job.attempts += 1;
+      publicJob.attemptsMade = job.attempts - 1;
+
+      this.emit('active', publicJob);
+
+      const result = await processor.processor(publicJob);
+
+      job.status = 'completed';
+      job.result = result;
+      job.completedAt = new Date();
+      publicJob.attemptsMade = job.attempts;
+
+      job.resolveFinished?.(result);
+      this.emit('completed', publicJob, result);
+    } catch (error) {
+      logger.error(`Memory queue job failed: ${job.type} (ID: ${job.id}) - ${error?.message || error}`);
+
+      if (job.attempts < job.maxAttempts) {
+        const delay = this.calculateBackoff(job);
+        logger.info(`Retry job: ${job.type} (ID: ${job.id}, attempt: ${job.attempts}/${job.maxAttempts}, delay: ${delay}ms)`);
+        job.status = 'waiting';
+        job.progress = 0;
+        setTimeout(() => {
+          this.queue.push(job);
+          this.processQueue();
+        }, delay);
+      } else {
+        job.status = 'failed';
+        job.error = error?.message || String(error);
+        job.failedAt = new Date();
+        job.rejectFinished?.(error instanceof Error ? error : new Error(job.error));
+        this.emit('failed', publicJob, error);
+      }
+    }
+  }
+
+  calculateBackoff(job) {
+    const attempt = Math.max(1, job.attempts);
+
+    if (typeof job.opts.backoff === 'object' && job.opts.backoff?.type === 'exponential') {
+      const base = job.opts.backoff.delay ?? 1000;
+      return Math.min(30000, Math.pow(2, attempt - 1) * base);
+    }
+
+    if (job.opts.backoff === 'exponential') {
+      return Math.min(30000, Math.pow(2, attempt - 1) * 1000);
+    }
+
+    if (typeof job.opts.backoff === 'number') {
+      return job.opts.backoff;
+    }
+
+    return 1000;
+  }
+
+  createPublicJob(job) {
+    const self = this;
+    return {
+      id: job.id,
+      name: job.name,
+      data: job.data,
+      opts: job.opts,
+      attemptsMade: job.attempts,
+      maxAttempts: job.maxAttempts,
+      status: job.status,
+      progress(value) {
+        if (typeof value === 'number') {
+          job.progress = value;
+        }
+        return job.progress;
+      },
+      getState: async () => job.status,
+      finished: () => job.finishedPromise,
+      timestamp: job.createdAt?.getTime(),
+      processedOn: job.startedAt?.getTime(),
+      finishedOn: job.completedAt?.getTime(),
+      failedReason: job.error,
+      toJSON() {
+        return {
+          id: job.id,
+          name: job.name,
+          data: job.data,
+          status: job.status,
+          progress: job.progress,
+          attemptsMade: job.attempts,
+          maxAttempts: job.maxAttempts
+        };
+      },
+      remove: async () => {
+        self.jobs.delete(job.id);
+      }
+    };
+  }
+
   async getJob(jobId) {
-    return jobs.get(jobId);
+    const job = this.jobs.get(Number(jobId));
+    return job ? this.createPublicJob(job) : null;
   }
 
-  // 清理已完成的任务
   async clean(grace, type) {
     let cleaned = 0;
-    const cutoff = new Date(Date.now() - grace);
+    const cutoff = Date.now() - grace;
 
-    for (const [id, job] of jobs) {
-      if (type === 'completed' && job.status === 'completed' && job.completedAt < cutoff) {
-        jobs.delete(id);
-        cleaned++;
-      } else if (type === 'failed' && job.status === 'failed' && job.failedAt < cutoff) {
-        jobs.delete(id);
-        cleaned++;
+    for (const [id, job] of this.jobs) {
+      if (type === 'completed' && job.status === 'completed' && job.completedAt && job.completedAt.getTime() < cutoff) {
+        this.jobs.delete(id);
+        cleaned += 1;
+      } else if (type === 'failed' && job.status === 'failed' && job.failedAt && job.failedAt.getTime() < cutoff) {
+        this.jobs.delete(id);
+        cleaned += 1;
       }
     }
 
     return cleaned;
   }
 
-  // 获取各种状态的任务
   async getWaiting() {
-    return Array.from(jobs.values()).filter(job => job.status === 'waiting');
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'waiting' || job.status === 'delayed')
+      .map(job => this.createPublicJob(job));
   }
 
   async getActive() {
-    return Array.from(jobs.values()).filter(job => job.status === 'active');
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'active')
+      .map(job => this.createPublicJob(job));
   }
 
   async getCompleted() {
-    return Array.from(jobs.values()).filter(job => job.status === 'completed');
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'completed')
+      .map(job => this.createPublicJob(job));
   }
 
   async getFailed() {
-    return Array.from(jobs.values()).filter(job => job.status === 'failed');
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'failed')
+      .map(job => this.createPublicJob(job));
   }
 
-  // 事件处理（简化版）
   on(event, handler) {
-    // 简化实现，仅记录日志
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+
+    this.listeners.get(event).add(handler);
     logger.debug(`Register memory queue event: ${event}`);
   }
 
-  // Bull队列兼容方法
-  async getJobs(types = ['waiting', 'active', 'completed', 'failed']) {
-    const result = [];
-    for (const type of types) {
-      if (type === 'waiting') result.push(...await this.getWaiting());
-      if (type === 'active') result.push(...await this.getActive());
-      if (type === 'completed') result.push(...await this.getCompleted());
-      if (type === 'failed') result.push(...await this.getFailed());
+  emit(event, ...args) {
+    const handlers = this.listeners.get(event);
+    if (!handlers) {
+      return;
     }
-    return result;
+
+    for (const handler of handlers) {
+      try {
+        handler(...args);
+      } catch (error) {
+        logger.error(`Memory queue事件处理错误: ${error?.message || error}`);
+      }
+    }
+  }
+
+  async getJobs(types = ['waiting', 'active', 'completed', 'failed']) {
+    const results = [];
+    for (const type of types) {
+      if (type === 'waiting') {
+        results.push(...await this.getWaiting());
+      } else if (type === 'active') {
+        results.push(...await this.getActive());
+      } else if (type === 'completed') {
+        results.push(...await this.getCompleted());
+      } else if (type === 'failed') {
+        results.push(...await this.getFailed());
+      }
+    }
+    return results;
   }
 
   async getJobCounts() {
-    const allJobs = Array.from(jobs.values());
+    const allJobs = Array.from(this.jobs.values());
     return {
-      waiting: allJobs.filter(j => j.status === 'waiting').length,
+      waiting: allJobs.filter(j => j.status === 'waiting' || j.status === 'delayed').length,
       active: allJobs.filter(j => j.status === 'active').length,
       completed: allJobs.filter(j => j.status === 'completed').length,
       failed: allJobs.filter(j => j.status === 'failed').length
@@ -194,9 +347,10 @@ class MemoryQueue {
   }
 
   async empty() {
-    const count = jobs.size;
-    jobs.clear();
-    queue.length = 0;
+    const count = this.jobs.size;
+    this.jobs.clear();
+    this.queue.length = 0;
+    this.runningTasks.clear();
     return count;
   }
 }

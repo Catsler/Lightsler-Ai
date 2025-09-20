@@ -1,6 +1,6 @@
 /**
- * 同步管理页面
- * 管理翻译内容到Shopify的同步
+ * 发布管理页面
+ * 管理翻译内容到Shopify的发布
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -29,7 +29,7 @@ import { getSyncStatusStats } from "../services/sync-to-shopify.server.js";
 import prisma from "../db.server.js";
 
 /**
- * Loader函数：获取同步状态数据
+ * Loader函数：获取发布状态数据
  */
 export async function loader({ request }) {
   const { authenticate } = await import("../shopify.server.js");
@@ -37,10 +37,10 @@ export async function loader({ request }) {
   
   const shopId = session.shop;
   
-  // 获取同步状态统计
+  // 获取发布状态统计
   const syncStats = await getSyncStatusStats(shopId);
   
-  // 获取最近失败的同步记录
+  // 获取最近失败的发布记录
   const failedSync = await prisma.translation.findMany({
     where: { 
       shopId,
@@ -105,7 +105,7 @@ export default function SyncManagementPage() {
     return () => clearInterval(interval);
   }, [isLoading]);
   
-  // 执行同步
+  // 执行发布
   const handleSync = useCallback(() => {
     const formData = new FormData();
     formData.append("action", "sync");
@@ -119,7 +119,7 @@ export default function SyncManagementPage() {
     });
   }, [selectedLanguage, selectedResourceType, syncLimit, submit]);
   
-  // 重试失败的同步
+  // 重试失败的发布
   const handleRetry = useCallback(() => {
     const formData = new FormData();
     formData.append("action", "retry");
@@ -161,10 +161,10 @@ export default function SyncManagementPage() {
   
   return (
     <Page
-      title="同步管理"
-      subtitle="管理翻译内容到Shopify的同步"
+      title="发布管理"
+      subtitle="管理翻译内容到Shopify的发布"
       primaryAction={{
-        content: "立即同步",
+        content: "立即发布",
         onAction: handleSync,
         loading: isLoading,
         disabled: syncStats.pending === 0
@@ -176,11 +176,21 @@ export default function SyncManagementPage() {
         }
       ]}
     >
+      {/* 迁移提示 */}
+      <Banner
+        title="功能已整合"
+        status="info"
+        onDismiss={() => {}}
+        action={{content: '返回主页', url: '/app'}}
+      >
+        <p>发布功能已整合到主页面，您可以直接使用主页的"发布翻译"和"批量发布"按钮。</p>
+      </Banner>
+
       <Layout>
-        {/* 同步状态概览 */}
+        {/* 发布状态概览 */}
         <Layout.Section>
           <Card>
-            <Text variant="headingMd" as="h2">同步状态概览</Text>
+            <Text variant="headingMd" as="h2">发布状态概览</Text>
             <div style={{ marginTop: '16px' }}>
               <BlockStack gap="500">
                 <ProgressBar 
@@ -190,9 +200,9 @@ export default function SyncManagementPage() {
                 />
                 <InlineStack align="space-between">
                   <InlineStack gap="200">
-                    <Badge status="attention">待同步: {syncStats.pending}</Badge>
-                    <Badge status="info">同步中: {syncStats.syncing}</Badge>
-                    <Badge status="success">已同步: {syncStats.synced}</Badge>
+                    <Badge status="attention">待发布: {syncStats.pending}</Badge>
+                    <Badge status="info">发布中: {syncStats.syncing}</Badge>
+                    <Badge status="success">已发布: {syncStats.synced}</Badge>
                     <Badge status="critical">失败: {syncStats.failed}</Badge>
                   </InlineStack>
                   <Text variant="bodyMd" as="p" tone="subdued">
@@ -204,10 +214,10 @@ export default function SyncManagementPage() {
           </Card>
         </Layout.Section>
         
-        {/* 同步选项 */}
+        {/* 发布选项 */}
         <Layout.Section>
           <Card>
-            <Text variant="headingMd" as="h2">同步选项</Text>
+            <Text variant="headingMd" as="h2">发布选项</Text>
             <div style={{ marginTop: '16px' }}>
               <BlockStack gap="500">
                 <InlineStack gap="400">
@@ -248,7 +258,7 @@ export default function SyncManagementPage() {
                       ]}
                       value={syncLimit}
                       onChange={setSyncLimit}
-                      helpText="每次同步的最大记录数"
+                      helpText="每次发布的最大记录数"
                     />
                   </div>
                 </InlineStack>
@@ -260,7 +270,7 @@ export default function SyncManagementPage() {
                     loading={isLoading}
                     disabled={syncStats.pending === 0}
                   >
-                    开始同步 ({syncStats.pending} 条待处理)
+                    开始发布 ({syncStats.pending} 条待处理)
                   </Button>
                   {syncStats.failed > 0 && (
                     <Button
@@ -282,7 +292,7 @@ export default function SyncManagementPage() {
             <Card>
               <BlockStack gap="500">
                 <InlineStack align="space-between">
-                  <Text variant="headingMd" as="h2">最近失败的同步</Text>
+                  <Text variant="headingMd" as="h2">最近失败的发布</Text>
                   <Button plain onClick={handleClearErrors}>
                     清理错误记录
                   </Button>
@@ -305,18 +315,18 @@ export default function SyncManagementPage() {
             <div style={{ marginTop: '16px' }}>
               <TextContainer>
                 <Text variant="bodyMd" as="p">
-                  <strong>新的同步流程：</strong>
+                  <strong>新的发布流程：</strong>
                 </Text>
                 <ol>
                   <li>翻译操作现在只保存到本地数据库，不会直接提交到Shopify</li>
-                  <li>使用此页面将缓存的翻译批量同步到Shopify</li>
-                  <li>支持按语言、资源类型筛选同步内容</li>
-                  <li>失败的同步可以重试，不会丢失翻译结果</li>
+                  <li>使用此页面将缓存的翻译批量发布到Shopify</li>
+                  <li>支持按语言、资源类型筛选发布内容</li>
+                  <li>失败的发布可以重试，不会丢失翻译结果</li>
                   <li>系统自动处理Shopify API的100个字段限制，分批提交</li>
                 </ol>
                 <Text variant="bodyMd" as="p" tone="success">
                   <strong>优势：</strong>
-                  避免重复调用GPT API，降低成本；支持断点续传；可以先批量翻译，后续择时同步。
+                  避免重复调用GPT API，降低成本；支持断点续传；可以先批量翻译，后续择时发布。
                 </Text>
               </TextContainer>
             </div>
@@ -328,7 +338,7 @@ export default function SyncManagementPage() {
       <Modal
         open={showRetryModal}
         onClose={() => setShowRetryModal(false)}
-        title="确认重试失败的同步"
+        title="确认重试失败的发布"
         primaryAction={{
           content: "确认重试",
           onAction: handleRetry,
@@ -344,10 +354,10 @@ export default function SyncManagementPage() {
         <Modal.Section>
           <TextContainer>
             <Text variant="bodyMd" as="p">
-              将重试 {syncStats.failed} 条失败的同步记录。
+              将重试 {syncStats.failed} 条失败的发布记录。
             </Text>
             <Text variant="bodyMd" as="p">
-              这些记录将被重置为待同步状态，然后重新尝试同步到Shopify。
+              这些记录将被重置为待发布状态，然后重新尝试发布到Shopify。
             </Text>
           </TextContainer>
         </Modal.Section>

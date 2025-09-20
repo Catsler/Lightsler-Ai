@@ -24,18 +24,22 @@ import { filterResourcesForList } from '../utils/resource-filters';
  * @param {Function} onSelectionChange - 资源选择改变回调
  * @param {String} currentLanguage - 当前选择的语言
  */
-export function ResourceCategoryDisplay({ 
-  resources = [], 
-  onResourceClick, 
+export function ResourceCategoryDisplay({
+  resources = [],
+  onResourceClick,
   selectedResources = [],
   onSelectionChange,
   currentLanguage = 'zh-CN',
   onTranslateCategory,
-  onSyncCategory,
+  onSyncCategory, // 已废弃，请使用发布管理页面
   translatingCategories = new Set(),
-  syncingCategories = new Set(),
+  syncingCategories = new Set(), // 已废弃
   clearCache = false
 }) {
+  // 废弃提示
+  if (onSyncCategory && typeof onSyncCategory === 'function') {
+    console.warn('[Deprecated] onSyncCategory prop已废弃，请使用发布管理页面进行翻译发布');
+  }
   const [expandedSubcategories, setExpandedSubcategories] = useState({});
   const [expandedProducts, setExpandedProducts] = useState({}); // productId -> bool
   const [productOptionsMap, setProductOptionsMap] = useState({}); // productId -> { loading, options }
@@ -256,18 +260,7 @@ export function ResourceCategoryDisplay({
                         {translatingCategories.has(categoryKey) ? '翻译中...' : '翻译'}
                       </Button>
                     )}
-                    {onSyncCategory && (
-                      <Button
-                        size="slim"
-                        variant="primary"
-                        tone="success"
-                        onClick={() => onSyncCategory(categoryKey, category)}
-                        loading={syncingCategories.has(categoryKey)}
-                        disabled={syncingCategories.has(categoryKey) || category.translatedCount === 0}
-                      >
-                        {syncingCategories.has(categoryKey) ? '发布中...' : '发布'}
-                      </Button>
-                    )}
+                    {/* 同步/发布按钮已移除，请使用发布管理页面 */}
                     {onSelectionChange && (
                       <Button
                         size="slim"
@@ -279,6 +272,14 @@ export function ResourceCategoryDisplay({
                     )}
                   </InlineStack>
                 </InlineStack>
+                {/* 添加发布提示 */}
+                {category.translatedCount > 0 && (
+                  <Box paddingBlockStart="2">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      翻译完成后请使用上方发布按钮
+                    </Text>
+                  </Box>
+                )}
               </Box>
               
               {/* 固定高度的内容区域 */}

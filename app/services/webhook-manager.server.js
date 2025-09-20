@@ -7,6 +7,7 @@ import prisma from '../db.server.js';
 import { logger } from '../utils/logger.server.js';
 import { addTranslationJob } from './queue.server.js';
 import { captureError } from '../utils/error-handler.server.js';
+import { invalidateCoverageCache } from './language-coverage.server.js';
 import { webhookConfig, getResourcePriority, getDedupWindowMs } from '../config/webhook-config.js';
 
 /**
@@ -315,6 +316,11 @@ async function queueTranslation(shop, resourceType, resourceId, priority = 'NORM
  */
 async function handleProductCreate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'PRODUCT',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   if (await shouldTranslate(shop, 'PRODUCT', resourceId)) {
     const priority = getResourcePriority('PRODUCT');
@@ -330,6 +336,11 @@ async function handleProductCreate(shop, payload, event) {
  */
 async function handleProductUpdate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'PRODUCT',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   // 检查是否是实质性更新
   const significantFields = ['title', 'body_html', 'vendor', 'product_type'];
@@ -355,6 +366,11 @@ async function handleProductUpdate(shop, payload, event) {
  */
 async function handleProductDelete(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'PRODUCT',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   // 清理相关翻译记录
   await prisma.translation.deleteMany({
@@ -383,6 +399,11 @@ async function handleProductDelete(shop, payload, event) {
  */
 async function handleCollectionCreate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'COLLECTION',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   if (await shouldTranslate(shop, 'COLLECTION', resourceId)) {
     const priority = getResourcePriority('COLLECTION');
@@ -398,6 +419,11 @@ async function handleCollectionCreate(shop, payload, event) {
  */
 async function handleCollectionUpdate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'COLLECTION',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   // 检查是否是实质性更新
   const significantFields = ['title', 'body_html', 'handle'];
@@ -423,6 +449,11 @@ async function handleCollectionUpdate(shop, payload, event) {
  */
 async function handlePageCreate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'PAGE',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   if (await shouldTranslate(shop, 'PAGE', resourceId)) {
     const priority = getResourcePriority('PAGE');
@@ -438,6 +469,11 @@ async function handlePageCreate(shop, payload, event) {
  */
 async function handlePageUpdate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'PAGE',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   const significantFields = ['title', 'body_html', 'handle'];
   const hasSignificantChange = significantFields.some(field => 
@@ -461,6 +497,11 @@ async function handlePageUpdate(shop, payload, event) {
  * 处理主题发布
  */
 async function handleThemePublish(shop, payload, event) {
+  invalidateCoverageCache(shop, {
+    resourceType: 'ONLINE_STORE_THEME',
+    scope: 'resource',
+    scopeId: payload.id?.toString()
+  });
   logger.info('主题发布事件', {
     shop,
     themeId: payload.id,
@@ -479,6 +520,11 @@ async function handleThemePublish(shop, payload, event) {
  * 处理主题更新
  */
 async function handleThemeUpdate(shop, payload, event) {
+  invalidateCoverageCache(shop, {
+    resourceType: 'ONLINE_STORE_THEME',
+    scope: 'resource',
+    scopeId: payload.id?.toString()
+  });
   // 主题更新通常是设置变更，可能不需要翻译
   logger.info('主题更新事件', {
     shop,
@@ -520,6 +566,11 @@ async function handleLocaleUpdate(shop, payload, event) {
  */
 async function handleArticleCreate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'ARTICLE',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   if (await shouldTranslate(shop, 'ARTICLE', resourceId)) {
     const priority = getResourcePriority('ARTICLE');
@@ -535,6 +586,11 @@ async function handleArticleCreate(shop, payload, event) {
  */
 async function handleArticleUpdate(shop, payload, event) {
   const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'ARTICLE',
+    scope: 'resource',
+    scopeId: resourceId
+  });
   
   const significantFields = ['title', 'content', 'summary', 'handle'];
   const hasSignificantChange = significantFields.some(field => 

@@ -2,6 +2,7 @@ import { prisma } from '../db.server.js';
 import { captureError, TranslationError } from '../utils/error-handler.server.js';
 import { logger } from '../utils/logger.server.js';
 import { fetchResourcesByType } from './shopify-graphql.server.js';
+import { invalidateCoverageCache } from './language-coverage.server.js';
 import crypto from 'crypto';
 
 /**
@@ -613,6 +614,12 @@ export class VersionDetectionService {
    */
   async _syncSingleResourceVersion(shopId, resource) {
     const contentHash = this._calculateResourceHash(resource);
+    // 细粒度字段digest映射（若提供了translatableContent）
+    let contentDigests = null;
+    if (resource.translatableContent && Array.isArray(resource.translatableContent)) {
+      const { extractDigestMap } = await import('./content-digest-tracker.server.js');
+      contentDigests = extractDigestMap(resource.translatableContent);
+    }
 
     const existingResource = await prisma.resource.findFirst({
       where: {
@@ -625,7 +632,7 @@ export class VersionDetectionService {
     if (existingResource) {
       // 更新现有资源
       if (existingResource.contentHash !== contentHash) {
-        await prisma.resource.update({
+        const updatedResource = await prisma.resource.update({
           where: { id: existingResource.id },
           data: {
             contentHash,
@@ -635,8 +642,14 @@ export class VersionDetectionService {
             // 更新其他字段
             title: resource.title || existingResource.title,
             description: resource.description || existingResource.description,
-            descriptionHtml: resource.descriptionHtml || existingResource.descriptionHtml
+            descriptionHtml: resource.descriptionHtml || existingResource.descriptionHtml,
+            ...(contentDigests && { contentDigests })
           }
+        });
+        invalidateCoverageCache(shopId, {
+          resourceType: updatedResource.resourceType || resource.resourceType || null,
+          scope: 'resource',
+          scopeId: resource.resourceId
         });
         
         return { action: 'updated', versionIncremented: true };
@@ -651,7 +664,7 @@ export class VersionDetectionService {
       }
     } else {
       // 创建新资源
-      await prisma.resource.create({
+      const createdResource = await prisma.resource.create({
         data: {
           shopId,
           resourceType: resource.resourceType || 'UNKNOWN',
@@ -670,8 +683,14 @@ export class VersionDetectionService {
           status: 'pending',
           contentHash,
           contentVersion: 1,
-          lastScannedAt: new Date()
+          lastScannedAt: new Date(),
+          ...(contentDigests && { contentDigests })
         }
+      });
+      invalidateCoverageCache(shopId, {
+        resourceType: resource.resourceType || 'UNKNOWN',
+        scope: 'resource',
+        scopeId: resource.resourceId
       });
       
       return { action: 'created' };

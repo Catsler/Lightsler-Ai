@@ -102,6 +102,14 @@ class MemoryCache {
   }
 
   /**
+   * 获取所有缓存键列表
+   * @returns {Array<string>} 缓存键数组
+   */
+  getKeys() {
+    return Array.from(this.cache.keys());
+  }
+
+  /**
    * 估算内存使用
    */
   getMemoryUsage() {

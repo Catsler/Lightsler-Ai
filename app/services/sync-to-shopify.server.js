@@ -5,6 +5,8 @@
 
 import prisma from '../db.server.js';
 import { updateResourceTranslationBatch } from './shopify-graphql.server.js';
+import { invalidateCoverageCache } from './language-coverage.server.js';
+import { startPipeline, endPipeline, runStep, PIPELINE_PHASE } from '../utils/pipeline.server.js';
 
 // 创建简单的日志记录器
 const logger = {
@@ -255,6 +257,8 @@ async function syncResourceTranslations(admin, resourceData, batchIndex = 0) {
  */
 export async function syncTranslationsToShopify(admin, shopId, options = {}) {
   const startTime = Date.now();
+  // 创建发布流水线
+  const pipeline = startPipeline({ shopId, phase: PIPELINE_PHASE.PUBLISH, extra: { options } });
   const results = {
     totalProcessed: 0,
     successCount: 0,
@@ -265,8 +269,16 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
   };
   
   try {
-    // 获取待同步的翻译
-    const pendingTranslations = await getPendingTranslations(shopId, options);
+    // 获取待同步的翻译（步骤：读取待发布队列）
+    const stepGetQueue = await runStep(pipeline, 'get-pending-translations', async () => {
+      const pendingTranslations = await getPendingTranslations(shopId, options);
+      return { metrics: { count: pendingTranslations.length }, data: pendingTranslations };
+    }, { meta: { options } });
+    if (!stepGetQueue.success) {
+      endPipeline(pipeline, 'FAILED', { stage: 'get-queue' });
+      return results;
+    }
+    const pendingTranslations = stepGetQueue.data;
     
     if (pendingTranslations.length === 0) {
       logger.info('没有待同步的翻译');
@@ -283,20 +295,34 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
     // 逐个资源同步
     let batchIndex = 0;
     for (const [gid, resourceData] of groupedTranslations) {
-      try {
+      const stepRes = await runStep(pipeline, 'publish-resource', async () => {
         const syncResult = await syncResourceTranslations(admin, resourceData, batchIndex);
+        return { metrics: { success: syncResult.success.length, failed: syncResult.failed.length } , data: syncResult };
+      }, { resourceId: resourceData.resource.id, resourceType: resourceData.resource.resourceType, meta: { gid, batchIndex } });
+
+      if (stepRes.success) {
+        const syncResult = stepRes.data;
         results.successIds.push(...syncResult.success);
         results.failedIds.push(...syncResult.failed);
         results.successCount += syncResult.success.length;
         results.failedCount += syncResult.failed.length;
-        batchIndex++;
-      } catch (error) {
-        logger.error(`同步资源 ${gid} 时发生错误:`, error);
-        results.errors.push({
-          resourceGid: gid,
-          error: error.message
-        });
+
+        if (syncResult.success?.length) {
+          const successfulIds = new Set(syncResult.success);
+          const successfulLanguages = new Set();
+          for (const translation of resourceData.translations) {
+            if (successfulIds.has(translation.id)) {
+              successfulLanguages.add(translation.language);
+            }
+          }
+          successfulLanguages.forEach(lang => {
+            invalidateCoverageCache(shopId, { language: lang });
+          });
+        }
+      } else {
+        results.errors.push({ resourceGid: gid, error: stepRes.error?.message || 'publish failed' });
       }
+      batchIndex++;
     }
     
     const duration = Date.now() - startTime;
@@ -308,7 +334,8 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
       general: error.message
     });
   }
-  
+  // 结束流水线
+  endPipeline(pipeline, 'COMPLETED', { success: results.successCount, failed: results.failedCount });
   return results;
 }
 

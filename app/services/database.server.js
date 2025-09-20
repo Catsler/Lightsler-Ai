@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { invalidateCoverageCache } from "./language-coverage.server.js";
 
 const prisma = new PrismaClient();
 
@@ -174,6 +175,11 @@ export async function saveTranslation(resourceId, shopId, language, translations
     });
     
     console.log(`[saveTranslation] 成功保存 ${language} 翻译，记录ID: ${result.id}`);
+    invalidateCoverageCache(shopId, {
+      language,
+      scope: 'resource',
+      scopeId: resourceId
+    });
     return result;
     
   } catch (error) {

@@ -75,6 +75,9 @@ model Resource {
   summary      String?  // 摘要（主要用于文章）
   label        String?  // 标签（主要用于过滤器）
   contentFields Json?   // 存储不同资源类型的特定字段
+  // 细粒度内容指纹：记录每个可翻译字段(key)的最近一次源内容digest
+  // 例如：{"title":"<digest>", "description":"<digest>", "sections.heading":"<digest>"}
+  contentDigests Json?
   status       String   // pending, processing, completed
   
   // Sequential thinking扩展字段 - 版本检测和错误管理

@@ -5,6 +5,7 @@ import { Page, Button, BlockStack, Badge, Banner, Card, Text } from "@shopify/po
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { ResourceDetail } from "../components/ResourceDetail";
+import { CoverageCard } from "../components/CoverageCard";
 import { ResourceDetailAdapter } from "./api.resource-detail";
 import prisma from "../db.server";
 
@@ -73,12 +74,27 @@ export const loader = async ({ request, params }) => {
     // 获取URL参数中的语言
     const url = new URL(request.url);
     const currentLanguage = url.searchParams.get('lang') || 'zh-CN';
-    
+
+    // 获取资源覆盖率数据（失败不阻塞页面）
+    let coverageData = null;
+    try {
+      const { getResourceCoverage } = await import("../services/language-coverage.server.js");
+      coverageData = await getResourceCoverage(
+        session.shop,
+        resource.id,
+        currentLanguage
+      );
+    } catch (error) {
+      console.warn('[资源覆盖率] 获取失败，页面降级展示:', error.message);
+      // 不抛出错误，允许页面继续渲染
+    }
+
     return json({
       resource: unifiedResource,
       currentLanguage,
       shop: session.shop,
-      translatableKeys
+      translatableKeys,
+      coverageData
     });
     
   } catch (error) {
@@ -93,12 +109,18 @@ export const loader = async ({ request, params }) => {
 };
 
 export default function ResourceDetailPage() {
-  const { resource, currentLanguage, translatableKeys } = useLoaderData();
+  const { resource, currentLanguage, translatableKeys, coverageData } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
   const metafieldsFetcher = useFetcher();
   const translateFetcher = useFetcher();
+  const coverageFetcher = useFetcher();
+
+  // 合并覆盖率数据（优先使用 fetcher 的最新数据）
+  const displayCoverageData = coverageFetcher.data?.success
+    ? coverageFetcher.data.data
+    : coverageData;
 
   // 处理返回导航
   const handleBack = () => {
@@ -162,6 +184,12 @@ export default function ResourceDetailPage() {
 
     if (success && translatedRecords.length > 0 && !hasFailures) {
       showToast('翻译成功！正在刷新页面...');
+      // 延迟刷新覆盖率数据，确保翻译数据已同步
+      setTimeout(() => {
+        coverageFetcher.load(
+          `/api/resource-coverage/${resource.id}?language=${currentLanguage}`
+        );
+      }, 2000);
       setTimeout(() => {
         window.location.reload();
       }, 1000);
@@ -336,7 +364,20 @@ export default function ResourceDetailPage() {
             风险评分: {(resource.metadata.riskScore * 100).toFixed(0)}%
           </Banner>
         )}
-        
+
+        {/* 覆盖率信息卡片 - 置于错误提示后，主要内容前 */}
+        {displayCoverageData && (
+          <CoverageCard
+            data={displayCoverageData}
+            onRefresh={() => {
+              coverageFetcher.load(
+                `/api/resource-coverage/${resource.id}?language=${currentLanguage}`
+              );
+            }}
+            isRefreshing={coverageFetcher.state === 'loading'}
+          />
+        )}
+
         {/* 主要内容 - 使用通用组件 */}
         <ResourceDetail
           resource={{

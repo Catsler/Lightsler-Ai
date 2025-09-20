@@ -404,10 +404,10 @@ function Index() {
       categoryFetcher4.state, categoryFetcher5.state, translatingCategories, 
       addLog, showToast, loadStatus]);
 
-  // 监听同步响应
+  // 监听发布响应
   useEffect(() => {
     if (syncFetcher.state === 'idle' && syncFetcher.data) {
-      // 找出正在同步的分类
+      // 找出正在发布的分类
       const syncingCategory = Array.from(syncingCategories)[0];
       
       if (syncingCategory) {
@@ -416,23 +416,23 @@ function Index() {
           const { successCount = 0, failedCount = 0 } = syncFetcher.data.result || {};
           
           if (successCount > 0) {
-            addLog(`✅ 分类同步完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'success');
+            addLog(`✅ 分类发布完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'success');
             showToast(`分类发布成功！`, { duration: 3000 });
           } else if (failedCount > 0) {
-            addLog(`⚠️ 分类同步完成，但有 ${failedCount} 个失败`, 'warning');
+            addLog(`⚠️ 分类发布完成，但有 ${failedCount} 个失败`, 'warning');
           } else {
-            addLog(`ℹ️ 分类暂无需要同步的内容`, 'info');
+            addLog(`ℹ️ 分类暂无需要发布的内容`, 'info');
           }
           
           // 刷新状态
           loadStatus();
         } else {
-          const errorMsg = syncFetcher.data.error || '同步失败';
-          addLog(`❌ 分类同步失败: ${errorMsg}`, 'error');
-          showToast(`同步失败: ${errorMsg}`, { isError: true });
+          const errorMsg = syncFetcher.data.error || '发布失败';
+          addLog(`❌ 分类发布失败: ${errorMsg}`, 'error');
+          showToast(`发布失败: ${errorMsg}`, { isError: true });
         }
         
-        // 清理同步状态
+        // 清理发布状态
         setSyncingCategories(prev => {
           const newSet = new Set(prev);
           newSet.delete(syncingCategory);
@@ -672,19 +672,19 @@ function Index() {
     }
   }, [selectedLanguage, clearCache, translationService, addLog, showToast, translatingCategories]);
 
-  // 处理分类同步（发布到Shopify）
+  // 处理分类发布（发布到Shopify）
   const handleCategorySync = useCallback(async (categoryKey, category) => {
     try {
-      // 检查是否已在同步中
+      // 检查是否已在发布中
       if (syncingCategories.has(categoryKey)) {
-        addLog(`⚠️ ${category.name} 分类正在同步中，请稍候...`, 'warning');
+        addLog(`⚠️ ${category.name} 分类正在发布中，请稍候...`, 'warning');
         return;
       }
       
-      // 设置同步状态
+      // 设置发布状态
       setSyncingCategories(prev => new Set([...prev, categoryKey]));
       
-      addLog(`🚀 开始同步 ${category.name} 分类到Shopify...`, 'info');
+      addLog(`🚀 开始发布 ${category.name} 分类到Shopify...`, 'info');
       
       // 收集该分类下所有资源的ID
       const categoryResourceIds = [];
@@ -694,7 +694,7 @@ function Index() {
         });
       });
       
-      // 提交同步请求
+      // 提交发布请求
       syncFetcher.submit({
         action: 'syncByCategory',
         categoryKey: categoryKey,
@@ -706,8 +706,8 @@ function Index() {
       });
       
     } catch (error) {
-      console.error('分类同步失败:', error);
-      addLog(`❌ ${category.name} 分类同步失败: ${error.message}`, 'error');
+      console.error('分类发布失败:', error);
+      addLog(`❌ ${category.name} 分类发布失败: ${error.message}`, 'error');
       
       // 清理状态
       setSyncingCategories(prev => {
@@ -996,20 +996,13 @@ function Index() {
                     开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
                   </Button>
                   <Button
-                    url="/app/sync"
-                    variant="primary"
-                    tone="success"
-                  >
-                    同步管理
-                  </Button>
-                  <Button
                     onClick={publishPendingTranslations}
                     loading={isPublishing}
                     variant="primary"
                     tone="success"
                     disabled={!stats.pendingTranslations}
                   >
-                    发布翻译 ({stats.pendingTranslations || 0})
+                    发布翻译 (当前语言 {stats.pendingTranslations || 0})
                   </Button>
                   <Button
                     onClick={publishAllPending}
@@ -1018,7 +1011,7 @@ function Index() {
                     tone="success"
                     disabled={!stats.totalPendingTranslations}
                   >
-                    批量发布 (全部{stats.totalPendingTranslations || 0})
+                    批量发布 (所有语言 {stats.totalPendingTranslations || 0})
                   </Button>
                   <Button
                     onClick={clearData}
