@@ -39,6 +39,7 @@ export const config = {
   // 基础配置
   nodeEnv: getEnvVar('NODE_ENV', 'development'),
   port: getEnvVar('PORT', 3000, 'number'),
+  shopPrefix: getEnvVar('SHOP_PREFIX', 'default'),
   
   // Shopify配置
   shopify: {

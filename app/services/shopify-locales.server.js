@@ -16,6 +16,43 @@ const logger = {
 };
 
 /**
+ * 验证语言配置一致性
+ * @param {string} code - 语言代码
+ * @param {string} name - 语言名称
+ * @returns {boolean} 是否一致
+ */
+function validateLanguageConsistency(code, name) {
+  const knownMappings = {
+    'de': ['German', '德语', 'Deutsch'],
+    'nl': ['Dutch', '荷兰语', 'Nederlands'],
+    'en': ['English', '英语'],
+    'zh-CN': ['Chinese (Simplified)', '简体中文', '中文'],
+    'zh-TW': ['Chinese (Traditional)', '繁体中文'],
+    'fr': ['French', '法语', 'Français'],
+    'es': ['Spanish', '西班牙语', 'Español'],
+    'ja': ['Japanese', '日语', '日本語'],
+    'ko': ['Korean', '韩语', '한국어']
+  };
+
+  // 如果没有已知映射，则认为是一致的
+  if (!knownMappings[code]) {
+    return true;
+  }
+
+  const validNames = knownMappings[code];
+  const isValid = validNames.some(validName =>
+    name.toLowerCase().includes(validName.toLowerCase()) ||
+    validName.toLowerCase().includes(name.toLowerCase())
+  );
+
+  if (!isValid) {
+    logger.error(`检测到语言配置错误: code=${code}, name=${name}, 期望name包含: ${validNames.join(', ')}`);
+  }
+
+  return isValid;
+}
+
+/**
  * 获取Shopify支持的所有可用语言
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Array>} 可用语言列表
@@ -211,6 +248,11 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
     
     // 添加新语言
     for (const locale of toAdd) {
+      // 验证语言配置一致性
+      if (!validateLanguageConsistency(locale.locale, locale.name)) {
+        logger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
+      }
+
       operations.push(
         prisma.language.create({
           data: {
@@ -225,6 +267,11 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
     
     // 更新现有语言
     for (const locale of toUpdate) {
+      // 验证语言配置一致性
+      if (!validateLanguageConsistency(locale.locale, locale.name)) {
+        logger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
+      }
+
       operations.push(
         prisma.language.update({
           where: {

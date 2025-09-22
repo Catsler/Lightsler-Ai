@@ -386,8 +386,30 @@ model WebhookEvent {
   error         String?  // 错误信息（如果处理失败）
   retryCount    Int      @default(0) // 重试次数
   createdAt     DateTime @default(now())
-  
+
   @@index([shop, topic])
   @@index([processed, createdAt])
   @@index([resourceType, resourceId])
+}
+
+// 队列任务备份表 - 支持降级和恢复机制
+model QueueBackup {
+  id        String   @id @default(cuid())
+  shopId    String   // 店铺ID，支持多店铺隔离
+  jobId     String   // 原始任务ID
+  jobName   String   // 任务名称 (translateResource, batchTranslate等)
+  jobData   String   // 任务数据 (JSON字符串)
+  jobOpts   String   // 任务选项 (JSON字符串)
+
+  // 备份元信息
+  backupReason String? // 备份原因 (redis_fallback, system_restart等)
+  restored     Boolean @default(false) // 是否已恢复
+  restoredAt   DateTime? // 恢复时间
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId, restored])
+  @@index([jobName, createdAt])
+  @@index([restored, createdAt])
 }

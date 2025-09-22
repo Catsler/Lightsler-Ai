@@ -152,6 +152,72 @@ function Index() {
   const [publishingProgress, setPublishingProgress] = useState({ current: 0, total: 0 });
   const [pendingTranslations, setPendingTranslations] = useState([]);
 
+  // 操作锁和防抖机制
+  const [operationLock, setOperationLock] = useState(new Set());
+  const debounceTimers = useRef(new Map());
+
+  // 防抖函数
+  const debounce = useCallback((key, fn, delay = 1000) => {
+    // 清除之前的定时器
+    if (debounceTimers.current.has(key)) {
+      clearTimeout(debounceTimers.current.get(key));
+    }
+
+    // 设置新的定时器
+    const timer = setTimeout(() => {
+      debounceTimers.current.delete(key);
+      fn();
+    }, delay);
+
+    debounceTimers.current.set(key, timer);
+  }, []);
+
+  // 操作锁机制
+  const withOperationLock = useCallback((operationKey, fn) => {
+    return async (...args) => {
+      // 检查是否已有相同操作在进行
+      if (operationLock.has(operationKey)) {
+        console.warn(`[UI] 操作 ${operationKey} 正在进行中，跳过重复请求`);
+        addLog(`⚠️ ${operationKey} 操作正在进行中...`, 'warning');
+        return;
+      }
+
+      try {
+        // 设置操作锁
+        setOperationLock(prev => new Set([...prev, operationKey]));
+
+        // 执行操作
+        await fn(...args);
+      } catch (error) {
+        console.error(`[UI] 操作 ${operationKey} 失败:`, error);
+        addLog(`❌ ${operationKey} 操作失败: ${error.message}`, 'error');
+        throw error;
+      } finally {
+        // 释放操作锁
+        setOperationLock(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(operationKey);
+          return newSet;
+        });
+      }
+    };
+  }, [operationLock, addLog]);
+
+  // 安全的异步操作包装器
+  const safeAsyncOperation = useCallback((operationName, operation) => {
+    return withOperationLock(operationName, async () => {
+      try {
+        await operation();
+      } catch (error) {
+        // 错误已在withOperationLock中处理
+        // 这里可以添加额外的错误恢复逻辑
+        if (error.message.includes('fetch') || error.message.includes('network')) {
+          setAppBridgeError(true);
+        }
+      }
+    });
+  }, [withOperationLock]);
+
   // Language preference persistence and multi-tab sync
   useEffect(() => {
     // SSR and data validation
@@ -521,6 +587,15 @@ function Index() {
     loadStatus();
   }, []); // 只在组件挂载时执行一次
 
+  // 组件卸载时清理防抖定时器
+  useEffect(() => {
+    return () => {
+      // 清理所有防抖定时器
+      debounceTimers.current.forEach(timer => clearTimeout(timer));
+      debounceTimers.current.clear();
+    };
+  }, []);
+
   // 设置智能定时刷新
   useEffect(() => {
     const interval = setInterval(() => {
@@ -718,53 +793,54 @@ function Index() {
     }
   }, [selectedLanguage, addLog, syncingCategories, syncFetcher]);
 
-  // 开始翻译
+  // 开始翻译（带防抖和操作锁）
   const startTranslation = useCallback(() => {
-    try {
-      // 检查翻译服务状态
-      if (translationService && translationService.status === 'unhealthy') {
-        const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
-        addLog(`❌ 翻译服务异常: ${errorMsg}`, 'error');
-        showToast(`翻译服务异常: ${errorMsg}`, { isError: true });
-        return;
-      }
-      
-      const resourceIds = selectedResources.length > 0 ? selectedResources : [];
-      addLog(`🔄 开始翻译到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
-      
-      translateFetcher.submit({
-        language: selectedLanguage,
-        resourceIds: JSON.stringify(resourceIds),
-        clearCache: clearCache.toString(),
-        forceRelatedTranslation: 'true',
-        userRequested: 'true'
-      }, {
-        method: 'POST',
-        action: '/api/translate'
-      });
-    } catch (error) {
-      console.error('翻译失败:', error);
-      addLog('❌ 翻译失败，请检查网络连接', 'error');
-      setAppBridgeError(true);
-    }
-  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache]);
+    debounce('translate', () => {
+      safeAsyncOperation('翻译', async () => {
+        // 检查翻译服务状态
+        if (translationService && translationService.status === 'unhealthy') {
+          const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
+          addLog(`❌ 翻译服务异常: ${errorMsg}`, 'error');
+          showToast(`翻译服务异常: ${errorMsg}`, { isError: true });
+          return;
+        }
 
-  // 清空数据
+        const resourceIds = selectedResources.length > 0 ? selectedResources : [];
+        addLog(`🔄 开始翻译到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
+
+        translateFetcher.submit({
+          language: selectedLanguage,
+          resourceIds: JSON.stringify(resourceIds),
+          clearCache: clearCache.toString(),
+          forceRelatedTranslation: 'true',
+          userRequested: 'true'
+        }, {
+          method: 'POST',
+          action: '/api/translate'
+        });
+      });
+    }, 1000);
+  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation]);
+
+  // 清空数据（带操作锁）
   const clearData = useCallback(() => {
-    addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
-    clearFetcher.submit({ type: 'all' }, { 
-      method: 'POST', 
-      action: '/api/clear' 
+    safeAsyncOperation('清空数据', async () => {
+      addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
+
+      clearFetcher.submit({ type: 'all' }, {
+        method: 'POST',
+        action: '/api/clear'
+      });
+
+      // 只清空当前语言的数据
+      setAllLanguagesData(prev => ({
+        ...prev,
+        [selectedLanguage]: null
+      }));
+
+      setSelectedResources([]);
     });
-    
-    // 只清空当前语言的数据
-    setAllLanguagesData(prev => ({
-      ...prev,
-      [selectedLanguage]: null
-    }));
-    
-    setSelectedResources([]);
-  }, [addLog, clearFetcher, selectedLanguage]);
+  }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation]);
 
   // 处理资源选择
   const handleResourceSelection = useCallback((resourceId, checked) => {
@@ -794,6 +870,41 @@ function Index() {
     setDynamicLanguages(formattedLanguages);
     addLog('✅ 语言列表已更新', 'success');
   }, [addLog]);
+
+  // 语言选择验证和切换处理
+  const handleLanguageChange = useCallback((value) => {
+    // 语言验证映射
+    const languageNames = {
+      'de': '德语',
+      'nl': '荷兰语',
+      'zh-CN': '简体中文',
+      'zh-TW': '繁体中文',
+      'en': '英语',
+      'fr': '法语',
+      'es': '西班牙语',
+      'ja': '日语',
+      'ko': '韩语'
+    };
+
+    // 记录语言切换
+    addLog(`📝 切换语言至: ${languageNames[value] || value}`, 'info');
+
+    // 检测潜在的语言混淆
+    if (value === 'nl' && selectedLanguage === 'de') {
+      addLog('⚠️ 注意：从德语切换到荷兰语', 'warning');
+    } else if (value === 'de' && selectedLanguage === 'nl') {
+      addLog('⚠️ 注意：从荷兰语切换到德语', 'warning');
+    }
+
+    // 验证语言是否在可用列表中
+    const isValidLanguage = dynamicLanguages.some(lang => lang.value === value);
+    if (!isValidLanguage) {
+      addLog(`❌ 警告：语言 ${value} 不在可用列表中`, 'error');
+      return;
+    }
+
+    setSelectedLanguage(value);
+  }, [selectedLanguage, addLog, dynamicLanguages]);
   
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
@@ -801,45 +912,41 @@ function Index() {
     showToast(`成功添加 ${languageCodes.length} 个语言`, { duration: 3000 });
   }, [addLog, showToast]);
 
-  // Phase 2: 发布处理函数
+  // Phase 2: 发布处理函数（带防抖和操作锁）
   const publishPendingTranslations = useCallback(() => {
-    try {
-      setIsPublishing(true);
-      addLog('📤 开始发布待发布翻译...', 'info');
+    debounce('publish', () => {
+      safeAsyncOperation('发布翻译', async () => {
+        setIsPublishing(true);
+        addLog('📤 开始发布待发布翻译...', 'info');
 
-      publishFetcher.submit({
-        language: selectedLanguage,
-        publishAll: "false" // 只发布当前语言
-      }, {
-        method: 'POST',
-        action: '/api/publish'
+        publishFetcher.submit({
+          language: selectedLanguage,
+          publishAll: "false" // 只发布当前语言
+        }, {
+          method: 'POST',
+          action: '/api/publish'
+        });
       });
-    } catch (error) {
-      console.error('发布翻译失败:', error);
-      addLog('❌ 发布翻译失败，请检查网络连接', 'error');
-      setIsPublishing(false);
-    }
-  }, [addLog, publishFetcher, selectedLanguage]);
+    }, 1500); // 发布操作延迟更长，避免重复
+  }, [addLog, publishFetcher, selectedLanguage, debounce, safeAsyncOperation]);
 
   const publishAllPending = useCallback(() => {
-    try {
-      setIsPublishing(true);
-      addLog('📤 开始批量发布所有待发布翻译...', 'info');
+    debounce('publishAll', () => {
+      safeAsyncOperation('批量发布', async () => {
+        setIsPublishing(true);
+        addLog('📤 开始批量发布所有待发布翻译...', 'info');
 
-      batchPublishFetcher.submit({
-        batchSize: "5", // 每批5个，避免API限流
-        delayMs: "1000", // 批次间延迟1秒
-        filters: JSON.stringify({}) // 发布所有语言
-      }, {
-        method: 'POST',
-        action: '/api/batch-publish'
+        batchPublishFetcher.submit({
+          batchSize: "5", // 每批5个，避免API限流
+          delayMs: "1000", // 批次间延迟1秒
+          filters: JSON.stringify({}) // 发布所有语言
+        }, {
+          method: 'POST',
+          action: '/api/batch-publish'
+        });
       });
-    } catch (error) {
-      console.error('批量发布失败:', error);
-      addLog('❌ 批量发布失败，请检查网络连接', 'error');
-      setIsPublishing(false);
-    }
-  }, [addLog, batchPublishFetcher]);
+    }, 2000); // 批量发布延迟最长
+  }, [addLog, batchPublishFetcher, debounce, safeAsyncOperation]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -957,7 +1064,7 @@ function Index() {
                       label="目标语言"
                       options={dynamicLanguages}
                       value={selectedLanguage}
-                      onChange={setSelectedLanguage}
+                      onChange={handleLanguageChange}
                       helpText="Select target language for translation (selection auto-saved)"
                     />
                   </Box>

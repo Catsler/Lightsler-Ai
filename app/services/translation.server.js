@@ -2911,6 +2911,16 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
   try {
     // 首先尝试使用增强版翻译
     const result = await translateTextEnhanced(text, targetLang, retryCount);
+
+    // 空安全：防止上游返回 null 导致访问 result.success 崩溃
+    if (!result || typeof result.success !== 'boolean') {
+      return {
+        success: false,
+        text: text,
+        error: 'Translation service returned null',
+        isOriginal: true
+      };
+    }
     
     if (result.success) {
       return result;

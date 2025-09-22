@@ -239,7 +239,9 @@ export function withErrorHandling(fn, options = {}) {
         throw translationError;
       }
 
-      return defaultReturnValue;
+      // KISS 保障：默认不要返回 null，返回一个标准化的错误对象，避免调用方空引用崩溃
+      // 如果调用方提供了 defaultReturnValue，则优先使用之
+      return defaultReturnValue ?? createErrorResponse(translationError);
     }
   };
 }

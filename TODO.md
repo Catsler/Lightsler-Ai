@@ -182,6 +182,67 @@ npm run build
 
 ## 🚧 进行中 (In Progress)
 
+### 店铺翻译系统错误修复与增量翻译实现 (2025-01-22)
+**问题概述**:
+1. Fynony店铺语言选择错误（显示德文实际翻译荷兰语）
+2. OneWind店铺Theme JSON部分未翻译，无法查看具体翻译数量
+3. 缺少增量翻译机制，无法只翻译未翻译内容
+
+**根本原因分析**:
+- 数据库Language表中code与name不匹配 (de vs nl)
+- localStorage缓存了错误语言偏好
+- 缺乏字段级翻译状态追踪机制
+- contentDigests字段未充分利用
+
+**修复策略**: 基于代码审查的安全方案
+- 使用现有API重新同步语言配置 (非手写SQL)
+- 实现增量翻译机制利用contentDigests
+- 前端添加语言选择验证和错误预防
+
+#### 实施进度 🔄
+- [x] **分析问题根本原因** - Sequential Thinking深度分析
+- [x] **制定完整需求文档** - 包含技术方案和实施计划
+- [x] **更新TODO.md记录** - 记录分析结果和修复方案
+- [ ] **修复Fynony店铺语言配置问题**
+  - [ ] 通过POST /api/locales {"action": "sync"}重新同步语言
+  - [ ] 清除localStorage缓存：translate-fynony.myshopify.com-language-preference
+  - [ ] 验证Language表中code与name一致性
+- [ ] **添加语言配置自动验证机制**
+  - [ ] 在api.locales.jsx的formatLocalesForDatabase添加验证
+  - [ ] 检测code与name不匹配时记录告警或自动纠正
+- [ ] **实现增量翻译服务**
+  - [ ] 创建incremental-translation.server.js服务
+  - [ ] 利用contentDigests字段检测未翻译字段
+  - [ ] 实现字段级翻译状态追踪
+- [ ] **创建增量翻译API端点**
+  - [ ] 新建api.translate-incremental.jsx
+  - [ ] 支持只翻译未翻译或已变更的字段
+  - [ ] 保留现有翻译，合并新翻译
+- [ ] **优化Theme JSON翻译**
+  - [ ] 增强theme-translation.server.js字段识别
+  - [ ] 扩展THEME_TRANSLATABLE_PATTERNS
+  - [ ] 实现深度JSON结构遍历
+- [ ] **前端语言选择验证**
+  - [ ] 修改app._index.jsx的语言选择器onChange处理
+  - [ ] 添加handleLanguageChange验证函数
+  - [ ] 使用addLog记录语言切换（避免不存在的showToast）
+- [ ] **验证修复效果**
+  - [ ] 测试Fynony店铺德语选择与翻译一致性
+  - [ ] 验证OneWind店铺Theme JSON完整翻译
+  - [ ] 确认增量翻译功能正常工作
+
+#### 技术要点
+- **缓存键名称**: 使用正确的`translate-${shopId}-language-preference`
+- **translationFields访问**: 使用`translation.translationFields?.[field]`而非直接访问
+- **API安全性**: 优先使用现有syncShopLocalesToDatabase而非手写SQL
+- **错误预防**: 在formatLocalesForUI/database添加断言验证
+
+#### 预期成果
+- ✅ 解决语言选择与实际翻译100%一致
+- ✅ 实现增量翻译，减少50%以上重复API调用
+- ✅ 提升翻译覆盖率，支持Theme JSON完整翻译
+- ✅ 增强系统稳定性和用户体验
+
 ### 产品关联翻译保存流程修复 (2025-09-18) - KISS原则 ✅ 完成
 **问题**: Product Options和Metafields翻译成功但不显示在目标语言页面
 **根因分析**:

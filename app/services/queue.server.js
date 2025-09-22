@@ -7,26 +7,82 @@ import { saveTranslation, updateResourceStatus, prisma } from './database.server
 import { config } from '../utils/config.server.js';
 import { MemoryQueue } from './memory-queue.server.js';
 import { collectError, ERROR_TYPES } from './error-collector.server.js';
+import { createShopRedisConfig, parseRedisUrl } from '../utils/redis-parser.server.js';
 
 /**
  * Redis任务队列服务
+ * 支持Railway、Upstash等云Redis服务
+ * 实现多店铺数据隔离和自动降级
  */
 
+// 获取当前店铺ID（从环境变量）
+const SHOP_ID = process.env.SHOP_ID || 'default';
+
 // Redis连接配置
-const redisConfig = config.redis.url ? config.redis.url : {
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password || undefined,
-  maxRetriesPerRequest: 3,
-  lazyConnect: true,
-};
+let redisConfig = null;
+if (config.redis.enabled && process.env.REDIS_URL) {
+  // 使用解析器创建店铺隔离的Redis配置
+  redisConfig = createShopRedisConfig(process.env.REDIS_URL, SHOP_ID, {
+    // 针对云Redis服务的优化
+    maxRetriesPerRequest: 2,
+    enableReadyCheck: false,
+    connectTimeout: 10000,
+    commandTimeout: 5000,
+    lazyConnect: true,
+
+    // 队列专用优化
+    enableOfflineQueue: false,
+    retryDelayOnFailover: 500,
+
+    // 错误处理
+    reconnectOnError: (err) => {
+      console.warn(`Redis连接错误 [Shop: ${SHOP_ID}]:`, err.message);
+      const retryableErrors = ['READONLY', 'ECONNRESET', 'EPIPE', 'ENOTFOUND', 'TIMEOUT'];
+      return retryableErrors.some(e => err.message.includes(e));
+    }
+  });
+} else if (config.redis.enabled && config.redis.host) {
+  // 传统配置方式（向后兼容）
+  redisConfig = {
+    host: config.redis.host,
+    port: config.redis.port,
+    password: config.redis.password || undefined,
+    db: getShopRedisDb(SHOP_ID),
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  };
+}
+
+/**
+ * 根据店铺ID获取Redis数据库索引
+ * @param {string} shopId - 店铺ID
+ * @returns {number} 数据库索引 (0-15)
+ */
+function getShopRedisDb(shopId) {
+  if (!shopId || shopId === 'default') return 0;
+
+  // 简单映射：shop1->1, shop2->2, 等等
+  const match = shopId.match(/shop(\d+)/);
+  if (match) {
+    const num = parseInt(match[1]);
+    return Math.min(num, 15); // Redis最多16个数据库 (0-15)
+  }
+
+  // 如果不是标准格式，使用哈希
+  let hash = 0;
+  for (let i = 0; i < shopId.length; i++) {
+    hash = ((hash << 5) - hash) + shopId.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash) % 16;
+}
 
 // 创建Redis连接
 let redis;
 let redisConnectionAttempts = 0;
 const MAX_REDIS_ATTEMPTS = 3;
 
-const QUEUE_NAME = 'translation';
+const QUEUE_NAME = SHOP_ID !== 'default' ? `translation_${SHOP_ID}` : 'translation';
 const FALLBACK_CONCURRENCY = Math.max(1, Math.min(config.queue?.concurrency || 1, 4));
 const processorDefinitions = [];
 const attachedQueues = new WeakSet();
@@ -38,29 +94,9 @@ let healthCheckTimer = null;
 let redisRecoveryNotified = false;
 
 try {
-  if (config.redis.enabled && (config.redis.url || config.redis.host)) {
-    const redisOptions = typeof redisConfig === 'string' ? redisConfig : {
-      ...redisConfig,
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
-      retryDelayOnFailover: 100,
-      connectTimeout: 1000,
-      enableOfflineQueue: false, // 防止命令在离线时排队
-      reconnectOnError: (err) => {
-        // 只在特定错误时重连
-        const targetErrors = ['READONLY', 'ECONNRESET', 'EPIPE'];
-        if (targetErrors.some(e => err.message.includes(e))) {
-          redisConnectionAttempts++;
-          if (redisConnectionAttempts >= MAX_REDIS_ATTEMPTS) {
-            console.warn(`Redis重连失败${MAX_REDIS_ATTEMPTS}次，切换到内存模式`);
-            return false; // 停止重连
-          }
-          return true; // 重连
-        }
-        return false;
-      }
-    };
-    redis = new Redis(redisOptions);
+  if (config.redis.enabled && redisConfig) {
+    console.log(`[Queue] 初始化Redis连接 [Shop: ${SHOP_ID}, DB: ${redisConfig.db || 0}]`);
+    redis = new Redis(redisConfig);
 
     // 处理连接错误
     redis.on('error', (error) => {
@@ -199,16 +235,27 @@ function attachLifecycleEvents(queue) {
 }
 
 function createBullQueue() {
+  if (!redisConfig) {
+    throw new Error('Redis配置不可用，无法创建Bull队列');
+  }
+
+  console.log(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}]`);
+
   return new Bull(QUEUE_NAME, {
     redis: redisConfig,
     defaultJobOptions: {
-      removeOnComplete: true,
-      removeOnFail: false,
+      removeOnComplete: 10, // 保留最近10个完成任务
+      removeOnFail: 5,      // 保留最近5个失败任务
       attempts: 3,
       backoff: {
         type: 'exponential',
         delay: 2000
-      }
+      },
+      delay: 100, // 添加100ms延迟避免过快处理
+    },
+    settings: {
+      stalledInterval: 30000,    // 30秒检查一次卡住的任务
+      retryProcessDelay: 5000,   // 5秒后重试处理
     }
   });
 }

@@ -26,6 +26,78 @@ async function translateThemeValue(text, targetLang) {
   return result.text;
 }
 
+/**
+ * 深度遍历JSON对象并翻译可翻译字段
+ * @param {Object} obj - 要遍历的对象
+ * @param {string} targetLang - 目标语言
+ * @param {string} keyPrefix - 键前缀，用于路径跟踪
+ * @param {number} depth - 当前深度，防止无限递归
+ * @returns {Promise<Object>} 翻译后的对象
+ */
+async function translateObjectRecursively(obj, targetLang, keyPrefix = '', depth = 0) {
+  // 防止过深递归
+  if (depth > 10) {
+    console.warn(`[Theme翻译] 递归深度超限，停止处理: ${keyPrefix}`);
+    return obj;
+  }
+
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
+
+  // 处理数组
+  if (Array.isArray(obj)) {
+    const translatedArray = [];
+    for (let i = 0; i < obj.length; i++) {
+      const item = obj[i];
+      const itemKey = `${keyPrefix}[${i}]`;
+
+      if (typeof item === 'string' && shouldTranslateThemeField(itemKey, item)) {
+        try {
+          const { protectedText, protectedMap } = protectLiquidVariables(item);
+          let translatedText = await translateThemeValue(protectedText, targetLang);
+          translatedText = restoreLiquidVariables(translatedText, protectedMap);
+          translatedArray.push(translatedText);
+          console.log(`[Theme翻译] 翻译数组项: ${itemKey}`);
+        } catch (error) {
+          console.error(`[Theme翻译] 数组项翻译失败 ${itemKey}:`, error);
+          translatedArray.push(item);
+        }
+      } else if (typeof item === 'object') {
+        translatedArray.push(await translateObjectRecursively(item, targetLang, itemKey, depth + 1));
+      } else {
+        translatedArray.push(item);
+      }
+    }
+    return translatedArray;
+  }
+
+  // 处理对象
+  const translatedObj = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = keyPrefix ? `${keyPrefix}.${key}` : key;
+
+    if (typeof value === 'string' && shouldTranslateThemeField(fullKey, value)) {
+      try {
+        const { protectedText, protectedMap } = protectLiquidVariables(value);
+        let translatedText = await translateThemeValue(protectedText, targetLang);
+        translatedText = restoreLiquidVariables(translatedText, protectedMap);
+        translatedObj[key] = translatedText;
+        console.log(`[Theme翻译] 翻译字段: ${fullKey}`);
+      } catch (error) {
+        console.error(`[Theme翻译] 字段翻译失败 ${fullKey}:`, error);
+        translatedObj[key] = value;
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      translatedObj[key] = await translateObjectRecursively(value, targetLang, fullKey, depth + 1);
+    } else {
+      translatedObj[key] = value;
+    }
+  }
+
+  return translatedObj;
+}
+
 // Theme可翻译字段规则 - 基于Shopify官方文档和最佳实践
 const THEME_TRANSLATABLE_PATTERNS = [
   // 文本内容类
@@ -73,7 +145,41 @@ const THEME_TRANSLATABLE_PATTERNS = [
   // 更宽泛的文本检测模式
   /.*_(text|title|label|heading|description|content|message)$/i,
   /.*text$/i,
-  /.*(title|label|heading)$/i
+  /.*(title|label|heading)$/i,
+
+  // 增强的用户界面文本模式
+  /^(.+\.)?(modal|popup|dialog|toast|alert).*?(text|title|message)$/i,
+  /^(.+\.)?(sidebar|header|footer|navigation).*?(text|label)$/i,
+  /^(.+\.)?(loading|error|success|warning).*?(text|message)$/i,
+
+  // 产品和电商相关文本
+  /^(.+\.)?(cart|checkout|payment|shipping).*?(text|label|message)$/i,
+  /^(.+\.)?(product|collection|category).*?(text|description|name)$/i,
+  /^(.+\.)?(search|filter|sort).*?(text|placeholder|label)$/i,
+
+  // 表单和输入相关
+  /^(.+\.)?(form|input|field|textarea).*?(text|placeholder|label)$/i,
+  /^(.+\.)?(submit|cancel|save|delete).*?(text|label)$/i,
+
+  // 通知和反馈相关
+  /^(.+\.)?(notification|feedback|review|comment).*?(text|message)$/i,
+  /^(.+\.)?(help|tip|hint|guide).*?(text|content)$/i,
+
+  // 博客和内容相关
+  /^(.+\.)?(blog|article|post|news).*?(text|title|excerpt)$/i,
+  /^(.+\.)?(author|date|category|tag).*?(text|label)$/i,
+
+  // 社交媒体和分享
+  /^(.+\.)?(social|share|follow|like).*?(text|label)$/i,
+  /^(.+\.)?(facebook|twitter|instagram|youtube).*?(text|title)$/i,
+
+  // 特殊场景文本
+  /^(.+\.)?(empty|no_results|not_found).*?(text|message)$/i,
+  /^(.+\.)?(countdown|timer|progress).*?(text|label)$/i,
+
+  // Shopify特有的主题字段
+  /^(.+\.)?(collection_list|product_grid|featured_product).*?(text|heading|subheading)$/i,
+  /^(.+\.)?(newsletter|contact|about).*?(text|description|heading)$/i
 ];
 
 // Theme技术字段（不翻译）- 这些字段应该保持原值

@@ -162,6 +162,11 @@ npx prisma migrate reset         # 重置数据库
 ```bash
 # E2E测试
 npm run test:e2e                 # 运行端到端测试
+npm run test:e2e:ui              # 运行端到端测试（UI模式）
+npm run test:e2e:headed          # 运行端到端测试（有头模式）
+
+# API测试
+npm run test:api-contracts       # 运行API合约测试
 
 # 核心功能测试
 node test-resource-types.js      # 资源类型测试
@@ -178,6 +183,7 @@ node scripts/check-language-coverage.mjs # 检查语言覆盖率
 # 问题诊断
 node diagnose-issue.js           # 问题诊断工具
 node view-translation-logs.js    # 查看翻译日志
+node init-error-patterns.js     # 初始化错误模式
 ```
 
 ### Shopify部署
@@ -186,6 +192,8 @@ npm run deploy                   # 部署到Shopify
 npm run config:link              # 链接应用配置
 npm run config:use               # 使用特定配置
 npm run generate                 # 生成Shopify应用代码
+npm run env                      # 管理环境变量
+npm run setup                    # 设置数据库（Prisma生成+迁移）
 npm run docker-start             # Docker容器启动
 ```
 

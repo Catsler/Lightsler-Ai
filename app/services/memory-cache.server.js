@@ -1,9 +1,14 @@
 /**
  * 轻量级内存缓存服务
  * 用于加速翻译查询，减少数据库访问
+ * 支持多店铺数据隔离和内存优化
  */
 
 import { logger } from '../utils/logger.server.js';
+import { config } from '../utils/config.server.js';
+
+// 获取当前店铺ID
+const SHOP_ID = process.env.SHOP_ID || 'default';
 
 class MemoryCache {
   constructor() {
@@ -48,21 +53,21 @@ class MemoryCache {
    * @param {number} ttlSeconds - 过期时间（秒）
    */
   set(key, value, ttlSeconds = 3600) {
-    const expireAt = ttlSeconds > 0 
+    const expireAt = ttlSeconds > 0
       ? Date.now() + (ttlSeconds * 1000)
       : null;
-    
+
     this.cache.set(key, {
       value,
       expireAt,
       createdAt: Date.now()
     });
-    
+
     this.stats.sets++;
-    
-    // 防止内存溢出，限制缓存大小
-    if (this.cache.size > 10000) {
-      this.evictOldest(1000);
+
+    // 降低缓存大小限制，适应轻量服务器
+    if (this.cache.size > 1000) {
+      this.evictOldest(200);
     }
   }
 
@@ -164,17 +169,17 @@ class MemoryCache {
   }
 
   /**
-   * 生成翻译缓存键
+   * 生成翻译缓存键（带店铺隔离）
    */
-  static getTranslationKey(resourceId, language, contentHash) {
-    return `trans:${resourceId}:${language}:${contentHash}`;
+  static getTranslationKey(resourceId, language, contentHash, shopId = SHOP_ID) {
+    return `shop:${shopId}:trans:${resourceId}:${language}:${contentHash}`;
   }
 
   /**
-   * 生成资源缓存键
+   * 生成资源缓存键（带店铺隔离）
    */
-  static getResourceKey(resourceType, resourceId) {
-    return `resource:${resourceType}:${resourceId}`;
+  static getResourceKey(resourceType, resourceId, shopId = SHOP_ID) {
+    return `shop:${shopId}:resource:${resourceType}:${resourceId}`;
   }
 }
 
@@ -188,53 +193,100 @@ export function getMemoryCache() {
   return instance;
 }
 
-// 翻译缓存专用方法
-export async function getCachedTranslation(resourceId, language, contentHash) {
+// 翻译缓存专用方法（带店铺隔离）
+export async function getCachedTranslation(resourceId, language, contentHash, shopId = SHOP_ID) {
   const cache = getMemoryCache();
-  const key = MemoryCache.getTranslationKey(resourceId, language, contentHash);
+  const key = MemoryCache.getTranslationKey(resourceId, language, contentHash, shopId);
   return cache.get(key);
 }
 
-export async function setCachedTranslation(resourceId, language, contentHash, translation) {
+export async function setCachedTranslation(resourceId, language, contentHash, translation, shopId = SHOP_ID) {
   const cache = getMemoryCache();
-  const key = MemoryCache.getTranslationKey(resourceId, language, contentHash);
-  // 翻译结果缓存7天
-  cache.set(key, translation, 7 * 24 * 60 * 60);
+  const key = MemoryCache.getTranslationKey(resourceId, language, contentHash, shopId);
+  // 翻译结果缓存1小时（减少内存压力）
+  cache.set(key, translation, 60 * 60);
 }
 
-// 资源缓存专用方法
-export async function getCachedResource(resourceType, resourceId) {
+// 资源缓存专用方法（带店铺隔离）
+export async function getCachedResource(resourceType, resourceId, shopId = SHOP_ID) {
   const cache = getMemoryCache();
-  const key = MemoryCache.getResourceKey(resourceType, resourceId);
+  const key = MemoryCache.getResourceKey(resourceType, resourceId, shopId);
   return cache.get(key);
 }
 
-export async function setCachedResource(resourceType, resourceId, resource) {
+export async function setCachedResource(resourceType, resourceId, resource, shopId = SHOP_ID) {
   const cache = getMemoryCache();
-  const key = MemoryCache.getResourceKey(resourceType, resourceId);
-  // 资源缓存1小时
-  cache.set(key, resource, 60 * 60);
+  const key = MemoryCache.getResourceKey(resourceType, resourceId, shopId);
+  // 资源缓存30分钟（减少内存压力）
+  cache.set(key, resource, 30 * 60);
 }
 
-// 清空特定类型的缓存
-export function clearTranslationCache(resourceId = null) {
+// 清空特定类型的缓存（带店铺隔离）
+export function clearTranslationCache(resourceId = null, shopId = SHOP_ID) {
   const cache = getMemoryCache();
-  
+  const shopPrefix = `shop:${shopId}:`;
+
   if (resourceId) {
     // 清空特定资源的所有翻译缓存
     for (const key of cache.cache.keys()) {
-      if (key.startsWith(`trans:${resourceId}:`)) {
+      if (key.startsWith(`${shopPrefix}trans:${resourceId}:`)) {
         cache.delete(key);
       }
     }
   } else {
-    // 清空所有翻译缓存
+    // 清空当前店铺的所有翻译缓存
     for (const key of cache.cache.keys()) {
-      if (key.startsWith('trans:')) {
+      if (key.startsWith(`${shopPrefix}trans:`)) {
         cache.delete(key);
       }
     }
   }
 }
 
+// 清空特定店铺的所有缓存
+export function clearShopCache(shopId = SHOP_ID) {
+  const cache = getMemoryCache();
+  const shopPrefix = `shop:${shopId}:`;
+
+  for (const key of cache.cache.keys()) {
+    if (key.startsWith(shopPrefix)) {
+      cache.delete(key);
+    }
+  }
+
+  console.log(`[Cache] 已清空店铺 ${shopId} 的所有缓存`);
+}
+
 export default getMemoryCache;
+
+/**
+ * 获取缓存统计信息（按店铺分组）
+ */
+export function getCacheStatsByShop() {
+  const cache = getMemoryCache();
+  const stats = {
+    total: cache.stats,
+    shops: {}
+  };
+
+  // 按店铺统计缓存项
+  for (const key of cache.cache.keys()) {
+    const match = key.match(/^shop:([^:]+):/);
+    if (match) {
+      const shopId = match[1];
+      if (!stats.shops[shopId]) {
+        stats.shops[shopId] = { count: 0, types: {} };
+      }
+      stats.shops[shopId].count++;
+
+      // 统计缓存类型
+      const typeMatch = key.match(/^shop:[^:]+:(\w+):/);
+      if (typeMatch) {
+        const type = typeMatch[1];
+        stats.shops[shopId].types[type] = (stats.shops[shopId].types[type] || 0) + 1;
+      }
+    }
+  }
+
+  return stats;
+}

@@ -1,0 +1,76 @@
+# Shopify App Configuration for Shop1 (Fynony)
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "f97170933cde079c914f7df7e90cd806"
+name = "Lightsler AI - Fynony"
+handle = "lightsler-ai-fynony"
+application_url = "https://fynony.ease-joy.fun"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  # 产品相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "products/create" ]
+  uri = "/webhooks/product/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/product/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/delete" ]
+  uri = "/webhooks/product/delete"
+
+  # 集合相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "collections/create" ]
+  uri = "/webhooks/collection/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "collections/update" ]
+  uri = "/webhooks/collection/update"
+
+  # 主题相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "themes/publish" ]
+  uri = "/webhooks/theme/publish"
+
+  [[webhooks.subscriptions]]
+  topics = [ "themes/update" ]
+  uri = "/webhooks/theme/update"
+
+  # 语言相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "locales/create" ]
+  uri = "/webhooks/locale/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "locales/update" ]
+  uri = "/webhooks/locale/update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,write_translations,read_locales,write_locales"
+
+[auth]
+redirect_urls = [
+  "https://fynony.ease-joy.fun/auth/callback",
+  "https://fynony.ease-joy.fun/auth/shopify/callback",
+  "https://fynony.ease-joy.fun/api/auth/callback"
+]
+
+[pos]
+embedded = false
