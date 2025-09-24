@@ -331,6 +331,42 @@ export async function clearShopData(shopId) {
 }
 
 /**
+ * 清空店铺指定语言的翻译数据
+ * @param {string} shopId - 店铺ID
+ * @param {string} language - 语言代码
+ * @returns {Promise<void>}
+ */
+export async function clearShopDataByLanguage(shopId, language) {
+  // 删除指定语言的翻译记录
+  await prisma.translation.deleteMany({
+    where: {
+      shopId: shopId,
+      language: language
+    }
+  });
+
+  // 可选：清理没有任何翻译的资源
+  const orphanResources = await prisma.resource.findMany({
+    where: {
+      shopId: shopId,
+      translations: {
+        none: {}
+      }
+    }
+  });
+
+  if (orphanResources.length > 0) {
+    await prisma.resource.deleteMany({
+      where: {
+        id: {
+          in: orphanResources.map(r => r.id)
+        }
+      }
+    });
+  }
+}
+
+/**
  * 获取指定ID的资源及其所有翻译
  * @param {string} resourceId - 资源ID (数据库中的resourceId字段，非数据库主键)
  * @param {string} shopId - 店铺ID

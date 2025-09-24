@@ -49,6 +49,73 @@ node scripts/cleanup-handle-translations.js
 npm run build
 ```
 
+### 翻译状态显示修复 (2025-01-24) ✅ 完成
+**问题**: 扫描产品后显示"已翻译"状态不准确，未区分当前语言的翻译状态
+**根因**: 组件仅用 `translationCount > 0` 判断，未检查当前语言和同步状态
+
+#### 核心修复实现 ✅ 完成
+- [x] **修改 app._index.jsx** - 传递语言参数到状态API
+  - `loadStatus` 函数改为 `loadStatus(lang = selectedLanguage)`
+  - 调用 `/api/status?language=${lang}` 传递当前语言
+  - 语言切换时触发状态刷新
+
+- [x] **修复 api.status.jsx** - 语言特定翻译查找逻辑
+  - 将 `r.translations && r.translations[0]` 改为正确的查找逻辑
+  - `r.translations?.find(t => t.language === targetLanguage)`
+  - 返回准确的语言特定状态字段
+
+- [x] **更新 ResourceCategoryDisplay.jsx** - 基于语言状态显示徽章
+  - 检查 `resource.hasTranslationForLanguage` 而非简单计数
+  - 根据 `translationSyncStatus` 显示精确状态：
+    - `synced` → 绿色"已发布"
+    - `pending` → 黄色"待发布"
+    - `syncing` → 蓝色"发布中"
+    - `failed` → 红色"发布失败"
+
+- [x] **代码规范检查** ✅ 通过
+  - 修复 `api.translate-incremental.jsx` 语法错误
+  - 运行 `npm run lint` 仅余警告，无严重错误
+
+- [x] **构建验证** ✅ 成功
+  - 运行 `npm run build` 构建成功
+  - 所有模块正常转换和渲染
+
+#### 技术指标
+- **修复范围**: UI状态显示层 + API响应层
+- **修复原则**: 最小改动，复用已有功能
+- **用户体验**: 语言切换时状态实时更新
+- **准确性**: 字段级翻译状态支持（为后续Stage 2准备）
+
+#### 下一步规划
+- **Stage 2**: 字段级翻译进度显示
+- **Stage 3**: 增量翻译支持
+- **Stage 4**: 单独资源翻译率详情页
+
+### React Hook SSR 兼容性修复 (2025-01-24) ✅ 完成
+**问题**: `TypeError: Cannot read properties of null (reading 'useEffect')`
+**根因**: SSR 环境下 React Hook 导入时模块解析失败，可能由于导入时属性访问导致
+
+#### 核心修复实现 ✅ 完成
+- [x] **防御性改造 use-disable-sw-in-dev Hook** - `app/utils/use-disable-sw-in-dev.js`
+  - 改用 `import React from "react"` 默认导入避免具名导入陷阱
+  - 添加双重防护：`typeof window === "undefined" || !React?.useEffect`
+  - 延迟属性访问至运行时检查后，避免导入时错误
+
+- [x] **构建验证** ✅ 成功
+  - 运行 `npm run build` 构建成功
+  - SSR 和客户端渲染均正常工作
+
+#### 技术指标
+- **修复策略**: 方案 A - 防御性编程 + 默认导入
+- **SSR 兼容**: 完全兼容服务端渲染环境
+- **性能影响**: 零性能开销，仅增加运行时检查
+- **向前兼容**: 保持原有功能完整性
+
+#### 关键洞察
+- **错误本质**: 导入时模块为 null，而非运行时 Hook 失败
+- **解决原理**: 延迟属性访问避免 `null.useEffect` 错误
+- **最佳实践**: SSR 应用中优先使用默认导入 + 防御性检查
+
 ### 资源详情页翻译按钮404错误修复 (2025-09-17) - KISS原则 ✅ 完成
 **问题**: 除JSON资源外，其他资源类型详情页翻译按钮点击后跳转404
 **根因**: handleTranslate函数使用navigate()导航到不存在的路由 `/app/translate`

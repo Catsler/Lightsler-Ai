@@ -47,6 +47,12 @@ export const loader = async ({ request }) => {
       },
       resources: resources.map(r => {
         const categoryInfo = getResourceCategory(r.resourceType);
+        const hasLang = targetLanguage
+          ? (r.translations && r.translations.length > 0)
+          : (r.translations?.length > 0);
+        const langTranslation = targetLanguage
+          ? r.translations?.find(t => t.language === targetLanguage)
+          : undefined;
         return {
           id: r.id,
           resourceType: r.resourceType,
@@ -57,6 +63,9 @@ export const loader = async ({ request }) => {
           name: r.name,
           status: r.status,
           translationCount: r.translations?.length || 0,
+          hasTranslationForLanguage: !!hasLang,
+          translationStatus: langTranslation?.status || null,
+          translationSyncStatus: langTranslation?.syncStatus || null,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
           category: categoryInfo ? {

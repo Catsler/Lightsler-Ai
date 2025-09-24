@@ -242,3 +242,20 @@ npm run dev                      # 启动开发服务器（自动集成）
 - ✅ 数据模型变更后运行 `npx prisma migrate dev`
 - ✅ 新增Shopify权限后运行 `npm run deploy`
 - ✅ 测试关键功能流程（扫描→翻译→同步）
+
+## 重要文件位置
+
+### 核心服务 (app/services/)
+- `translation.server.js` - 翻译核心引擎
+- `shopify-graphql.server.js` - Shopify API封装
+- `queue.server.js` - Redis队列系统
+- `sync-to-shopify.server.js` - 同步服务
+- `error-analyzer.server.js` - 错误分析
+
+### 数据模型
+- `prisma/schema.prisma` - 数据库模式定义
+- `app/db.server.js` - Prisma客户端单例
+
+### 配置文件
+- `shopify.app.toml` - Shopify应用权限配置
+- `.env` - 环境变量（本地创建）

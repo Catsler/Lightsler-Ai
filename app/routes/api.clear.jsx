@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server.js";
-import { getOrCreateShop, clearShopData } from "../services/database.server.js";
+import { getOrCreateShop, clearShopData, clearShopDataByLanguage } from "../services/database.server.js";
 import { cleanQueue } from "../services/queue.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
 
@@ -43,7 +43,19 @@ export const action = async ({ request }) => {
           queue: queueCleanResult
         };
         break;
-        
+
+      case "language":
+        // 按语言清空
+        const language = formData.get("language");
+        if (!language) {
+          throw new Error("语言参数缺失");
+        }
+        await clearShopDataByLanguage(shop.id, language);
+        result = {
+          database: `已清理 ${language} 语言的翻译数据`
+        };
+        break;
+
       case "completed":
         // 只清理已完成的任务
         const completedCleanResult = await cleanQueue("completed");
@@ -51,7 +63,7 @@ export const action = async ({ request }) => {
           queue: completedCleanResult
         };
         break;
-        
+
       default:
         throw new Error("不支持的清理类型");
     }

@@ -12,8 +12,7 @@ import {
 import { getOrCreateShop, getAllResources } from '../services/database.server.js';
 import { withErrorHandling, validationErrorResponse, validateRequiredParams } from '../utils/api-response.server.js';
 
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
+export const action = withErrorHandling(async ({ request }) => {
     const { admin, session } = await authenticate.admin(request);
     const formData = await request.formData();
 
@@ -50,8 +49,7 @@ export const action = async ({ request }) => {
       // 翻译模式：执行增量翻译
       return await executeIncrementalTranslation(shop.id, targetLanguage, resourceIds);
     }
-  });
-};
+}, '增量翻译');
 
 /**
  * 分析翻译需求
@@ -137,8 +135,7 @@ async function executeIncrementalTranslation(shopId, language, resourceIds) {
 }
 
 // GET方法用于获取增量翻译状态
-export const loader = async ({ request }) => {
-  return withErrorHandling(async () => {
+export const loader = withErrorHandling(async ({ request }) => {
     const { session } = await authenticate.admin(request);
     const url = new URL(request.url);
     const language = url.searchParams.get('language') || 'zh-CN';
@@ -192,5 +189,4 @@ export const loader = async ({ request }) => {
       },
       message: `翻译状态统计完成`
     });
-  });
-};
+}, '增量翻译状态查询');

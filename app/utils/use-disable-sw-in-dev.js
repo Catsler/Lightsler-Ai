@@ -1,6 +1,13 @@
-import { useEffect } from "react";
+import React from "react";
 
 export function useDisableSWInDev() {
+  // 防御性检查：SSR 安全 + 模块加载验证
+  if (typeof window === "undefined" || !React?.useEffect) {
+    return;
+  }
+
+  const { useEffect } = React;
+
   useEffect(() => {
     // 仅在浏览器且存在 SW API 时尝试
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;

@@ -172,6 +172,28 @@ function Index() {
     debounceTimers.current.set(key, timer);
   }, []);
 
+  // 添加日志
+  const addLog = useCallback((message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [{ timestamp, message, type }, ...prev.slice(0, 9)]);
+  }, []);
+
+  // 安全的toast显示函数
+  const showToast = useCallback((message, options = {}) => {
+    try {
+      if (shopify && shopify.toast) {
+        shopify.toast.show(message, options);
+      } else {
+        // 如果toast不可用，使用日志记录
+        addLog(message, options.isError ? 'error' : 'info');
+      }
+    } catch (error) {
+      console.error('Toast显示错误:', error);
+      addLog(message, options.isError ? 'error' : 'info');
+      setAppBridgeError(true);
+    }
+  }, [shopify, addLog]);
+
   // 操作锁机制
   const withOperationLock = useCallback((operationKey, fn) => {
     return async (...args) => {
@@ -332,38 +354,16 @@ function Index() {
   const isTranslating = translateFetcher.state === 'submitting';
   const isClearing = clearFetcher.state === 'submitting';
 
-  // 添加日志
-  const addLog = useCallback((message, type = 'info') => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [{ timestamp, message, type }, ...prev.slice(0, 9)]);
-  }, []);
-
-  // 安全的toast显示函数
-  const showToast = useCallback((message, options = {}) => {
-    try {
-      if (shopify && shopify.toast) {
-        shopify.toast.show(message, options);
-      } else {
-        // 如果toast不可用，使用日志记录
-        addLog(message, options.isError ? 'error' : 'info');
-      }
-    } catch (error) {
-      console.error('Toast显示错误:', error);
-      addLog(message, options.isError ? 'error' : 'info');
-      setAppBridgeError(true);
-    }
-  }, [shopify, addLog]);
-
   // 加载状态 - 添加错误重试机制
-  const loadStatus = useCallback(() => {
+  const loadStatus = useCallback((lang = selectedLanguage) => {
     try {
-      statusFetcher.load('/api/status');
+      statusFetcher.load(`/api/status?language=${lang}`);
     } catch (error) {
       console.error('状态加载失败:', error);
       addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
       setAppBridgeError(true);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addLog, selectedLanguage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 处理API响应
   // 状态比较和去重处理函数
@@ -818,7 +818,7 @@ function Index() {
           method: 'POST',
           action: '/api/translate'
         });
-      });
+      })(); // 立即调用返回的函数
     }, 1000);
   }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation]);
 
@@ -827,7 +827,10 @@ function Index() {
     safeAsyncOperation('清空数据', async () => {
       addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
 
-      clearFetcher.submit({ type: 'all' }, {
+      clearFetcher.submit({
+        type: 'language',
+        language: selectedLanguage
+      }, {
         method: 'POST',
         action: '/api/clear'
       });
@@ -839,7 +842,7 @@ function Index() {
       }));
 
       setSelectedResources([]);
-    });
+    })(); // 立即调用返回的函数
   }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation]);
 
   // 处理资源选择
@@ -904,7 +907,9 @@ function Index() {
     }
 
     setSelectedLanguage(value);
-  }, [selectedLanguage, addLog, dynamicLanguages]);
+    // 切换语言后重新加载状态
+    loadStatus(value);
+  }, [selectedLanguage, addLog, dynamicLanguages, loadStatus]);
   
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
@@ -926,7 +931,7 @@ function Index() {
           method: 'POST',
           action: '/api/publish'
         });
-      });
+      })(); // 立即调用返回的函数
     }, 1500); // 发布操作延迟更长，避免重复
   }, [addLog, publishFetcher, selectedLanguage, debounce, safeAsyncOperation]);
 
@@ -944,7 +949,7 @@ function Index() {
           method: 'POST',
           action: '/api/batch-publish'
         });
-      });
+      })(); // 立即调用返回的函数
     }, 2000); // 批量发布延迟最长
   }, [addLog, batchPublishFetcher, debounce, safeAsyncOperation]);
 
