@@ -329,17 +329,25 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Object>} 检查结果
  */
-export async function checkLocaleLimit(admin) {
+export async function checkLocaleLimit(admin, shopLocalesOverride) {
   try {
-    const shopLocales = await getShopLocales(admin);
-    const currentCount = shopLocales.length;
-    const maxLimit = 20; // Shopify限制最多20个语言
-    
+    const shopLocales = shopLocalesOverride ?? await getShopLocales(admin);
+    const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+    const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+    const maxAlternate = 20; // Shopify 限制最多 20 个备用语言
+    const remainingAlternateSlots = Math.max(maxAlternate - alternateLocales.length, 0);
+
     return {
-      currentCount,
-      maxLimit,
-      canAddMore: currentCount < maxLimit,
-      remainingSlots: maxLimit - currentCount
+      primaryLocale: primaryLocale ? formatLocalesForUI([primaryLocale])[0] : null,
+      alternateCount: alternateLocales.length,
+      maxAlternate,
+      canAddMore: alternateLocales.length < maxAlternate,
+      remainingAlternateSlots,
+      totalLocales: shopLocales.length,
+      // 向后兼容字段
+      currentCount: alternateLocales.length,
+      maxLimit: maxAlternate,
+      remainingSlots: remainingAlternateSlots
     };
   } catch (error) {
     logger.error('检查语言限制失败:', error);

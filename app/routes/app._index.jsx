@@ -23,6 +23,7 @@ import {
   setLanguagePreference, 
   onLanguagePreferenceChange 
 } from "../utils/storage.client";
+import { getShopLocales } from "../services/shopify-locales.server.js";
 import prisma from "../db.server";
 
 // 添加全局错误监听
@@ -47,21 +48,32 @@ if (typeof window !== 'undefined') {
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
-  
-  // 获取店铺已启用的语言（从数据库）
-  const shop = await prisma.shop.findUnique({
-    where: { id: session.shop },
-    include: { languages: { where: { isActive: true } } }
-  });
-  
-  // 格式化语言列表供Select组件使用
-  const supportedLanguages = (shop?.languages ?? []).length > 0
-    ? (shop?.languages ?? []).map(lang => ({
+
+  // 从 Shopify 读取店铺语言，区分默认语言与目标语言
+  const shopLocales = await getShopLocales(admin);
+  const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+  const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+
+  let supportedLanguages = alternateLocales.map((locale) => ({
+    label: locale.name || locale.locale,
+    value: locale.locale
+  }));
+
+  if (supportedLanguages.length === 0) {
+    const shop = await prisma.shop.findUnique({
+      where: { id: session.shop },
+      include: { languages: { where: { isActive: true } } }
+    });
+
+    supportedLanguages = (shop?.languages ?? [])
+      .filter((lang) => !primaryLocale || lang.code !== primaryLocale.locale)
+      .map((lang) => ({
         label: lang.name,
         value: lang.code
-      }))
-    : [
-        // 默认语言列表（如果数据库中没有）
+      }));
+
+    if (supportedLanguages.length === 0) {
+      supportedLanguages = [
         { label: 'Chinese (Simplified)', value: 'zh-CN' },
         { label: 'Chinese (Traditional)', value: 'zh-TW' },
         { label: 'English', value: 'en' },
@@ -69,20 +81,25 @@ export const loader = async ({ request }) => {
         { label: 'Korean', value: 'ko' },
         { label: 'French', value: 'fr' },
         { label: 'German', value: 'de' },
-        { label: 'Spanish', value: 'es' },
-      ];
-  
+        { label: 'Spanish', value: 'es' }
+      ].filter((lang) => !primaryLocale || lang.value !== primaryLocale.locale);
+    }
+  }
+
   return {
     supportedLanguages,
-    shopId: session.shop  // 新增：传递shopId给前端用于localStorage键
+    primaryLanguage: primaryLocale
+      ? { label: primaryLocale.name || primaryLocale.locale, value: primaryLocale.locale }
+      : null,
+    shopId: session.shop
   };
 };
 
 function Index() {
   console.log('[Index Component] Rendering started');
   
-  const { supportedLanguages, shopId } = useLoaderData();
-  console.log('[Index Component] Loader data:', { supportedLanguages, shopId });
+  const { supportedLanguages, primaryLanguage, shopId } = useLoaderData();
+  console.log('[Index Component] Loader data:', { supportedLanguages, primaryLanguage, shopId });
   
   const scanProductsFetcher = useFetcher();
   const scanCollectionsFetcher = useFetcher();
@@ -99,23 +116,26 @@ function Index() {
   
   // Language selector persistence: read saved preference on init
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
-    // SSR compatibility check
+    const defaultTarget = supportedLanguages[0]?.value;
+
     if (typeof window === 'undefined') {
-      console.log('[Language Preference] Server environment, using default: zh-CN');
-      return 'zh-CN';
+      console.log('[Language Preference] Server environment, using default target language');
+      return defaultTarget ?? 'zh-CN';
     }
-    
-    // Read saved language preference
+
     const savedLanguage = getLanguagePreference(shopId);
-    
-    // Validate saved language is in current available list
-    if (savedLanguage && supportedLanguages.some(lang => lang.value === savedLanguage)) {
+
+    if (savedLanguage && supportedLanguages.some((lang) => lang.value === savedLanguage)) {
       console.log('[Language Preference] Restored saved language:', savedLanguage);
       return savedLanguage;
     }
-    
-    // Default to Chinese Simplified
-    console.log('[Language Preference] Using default language: zh-CN');
+
+    if (defaultTarget) {
+      console.log('[Language Preference] Using default target language:', defaultTarget);
+      return defaultTarget;
+    }
+
+    console.log('[Language Preference] No target languages found, falling back to zh-CN');
     return 'zh-CN';
   });
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
@@ -142,6 +162,16 @@ function Index() {
   const [lastServiceError, setLastServiceError] = useState(null);
   const [clearCache, setClearCache] = useState(false);
   const [dynamicLanguages, setDynamicLanguages] = useState(supportedLanguages);
+
+  useEffect(() => {
+    setDynamicLanguages(supportedLanguages);
+    setSelectedLanguage((prev) => {
+      if (supportedLanguages.some((lang) => lang.value === prev)) {
+        return prev;
+      }
+      return supportedLanguages[0]?.value ?? prev;
+    });
+  }, [supportedLanguages]);
   
   // 分类翻译状态管理
   const [translatingCategories, setTranslatingCategories] = useState(new Set());
@@ -864,15 +894,26 @@ function Index() {
   }, [selectedResources.length, resources]);
   
   // 处理语言更新
-  const handleLanguagesUpdated = useCallback((languages = []) => {
-    // 更新可用语言列表
-    const formattedLanguages = languages.map(lang => ({
-      label: lang.label || lang.name,
-      value: lang.value || lang.code
-    }));
+  const handleLanguagesUpdated = useCallback((payload = {}) => {
+    const languages = payload.languages ?? [];
+    const primary = payload.primary ?? primaryLanguage;
+
+    const formattedLanguages = languages
+      .map((lang) => ({
+        label: lang.label || lang.name,
+        value: lang.value || lang.code
+      }))
+      .filter((lang) => !primary || (lang.value !== (primary.value || primary.code)));
+
     setDynamicLanguages(formattedLanguages);
+    setSelectedLanguage((prev) => {
+      if (formattedLanguages.some((lang) => lang.value === prev)) {
+        return prev;
+      }
+      return formattedLanguages[0]?.value ?? prev;
+    });
     addLog('✅ 语言列表已更新', 'success');
-  }, [addLog]);
+  }, [addLog, primaryLanguage]);
 
   // 语言选择验证和切换处理
   const handleLanguageChange = useCallback((value) => {
@@ -899,6 +940,11 @@ function Index() {
       addLog('⚠️ 注意：从荷兰语切换到德语', 'warning');
     }
 
+    if (primaryLanguage && value === primaryLanguage.value) {
+      addLog('⚠️ 默认语言不可作为翻译目标', 'warning');
+      return;
+    }
+
     // 验证语言是否在可用列表中
     const isValidLanguage = dynamicLanguages.some(lang => lang.value === value);
     if (!isValidLanguage) {
@@ -909,7 +955,7 @@ function Index() {
     setSelectedLanguage(value);
     // 切换语言后重新加载状态
     loadStatus(value);
-  }, [selectedLanguage, addLog, dynamicLanguages, loadStatus]);
+  }, [selectedLanguage, addLog, dynamicLanguages, primaryLanguage, loadStatus]);
   
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
@@ -1076,12 +1122,19 @@ function Index() {
                   <Box paddingBlockStart="600">
                     <LanguageManager
                       currentLanguages={dynamicLanguages}
+                      primaryLanguage={primaryLanguage}
                       onLanguageAdded={handleLanguageAdded}
                       onLanguagesUpdated={handleLanguagesUpdated}
                     />
                   </Box>
                 </InlineStack>
-                
+
+                {primaryLanguage && (
+                  <Text variant="bodySm" tone="subdued">
+                    默认语言：{primaryLanguage.label}（不可作为翻译目标）
+                  </Text>
+                )}
+
                 <Box>
                   <Checkbox
                     label="清除缓存并重新翻译"

@@ -26,6 +26,7 @@ import {
 
 export function LanguageManager({ 
   currentLanguages = [], 
+  primaryLanguage = null,
   onLanguageAdded,
   onLanguagesUpdated 
 }) {
@@ -36,12 +37,36 @@ export function LanguageManager({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedLanguages, setSelectedLanguages] = useState([]);
+
   const [languageData, setLanguageData] = useState({
-    shop: { locales: [], count: 0 },
+    shop: { primary: primaryLanguage ? { ...primaryLanguage } : null, locales: [], count: 0 },
     available: { locales: [], grouped: {}, total: 0 },
     database: { languages: [], count: 0 },
-    limit: { currentCount: 0, maxLimit: 20, canAddMore: true, remainingSlots: 20 }
+    limit: {
+      primaryLocale: null,
+      currentCount: 0,
+      maxLimit: 20,
+      canAddMore: true,
+      remainingSlots: 20,
+      totalLocales: 0
+    }
   });
+
+  useEffect(() => {
+    if (primaryLanguage) {
+      setLanguageData((prev) => ({
+        ...prev,
+        shop: {
+          ...prev.shop,
+          primary: primaryLanguage
+        },
+        limit: {
+          ...prev.limit,
+          primaryLocale: prev.limit.primaryLocale ?? primaryLanguage
+        }
+      }));
+    }
+  }, [primaryLanguage]);
 
   // 加载语言数据
   const loadLanguageData = useCallback(() => {
@@ -50,27 +75,38 @@ export function LanguageManager({
     fetcher.load('/api/locales?action=combined');
   }, []);
 
-  const normalizeLanguageData = useCallback((data) => ({
-    shop: {
-      locales: data?.shop?.locales ?? [],
-      count: data?.shop?.count ?? 0
-    },
-    available: {
-      locales: data?.available?.locales ?? [],
-      grouped: data?.available?.grouped ?? {},
-      total: data?.available?.total ?? 0
-    },
-    database: {
-      languages: data?.database?.languages ?? [],
-      count: data?.database?.count ?? 0
-    },
-    limit: {
-      currentCount: data?.limit?.currentCount ?? 0,
-      maxLimit: data?.limit?.maxLimit ?? 20,
-      canAddMore: data?.limit?.canAddMore ?? true,
-      remainingSlots: data?.limit?.remainingSlots ?? 20
-    }
-  }), []);
+  const normalizeLanguageData = useCallback((data) => {
+    const primary = data?.shop?.primary ?? null;
+    const locales = data?.shop?.locales ?? [];
+    const alternateCount = data?.limit?.alternateCount ?? data?.limit?.currentCount ?? (data?.shop?.count ?? locales.length);
+    const maxLimit = data?.limit?.maxAlternate ?? data?.limit?.maxLimit ?? 20;
+    const remainingSlots = data?.limit?.remainingAlternateSlots ?? data?.limit?.remainingSlots ?? Math.max(maxLimit - alternateCount, 0);
+
+    return {
+      shop: {
+        primary,
+        locales,
+        count: data?.shop?.count ?? locales.length
+      },
+      available: {
+        locales: data?.available?.locales ?? [],
+        grouped: data?.available?.grouped ?? {},
+        total: data?.available?.total ?? 0
+      },
+      database: {
+        languages: data?.database?.languages ?? [],
+        count: data?.database?.count ?? 0
+      },
+      limit: {
+        primaryLocale: data?.limit?.primaryLocale ?? primary,
+        currentCount: alternateCount,
+        maxLimit,
+        canAddMore: data?.limit?.canAddMore ?? remainingSlots > 0,
+        remainingSlots,
+        totalLocales: data?.limit?.totalLocales ?? (alternateCount + (primary ? 1 : 0))
+      }
+    };
+  }, []);
 
   // 处理fetcher响应
   useEffect(() => {
@@ -90,7 +126,10 @@ export function LanguageManager({
     setError('');
 
     if (onLanguagesUpdated) {
-      onLanguagesUpdated(normalizedData.database.languages);
+      onLanguagesUpdated({
+        languages: normalizedData.database.languages,
+        primary: normalizedData.shop.primary ?? normalizedData.limit.primaryLocale ?? null
+      });
     }
   }, [fetcher.data, fetcher.state, normalizeLanguageData, onLanguagesUpdated]);
 
@@ -193,11 +232,12 @@ export function LanguageManager({
 
   const remainingSlots = languageData?.limit?.remainingSlots ?? 0;
   const currentCount = languageData?.limit?.currentCount ?? 0;
-  const maxLimit = languageData?.limit?.maxLimit ?? 0;
+  const maxLimit = languageData?.limit?.maxLimit ?? 20;
   const canAddMore = languageData?.limit?.canAddMore ?? true;
-  const selectionProgress = remainingSlots <= 0
-    ? 100
-    : Math.min((selectedLanguages.length / remainingSlots) * 100, 100);
+  const primaryLocale = languageData?.shop?.primary ?? languageData?.limit?.primaryLocale ?? null;
+  const selectionProgress = maxLimit === 0
+    ? 0
+    : Math.min(((currentCount + selectedLanguages.length) / maxLimit) * 100, 100);
   const selectionTone = remainingSlots > 0 && selectedLanguages.length >= remainingSlots ? 'critical' : 'primary';
   const remainingSelectable = Math.max(remainingSlots - selectedLanguages.length, 0);
   const filteredLanguages = getFilteredLanguages();
@@ -245,28 +285,39 @@ export function LanguageManager({
               </Banner>
             )}
             <Banner
-              title={`语言配额: ${currentCount} / ${maxLimit}`}
+              title={`目标语言配额: ${currentCount} / ${maxLimit}`}
               tone={remainingSlots <= 3 ? 'warning' : 'info'}
             >
-              <Text variant="bodySm">
-                {canAddMore
-                  ? `还可以添加 ${remainingSlots} 个语言`
-                  : '已达到最大语言数量限制'}
-              </Text>
+              <BlockStack gap="100">
+                <Text variant="bodySm">
+                  {canAddMore
+                    ? `还可以添加 ${remainingSlots} 个语言`
+                    : '已达到最大目标语言数量限制'}
+                </Text>
+                {primaryLocale && (
+                  <Text variant="bodySm" tone="subdued">
+                    默认语言：{primaryLocale.label || primaryLocale.value}
+                  </Text>
+                )}
+              </BlockStack>
             </Banner>
 
             {/* 当前已启用的语言 */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">已启用的语言 ({languageData.shop.count})</Text>
+                <Text variant="headingMd">已启用的目标语言 ({languageData.shop.count})</Text>
                 <InlineStack gap="200" wrap>
-                  {(languageData?.shop?.locales ?? []).map(locale => (
+                  {primaryLocale && (
+                    <Badge tone="success">
+                      {primaryLocale.label || primaryLocale.value} (默认)
+                    </Badge>
+                  )}
+                  {(languageData?.shop?.locales ?? []).map((locale) => (
                     <Badge
                       key={locale.value}
-                      tone={locale.isPrimary ? 'success' : locale.isPublished ? 'info' : undefined}
+                      tone={locale.isPublished ? 'info' : undefined}
                     >
                       {locale.label}
-                      {locale.isPrimary && ' (主要)'}
                     </Badge>
                   ))}
                 </InlineStack>

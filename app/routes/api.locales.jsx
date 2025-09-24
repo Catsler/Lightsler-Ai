@@ -82,23 +82,31 @@ export const loader = withErrorHandling(async ({ request }) => {
       
       case 'combined': {
         // 获取综合信息（店铺语言 + 可用语言 + 限制）
-        const [shopLocales, availableLocales, limitInfo, dbLanguages] = await Promise.all([
+        const [shopLocales, availableLocales, dbLanguages] = await Promise.all([
           getShopLocales(admin),
           getAvailableLocales(admin),
-          checkLocaleLimit(admin),
           prisma.language.findMany({
             where: { shopId: session.shop, isActive: true }
           })
         ]);
-        
+
+        const limitInfo = await checkLocaleLimit(admin, shopLocales);
+
+        const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+        const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+
+        const formattedPrimary = primaryLocale ? formatLocalesForUI([primaryLocale])[0] : null;
+        const formattedAlternates = formatLocalesForUI(alternateLocales);
+
         // 找出还未启用的语言
-        const enabledCodes = new Set(shopLocales.map(l => l.locale));
-        const availableToAdd = availableLocales.filter(l => !enabledCodes.has(l.isoCode));
-        
+        const enabledCodes = new Set(shopLocales.map((l) => l.locale));
+        const availableToAdd = availableLocales.filter((l) => !enabledCodes.has(l.isoCode));
+
         return json(createApiResponse({
           shop: {
-            locales: formatLocalesForUI(shopLocales),
-            count: shopLocales.length
+            primary: formattedPrimary,
+            locales: formattedAlternates,
+            count: alternateLocales.length
           },
           available: {
             locales: formatLocalesForUI(availableToAdd),
@@ -106,7 +114,7 @@ export const loader = withErrorHandling(async ({ request }) => {
             total: availableToAdd.length
           },
           database: {
-            languages: dbLanguages.map(l => ({
+            languages: dbLanguages.map((l) => ({
               value: l.code,
               label: l.name,
               isActive: l.isActive

@@ -924,6 +924,21 @@ npm run build
 - **维护性**: 精准CSS选择器，避免样式冲突
 - **用户体验**: 保持原有编辑功能，增强视觉一致性
 
+### 语言管理限额逻辑梳理 (2025-09-24) - 规划 ✅ 完成
+**问题**: Shopify 限制每店最多启用 20 个备用语言；当前 UI 把主语言也算在配额内，且可被误选为翻译目标。
+**策略**: 保持 20 语言上限，按店铺读取语言列表，区分“主语言 (primary)”与 20 个“目标语言 (alternate)”。
+
+- [x] **API 清单整理** - `app/routes/api.locales.jsx`, `app/services/shopify-locales.server.js`
+  - `shopLocales` 返回的 `primary` 字段可用来区分默认语言；配额由 Shopify 固定为 20 个备用语言。
+- [x] **UI 行为原则** - `app/components/LanguageManager.jsx`
+  - 提示语与进度条聚焦“备用语言 X/20”，默认语言单独标注。
+  - 默认语言从待选列表中排除，防止主语言被选作翻译目标。
+- [x] **主页下拉规划** - `app/routes/app._index.jsx`
+  - 仅展示备用语言用于翻译；默认语言以只读形式呈现，避免误用。
+- [x] **实现与校验**
+  - 更新 API 与 UI，按店铺加载语言并区分默认/目标语言。
+  - 在翻译入口前增加校验和提示，阻止 `targetLanguage === primary` 的情况。
+
 *使用说明：*
 - 🚧 = 正在进行中的任务
 - 📋 = 待办任务
