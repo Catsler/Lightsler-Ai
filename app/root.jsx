@@ -6,6 +6,7 @@ import {
   ScrollRestoration,
 } from "@remix-run/react";
 import { useDisableSWInDev } from "./utils/use-disable-sw-in-dev";
+import "./styles/theme-translation.css";
 
 export default function App() {
   useDisableSWInDev();

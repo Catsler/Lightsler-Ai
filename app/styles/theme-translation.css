@@ -1,0 +1,66 @@
+/* Theme翻译字段的基础样式 */
+.theme-translation-field {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.theme-translation-field .Polaris-Connected,
+.theme-translation-field .Polaris-Connected__Item,
+.theme-translation-field .Polaris-TextField {
+  width: 100%;
+  max-width: 100%;
+}
+
+.theme-translation-field .Polaris-TextField__Input,
+.theme-translation-field .Polaris-TextField__Backdrop,
+.theme-translation-field .Polaris-TextField__Resizer {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 针对HTML内容textarea的温和处理 */
+.theme-translation-field.html-content textarea {
+  /* 温和的断词策略 */
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+
+  /* 基础布局约束 */
+  width: 100%;
+  box-sizing: border-box;
+
+  /* 代码展示优化 */
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+
+  /* 垂直滚动 */
+  overflow-y: auto;
+  max-height: 400px;
+  min-height: 100px;
+}
+.resource-html-content {
+  max-width: 100%;
+  overflow-x: auto;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.resource-html-content img,
+.resource-html-content video,
+.resource-html-content iframe,
+.resource-html-content table,
+.resource-html-content canvas,
+.resource-html-content svg {
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
+.resource-html-content pre,
+.resource-html-content code {
+  white-space: pre-wrap;
+}

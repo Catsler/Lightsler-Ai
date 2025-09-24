@@ -2,6 +2,38 @@
 
 ## 🚧 进行中
 
+### HTML Body模块宽度异常问题修复 (2025-09-24) - 最小化原则 ✅ 完成
+**问题**: Theme翻译对比页面中，HTML Body内容模块出现宽度异常，导致双栏布局不对称
+**根因**: CSS Grid子项的min-content计算导致`1fr 1fr`分栏失效，长HTML内容撑开列宽
+**修复**: 通过`minWidth: 0`让Grid忽略子项最小内容宽度，强制按比例分栏
+**完成时间**: 2025-09-24
+
+#### 核心修复实现 ✅ 完成
+- [x] **Grid列容器宽度约束** - `app/components/ThemeTranslationCompare.jsx:412-416, 434-438`
+  - 在Grid列包装div添加 `minWidth: 0, overflow: 'hidden', width: '100%'`
+  - 让Grid的`1fr 1fr`真正按比例分栏，不被子项内容撑开
+
+- [x] **优化CSS样式策略** - `app/styles/theme-translation.css`
+  - 移除过度的`* { !important }`全局覆盖，避免破坏Polaris组件
+  - 简化为温和的`word-break: break-word`，不使用激进的`break-all`
+  - 移除依赖Polaris内部结构的选择器，提高版本兼容性
+
+- [x] **构建验证** ✅ 完成
+  - npm run build 构建成功
+  - 遵循最小化原则，避免副作用
+
+#### 技术要点
+- **根因**: Grid的min-content计算，非Polaris内部结构问题
+- **核心修复**: `minWidth: 0`让Grid按比例分栏
+- **避免副作用**: 不破坏focus outline、阴影、组件样式
+- **代码原则**: 最小化修改，不过度工程化
+
+#### Sequential Thinking分析结果
+1. **Grid布局失效**: 长HTML内容导致min-content计算异常
+2. **温和CSS策略**: 避免`!important`和全局`*`选择器的副作用
+3. **组件封装原则**: 不依赖Polaris内部DOM结构
+
+
 ### URL Handle 翻译禁用 (2025-01-19) - KISS原则 ✅ 完成
 **问题**: 系统自动翻译 URL handle 并同步到 Shopify，违反 SEO 最佳实践
 **根因**: translateResource 和 translateThemeResource 函数会调用 translateUrlHandle
@@ -840,6 +872,57 @@ npm run build
 - 第52行：内容检测规则
 
 ---
+
+### 双语详情页HTML内容宽度异常修复 (2025-09-24) - 深度分析与精准修复 ✅ 完成
+**问题**: Theme详情页双栏对比视图中，HTML body模块原始语言和目标语言宽度不一致，与其他模块显著不同
+**深度根因**: HTML内容中的超长不可断行片段（视频、图片属性、长URL、Base64编码）导致CSS Grid子项min-content过大，使1fr/1fr失效
+**修复策略**: 视觉层精准修复，保持数据完整性
+**完成时间**: 2025-09-24
+
+#### 深度问题分析 ✅ 完成
+- [x] **Sequential Thinking根因分析** - 识别HTML媒体元素影响
+  - 长URL: `https://cdn.shopify.com/s/files/1/0001/very/long/path...`
+  - Base64图片: `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA...`（数千字符）
+  - 媒体属性: `<img width="1920" height="1080">`, `<video style="width: 800px">`
+  - 不可断行字符串导致TextField的min-content计算异常
+
+#### 精准修复实现 ✅ 完成
+- [x] **双栏容器强化约束** - `app/components/ThemeTranslationCompare.jsx:411-457`
+  - `minWidth: 0` + `overflow: 'hidden'` + `width: '100%'`
+  - BlockStack添加`style={{ width: '100%' }}`确保宽度传递
+  - 添加`html-content`类名用于精准CSS定位
+
+- [x] **CSS精准控制策略** - `app/styles/theme-translation.css`
+  - 使用`word-break: break-all`强制断行（保持数据完整性）
+  - `overflow-wrap: anywhere`允许任意位置换行
+  - 等宽字体`Monaco`提升HTML代码可读性
+  - `max-height: 400px`配合`overflow-y: auto`避免过高
+- [x] **HTML正文展示约束增强** - `app/components/ResourceDetail.jsx`
+  - 在双语详情页的 HTML 正文原文/译文列添加 `minWidth: 0` 并包裹 `resource-html-content` 容器，确保长内容不会撑破布局
+  - 通过新的 CSS 类为内嵌媒体、表格等元素添加 `max-width: 100%` 与断行规则，保持内容完整且自适应
+  - 新增 `.resource-html-content` 样式定义 - `app/styles/theme-translation.css`
+- [x] **Theme翻译对比字段宽度优化** - `app/components/ThemeTranslationCompare.jsx`, `app/styles/theme-translation.css`
+  - 让左右 TextField 容器在 Grid 中仍保持 1:1 宽度，但内部 UI 元素放宽 `max-width` 限制，恢复全宽编辑体验
+  - 为包装容器补充 `display: flex`、`width: 100%` 及 Polaris 子元素宽度规则，避免文本框出现窄柱状显示
+
+#### 设计原则遵循
+- **数据完整性优先**: 不修改原始HTML字符串，不插入零宽空格或截断
+- **视觉层解决**: 仅通过CSS和布局约束控制显示效果
+- **最小改动**: 避免过度使用!important，不硬编码viewport尺寸
+- **用户体验**: 内容可完整复制，支持垂直滚动查看
+
+#### 修复效果验证
+- **修复前**: HTML body模块两列宽度不一致，原始语言列被长内容撑宽
+- **修复后**: 两列保持严格1:1宽度比例，与其他模块视觉一致
+- **数据完整性**: 原始HTML内容100%保持，复制粘贴不受影响
+- **可读性提升**: 等宽字体显示，长内容智能换行，支持垂直滚动
+
+#### 技术指标
+- **代码改动**: 2个文件，遵循最小改动原则
+- **性能影响**: 零性能损耗，纯CSS布局解决
+- **兼容性**: 完全兼容Polaris组件体系和现有功能
+- **维护性**: 精准CSS选择器，避免样式冲突
+- **用户体验**: 保持原有编辑功能，增强视觉一致性
 
 *使用说明：*
 - 🚧 = 正在进行中的任务

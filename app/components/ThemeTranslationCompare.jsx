@@ -409,46 +409,62 @@ export default function ThemeTranslationCompare({
                   alignItems: 'start'
                 }}>
                   {/* 原文栏 */}
-                  <BlockStack gap="100">
-                    <Text variant="bodySm" fontWeight="semibold" tone="subdued">
-                      Reference
-                    </Text>
-                    <TextField
-                      label="原文内容"
-                      labelHidden
-                      value={String(field.originalValue || '')}
-                      multiline={String(field.originalValue || '').length > 50}
-                      readOnly
-                      autoComplete="off"
-                    />
-                  </BlockStack>
+                  <div style={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    width: '100%'
+                  }}>
+                    <BlockStack gap="100" style={{ width: '100%' }}>
+                      <Text variant="bodySm" fontWeight="semibold" tone="subdued">
+                        Reference
+                      </Text>
+                      <div className="theme-translation-field html-content" style={{ width: '100%' }}>
+                        <TextField
+                          label="原文内容"
+                          labelHidden
+                          value={String(field.originalValue || '')}
+                          multiline={String(field.originalValue || '').length > 50}
+                          readOnly
+                          autoComplete="off"
+                        />
+                      </div>
+                    </BlockStack>
+                  </div>
 
                   {/* 翻译栏 */}
-                  <BlockStack gap="100">
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm" fontWeight="semibold" tone="subdued">
-                        {currentLanguage}
-                      </Text>
-                      {field.isEdited && (
-                        <Text variant="bodySm" tone="attention">
-                          未保存
+                  <div style={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    width: '100%'
+                  }}>
+                    <BlockStack gap="100" style={{ width: '100%' }}>
+                      <InlineStack align="space-between">
+                        <Text variant="bodySm" fontWeight="semibold" tone="subdued">
+                          {currentLanguage}
                         </Text>
-                      )}
-                    </InlineStack>
-                    <TextField
-                      label="翻译内容"
-                      labelHidden
-                      value={String(
-                        editedTranslations[field.path] !== undefined
-                          ? editedTranslations[field.path]
-                          : field.translatedValue || ''
-                      )}
-                      onChange={(value) => handleTranslationEdit(field.path, value)}
-                      multiline={String(field.originalValue || '').length > 50}
-                      placeholder="请输入翻译内容..."
-                      autoComplete="off"
-                    />
-                  </BlockStack>
+                        {field.isEdited && (
+                          <Text variant="bodySm" tone="attention">
+                            未保存
+                          </Text>
+                        )}
+                      </InlineStack>
+                      <div className="theme-translation-field html-content" style={{ width: '100%' }}>
+                        <TextField
+                          label="翻译内容"
+                          labelHidden
+                          value={String(
+                            editedTranslations[field.path] !== undefined
+                              ? editedTranslations[field.path]
+                              : field.translatedValue || ''
+                          )}
+                          onChange={(value) => handleTranslationEdit(field.path, value)}
+                          multiline={String(field.originalValue || '').length > 50}
+                          placeholder="请输入翻译内容..."
+                          autoComplete="off"
+                        />
+                      </div>
+                    </BlockStack>
+                  </div>
                 </div>
               </BlockStack>
             </Card>

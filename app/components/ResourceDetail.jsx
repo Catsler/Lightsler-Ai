@@ -176,7 +176,11 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
           </Text>
         );
       }
-      if (html) return <div dangerouslySetInnerHTML={{ __html: val }} />;
+      if (html) {
+        return (
+          <div className="resource-html-content" dangerouslySetInnerHTML={{ __html: val }} />
+        );
+      }
       if (typeof val === 'object') return <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(val, null, 2)}</pre>;
       return <Text variant="bodyMd" tone="subdued">{String(val)}</Text>;
     };
@@ -184,11 +188,11 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
       <Box paddingBlockEnd="200">
         <Text variant="bodyMd" fontWeight="semibold">{label}</Text>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
-          <Box style={{ padding: '8px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+          <Box style={{ padding: '8px', backgroundColor: '#f9f9f9', borderRadius: '4px', minWidth: 0 }}>
             <Text variant="bodySm" tone="subdued">原文</Text>
             <Box paddingBlockStart="100">{renderValue(original, isHtml, true)}</Box>
           </Box>
-          <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px' }}>
+          <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px', minWidth: 0 }}>
             <Text variant="bodySm" tone="subdued">译文（{currentLanguage}）</Text>
             <Box paddingBlockStart="100">{renderValue(translated, isHtml, false)}</Box>
           </Box>
