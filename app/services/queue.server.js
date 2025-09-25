@@ -84,6 +84,35 @@ const MAX_REDIS_ATTEMPTS = 3;
 
 const QUEUE_NAME = SHOP_ID !== 'default' ? `translation_${SHOP_ID}` : 'translation';
 const FALLBACK_CONCURRENCY = Math.max(1, Math.min(config.queue?.concurrency || 1, 4));
+const REQUIRED_JOB_FIELDS = ['resourceId', 'shopId', 'shopDomain', 'language'];
+
+function assertJobPayload(payload) {
+  const missing = REQUIRED_JOB_FIELDS.filter((field) => !payload?.[field]);
+  if (missing.length > 0) {
+    const error = new Error(`Missing required job fields: ${missing.join(', ')}`);
+    error.code = 'QUEUE_JOB_VALIDATION';
+    throw error;
+  }
+}
+
+function assertBatchJobPayload(payload) {
+  const baseMissing = ['shopId', 'shopDomain', 'language'].filter((field) => !payload?.[field]);
+  const listMissing = !Array.isArray(payload?.resourceIds) || payload.resourceIds.length === 0;
+
+  if (baseMissing.length > 0 || listMissing) {
+    const parts = [];
+    if (baseMissing.length > 0) {
+      parts.push(`missing fields: ${baseMissing.join(', ')}`);
+    }
+    if (listMissing) {
+      parts.push('resourceIds must be a non-empty array');
+    }
+    const error = new Error(`Invalid batch job payload (${parts.join('; ')})`);
+    error.code = 'QUEUE_BATCH_JOB_VALIDATION';
+    throw error;
+  }
+}
+
 const processorDefinitions = [];
 const attachedQueues = new WeakSet();
 let processorsInitialized = false;
@@ -360,7 +389,8 @@ function initializeQueue() {
 }
 
 async function handleTranslateResource(job) {
-  const { resourceId, shopId, language } = job.data;
+  assertJobPayload(job?.data);
+  const { resourceId, shopId, shopDomain, language } = job.data;
   let resource;
 
   try {
@@ -383,12 +413,20 @@ async function handleTranslateResource(job) {
     await saveTranslation(resourceId, shopId, language, translations);
     job.progress(70);
 
-    const shop = await prisma.shop.findUnique({
+    let shop = await prisma.shop.findUnique({
       where: { id: shopId }
     });
 
+    if (!shop && shopDomain) {
+      shop = await prisma.shop.findUnique({
+        where: { id: shopDomain }
+      }) || await prisma.shop.findUnique({
+        where: { domain: shopDomain }
+      });
+    }
+
     if (!shop) {
-      throw new Error(`店铺 ${shopId} 不存在`);
+      throw new Error(`店铺 ${shopId || shopDomain} 不存在`);
     }
 
     console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);
@@ -422,6 +460,7 @@ async function handleTranslateResource(job) {
         retryable: true,
         context: {
           shopId,
+          shopDomain,
           jobId: job?.id,
           attempt: job?.attemptsMade ?? job?.attempts ?? 0,
           maxAttempts: job?.opts?.attempts ?? job?.maxAttempts ?? 3
@@ -442,7 +481,8 @@ async function handleTranslateResource(job) {
 }
 
 async function handleBatchTranslate(job, queue) {
-  const { resourceIds = [], shopId, language } = job.data;
+  assertBatchJobPayload(job?.data);
+  const { resourceIds = [], shopId, shopDomain, language } = job.data;
   const results = [];
   const total = resourceIds.length;
 
@@ -454,11 +494,16 @@ async function handleBatchTranslate(job, queue) {
     const resourceId = resourceIds[index];
 
     try {
-      const translateJob = await queue.add('translateResource', {
+      const singleJobPayload = {
         resourceId,
         shopId,
+        shopDomain,
         language
-      }, {
+      };
+
+      assertJobPayload(singleJobPayload);
+
+      const translateJob = await queue.add('translateResource', singleJobPayload, {
         attempts: 3,
         backoff: 'exponential',
         delay: index * 1000
@@ -496,19 +541,25 @@ export { translationQueue };
  * @param {string} resourceId - 资源ID
  * @param {string} shopId - 店铺ID
  * @param {string} language - 目标语言
+ * @param {string} shopDomain - 店铺域名
  * @param {Object} options - 任务选项
  * @returns {Promise<Object>} 任务信息
  */
-export async function addTranslationJob(resourceId, shopId, language, options = {}) {
+export async function addTranslationJob(resourceId, shopId, language, shopDomain, options = {}) {
   if (!translationQueue) {
     throw new Error('任务队列未配置，无法创建异步任务');
   }
 
-  const job = await translationQueue.add('translateResource', {
+  const jobData = {
     resourceId,
     shopId,
+    shopDomain,
     language
-  }, {
+  };
+
+  assertJobPayload(jobData);
+
+  const job = await translationQueue.add('translateResource', jobData, {
     attempts: 3,
     backoff: 'exponential',
     removeOnComplete: 10,
@@ -519,6 +570,7 @@ export async function addTranslationJob(resourceId, shopId, language, options = 
   return {
     jobId: job.id,
     resourceId,
+    shopDomain,
     status: 'queued'
   };
 }
@@ -528,18 +580,24 @@ export async function addTranslationJob(resourceId, shopId, language, options = 
  * @param {Array} resourceIds - 资源ID列表
  * @param {string} shopId - 店铺ID
  * @param {string} language - 目标语言
+ * @param {string} shopDomain - 店铺域名
  * @returns {Promise<Object>} 任务信息
  */
-export async function addBatchTranslationJob(resourceIds, shopId, language) {
+export async function addBatchTranslationJob(resourceIds, shopId, language, shopDomain) {
   if (!translationQueue) {
     throw new Error('任务队列未配置，无法创建批量任务');
   }
 
-  const job = await translationQueue.add('batchTranslate', {
+  const jobData = {
     resourceIds,
     shopId,
+    shopDomain,
     language
-  }, {
+  };
+
+  assertBatchJobPayload(jobData);
+
+  const job = await translationQueue.add('batchTranslate', jobData, {
     attempts: 1,
     removeOnComplete: 5,
     removeOnFail: 5
@@ -548,6 +606,7 @@ export async function addBatchTranslationJob(resourceIds, shopId, language) {
   return {
     jobId: job.id,
     resourceCount: resourceIds.length,
+    shopDomain,
     status: 'queued'
   };
 }

@@ -7,7 +7,7 @@
 module.exports = {
   apps: [
     {
-      name: 'shop1-lightsler',
+      name: 'shop1-fynony',
       script: 'npm',
       args: 'start',
       cwd: '/Users/elie/Downloads/translate/Lightsler-Ai',
@@ -56,9 +56,9 @@ module.exports = {
       watch: false, // 生产环境不启用文件监控
 
       // 日志配置
-      log_file: './logs/shop1-combined.log',
-      out_file: './logs/shop1-out.log',
-      error_file: './logs/shop1-error.log',
+      log_file: './logs/shop1-fynony-combined.log',
+      out_file: './logs/shop1-fynony-out.log',
+      error_file: './logs/shop1-fynony-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
 
@@ -130,9 +130,9 @@ module.exports = {
       watch: false,
 
       // 日志配置
-      log_file: './logs/shop2-combined.log',
-      out_file: './logs/shop2-out.log',
-      error_file: './logs/shop2-error.log',
+      log_file: './logs/shop2-onewind-combined.log',
+      out_file: './logs/shop2-onewind-out.log',
+      error_file: './logs/shop2-onewind-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
 
@@ -180,7 +180,7 @@ module.exports = {
  * pm2 start ecosystem.config.js --env production
  *
  * # 启动单个应用
- * pm2 start ecosystem.config.js --only shop1-lightsler
+ * pm2 start ecosystem.config.js --only shop1-fynony
  *
  * # 重载配置
  * pm2 reload ecosystem.config.js
@@ -189,7 +189,7 @@ module.exports = {
  * pm2 monit
  *
  * # 查看日志
- * pm2 logs shop1-lightsler
+ * pm2 logs shop1-fynony
  * pm2 logs shop2-onewind
  *
  * # 保存PM2配置

@@ -312,7 +312,7 @@ async function handleUpdateContentHash(requestData) {
 
 // 支持GET请求获取跳过统计
 export const loader = withErrorHandling(async ({ request }) => {
-  const { admin } = await shopify.authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
   const shopId = admin.rest.session.shop;
 
   const url = new URL(request.url);

@@ -1,5 +1,6 @@
 import { json } from "@remix-run/node";
 
+
 /**
  * 统一API响应格式处理
  */
@@ -120,7 +121,26 @@ export function validateRequiredParams(params, requiredFields) {
  * @returns {Promise<Response>} 响应结果
  */
 export async function withErrorHandling(operation, operationName, shopDomain = '', options = {}) {
-  const { silent = false } = options;
+  const {
+    silent = false,
+    requiredParams = [],
+    payload: validationPayload = null
+  } = options;
+
+  if (requiredParams.length > 0) {
+    if (!validationPayload || typeof validationPayload !== 'object') {
+      return validationErrorResponse(requiredParams.map((field) => ({
+        field,
+        message: `${field} 是必需参数`
+      })));
+    }
+
+    const validationErrors = validateRequiredParams(validationPayload, requiredParams);
+    if (validationErrors.length > 0) {
+      return validationErrorResponse(validationErrors);
+    }
+  }
+
   
   try {
     // 对于频繁的状态查询操作，减少日志输出

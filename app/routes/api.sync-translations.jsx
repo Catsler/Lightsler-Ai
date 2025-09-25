@@ -4,11 +4,12 @@
  */
 
 import { json } from "@remix-run/node";
-import { 
-  syncTranslationsToShopify, 
+import { authenticate } from "../shopify.server.js";
+import {
+  syncTranslationsToShopify,
   getSyncStatusStats,
   retryFailedSync,
-  clearSyncErrors 
+  clearSyncErrors
 } from "../services/sync-to-shopify.server.js";
 import { withErrorHandling } from "../utils/api-response.server.js";
 
@@ -17,7 +18,6 @@ import { withErrorHandling } from "../utils/api-response.server.js";
  */
 export async function loader({ request }) {
   return withErrorHandling(async () => {
-    const { authenticate } = await import("../shopify.server.js");
     const { admin, session } = await authenticate.admin(request);
     
     const shopId = session.shop;
@@ -36,7 +36,6 @@ export async function loader({ request }) {
  */
 export async function action({ request }) {
   return withErrorHandling(async () => {
-    const { authenticate } = await import("../shopify.server.js");
     const { admin, session } = await authenticate.admin(request);
     
     const formData = await request.formData();

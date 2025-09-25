@@ -127,7 +127,7 @@ pm2 list
 pm2 monit
 
 # 查看日志
-pm2 logs shop1-lightsler
+pm2 logs shop1-fynony
 pm2 logs shop2-onewind
 
 # 重启应用
@@ -154,8 +154,8 @@ ps aux | grep node
 ### 故障排查
 ```bash
 # 查看错误日志
-tail -f ./logs/shop1-error.log
-tail -f ./logs/shop2-error.log
+tail -f ./logs/shop1-fynony-error.log
+tail -f ./logs/shop2-onewind-error.log
 
 # 数据库状态
 npx prisma studio

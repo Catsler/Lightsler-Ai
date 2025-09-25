@@ -1,3 +1,4 @@
+import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server.js";
 import { collectError, ERROR_TYPES } from "../services/error-collector.server.js";
 import prisma from "../db.server.js";
@@ -6,11 +7,11 @@ import { ensureValidResourceGid } from "../services/resource-gid-resolver.server
 
 // 本地工具函数
 function successResponse(data) {
-  return Response.json({ success: true, ...data });
+  return json({ success: true, ...data });
 }
 
 function validationErrorResponse(errors) {
-  return Response.json({
+  return json({
     success: false,
     error: "参数验证失败",
     errors
@@ -23,7 +24,7 @@ function withErrorHandling(handler) {
       return await handler(...args);
     } catch (error) {
       console.error('API Error:', error);
-      return Response.json({
+      return json({
         success: false,
         error: error.message || '服务器内部错误'
       }, { status: 500 });
@@ -36,7 +37,7 @@ function withErrorHandling(handler) {
  * 支持单个翻译发布和批量发布
  */
 export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
 
     // 参数验证

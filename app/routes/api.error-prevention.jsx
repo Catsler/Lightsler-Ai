@@ -367,7 +367,7 @@ function getTimeFilter(timeRange) {
 
 // 支持GET请求获取预防统计和错误分析
 export const loader = withErrorHandling(async ({ request }) => {
-  const { admin } = await shopify.authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
   const shopId = admin.rest.session.shop;
 
   const url = new URL(request.url);

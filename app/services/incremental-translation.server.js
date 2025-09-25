@@ -20,94 +20,99 @@ function calculateContentDigest(content) {
   return crypto.createHash('md5').update(content.trim()).digest('hex');
 }
 
+const BASE_TRANSLATABLE_FIELDS = {
+  title: 'titleTrans',
+  description: 'descTrans',
+  seoTitle: 'seoTitleTrans',
+  seoDescription: 'seoDescTrans',
+  summary: 'summaryTrans',
+  label: 'labelTrans'
+};
+
+function extractTranslatableFields(resource) {
+  const collected = [];
+
+  for (const [field, targetField] of Object.entries(BASE_TRANSLATABLE_FIELDS)) {
+    const value = resource?.[field];
+    if (typeof value === 'string' && value.trim() !== '') {
+      collected.push({
+        field,
+        targetField,
+        translationFieldKey: field,
+        content: value
+      });
+    }
+  }
+
+  const contentFields = resource?.contentFields || {};
+  for (const [key, value] of Object.entries(contentFields)) {
+    const shouldInclude =
+      typeof value === 'string' &&
+      value.trim() !== '' &&
+      (key.includes('text') || key.includes('title') || key.includes('description'));
+
+    if (shouldInclude) {
+      const compoundKey = `contentFields.${key}`;
+      collected.push({
+        field: compoundKey,
+        targetField: compoundKey,
+        translationFieldKey: compoundKey,
+        content: value
+      });
+    }
+  }
+
+  return collected;
+}
+
 /**
  * 检测资源中未翻译的字段
  * @param {Object} resource - 资源对象
  * @param {string} language - 目标语言
  * @returns {Promise<Array>} 未翻译字段列表
  */
-export async function detectUntranslatedFields(resource, language) {
+export async function detectUntranslatedFields(resource, language, existingTranslation = null) {
   try {
-    // 获取该资源的翻译记录
-    const translation = await prisma.translation.findUnique({
+    const translationRecord = existingTranslation ?? await prisma.translation.findUnique({
       where: {
         resourceId_language: {
           resourceId: resource.id,
-          language: language
+          language
         }
       }
     });
 
     const untranslatedFields = [];
     const contentDigests = resource.contentDigests || {};
+    const translationFields = translationRecord?.translationFields || {};
+    const translatableEntries = extractTranslatableFields(resource);
 
-    // 定义可翻译字段映射
-    const translatableFields = {
-      'title': 'titleTrans',
-      'description': 'descTrans',
-      'seoTitle': 'seoTitleTrans',
-      'seoDescription': 'seoDescTrans',
-      'summary': 'summaryTrans',
-      'label': 'labelTrans'
-    };
+    for (const entry of translatableEntries) {
+      const { field, targetField, translationFieldKey, content } = entry;
+      const currentDigest = calculateContentDigest(content);
+      const storedDigest = contentDigests[field];
+      const translatedValue = translationFields?.[translationFieldKey] ?? translationRecord?.[targetField];
 
-    // 检查每个字段的翻译状态
-    for (const [sourceField, targetField] of Object.entries(translatableFields)) {
-      const sourceContent = resource[sourceField];
-
-      // 跳过空内容
-      if (!sourceContent || sourceContent.trim() === '') {
-        continue;
-      }
-
-      // 计算当前内容摘要
-      const currentDigest = calculateContentDigest(sourceContent);
-      const storedDigest = contentDigests[sourceField];
-
-      // 检查翻译字段
-      const translatedValue = translation?.translationFields?.[sourceField] || translation?.[targetField];
-
-      // 判断是否需要翻译
       const needsTranslation =
-        !translatedValue || // 没有翻译
-        !storedDigest || // 没有存储摘要
-        storedDigest !== currentDigest; // 内容已变更
+        !translatedValue ||
+        !storedDigest ||
+        storedDigest !== currentDigest;
 
       if (needsTranslation) {
         untranslatedFields.push({
-          field: sourceField,
-          targetField: targetField,
-          content: sourceContent,
-          reason: !translatedValue ? 'no_translation' :
-                  !storedDigest ? 'no_digest' : 'content_changed'
+          field,
+          targetField,
+          content,
+          reason: !translatedValue ? 'no_translation' : !storedDigest ? 'no_digest' : 'content_changed'
         });
-      }
-    }
-
-    // 处理 contentFields 中的嵌套字段
-    const contentFields = resource.contentFields || {};
-    for (const [key, value] of Object.entries(contentFields)) {
-      if (typeof value === 'string' && value.trim() && key.includes('text') || key.includes('title') || key.includes('description')) {
-        const currentDigest = calculateContentDigest(value);
-        const storedDigest = contentDigests[`contentFields.${key}`];
-        const translatedValue = translation?.translationFields?.[`contentFields.${key}`];
-
-        if (!translatedValue || !storedDigest || storedDigest !== currentDigest) {
-          untranslatedFields.push({
-            field: `contentFields.${key}`,
-            targetField: `contentFields.${key}`,
-            content: value,
-            reason: !translatedValue ? 'no_translation' :
-                    !storedDigest ? 'no_digest' : 'content_changed'
-          });
-        }
       }
     }
 
     logger.info(`检测到 ${untranslatedFields.length} 个未翻译字段`, {
       resourceId: resource.id,
       language,
-      fields: untranslatedFields.map(f => f.field)
+      totalTranslatableFields: translatableEntries.length,
+      fields: untranslatedFields.map((f) => f.field)
     });
 
     return untranslatedFields;
@@ -263,6 +268,114 @@ export async function saveIncrementalTranslation(resource, translationResults, n
  * @param {Array} resourceIds - 资源ID列表，为空则处理所有资源
  * @returns {Promise<Object>} 翻译结果统计
  */
+export async function performIncrementalScan({
+  shopId,
+  language,
+  resourceType = null,
+  includeDetails = false,
+  limit = 200,
+  resourceIds = []
+}) {
+  try {
+    logger.info('开始增量翻译覆盖扫描', {
+      shopId,
+      language,
+      resourceType: resourceType || 'all',
+      includeDetails,
+      limit,
+      resourceIdsCount: resourceIds.length
+    });
+
+    const whereClause = { shopId };
+    if (resourceType && resourceType !== 'all') {
+      whereClause.resourceType = resourceType;
+    }
+
+    if (resourceIds.length > 0) {
+      whereClause.id = { in: resourceIds };
+    }
+
+    const resources = await prisma.resource.findMany({
+      where: whereClause,
+      include: {
+        translations: {
+          where: { language }
+        }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit > 0 ? limit : undefined
+    });
+
+    let totalResources = resources.length;
+    let resourcesWithGaps = 0;
+    let totalTranslatableFields = 0;
+    let totalUntranslatedFields = 0;
+
+    const details = [];
+
+    for (const resource of resources) {
+      const translationRecord = Array.isArray(resource.translations)
+        ? resource.translations.find((item) => item.language === language)
+        : null;
+
+      const translatableEntries = extractTranslatableFields(resource);
+      totalTranslatableFields += translatableEntries.length;
+
+      const untranslated = await detectUntranslatedFields(resource, language, translationRecord);
+
+      if (untranslated.length > 0) {
+        resourcesWithGaps += 1;
+        totalUntranslatedFields += untranslated.length;
+
+        if (includeDetails) {
+          details.push({
+            resourceId: resource.id,
+            resourceType: resource.resourceType,
+            title: resource.title,
+            untranslatedCount: untranslated.length,
+            untranslatedFields: untranslated.map((field) => ({
+              field: field.field,
+              reason: field.reason,
+              preview: field.content.slice(0, 140)
+            }))
+          });
+        }
+      }
+    }
+
+    const translatedFields = totalTranslatableFields - totalUntranslatedFields;
+    const coverageRate = totalTranslatableFields === 0
+      ? 1
+      : Math.max(0, translatedFields / totalTranslatableFields);
+
+    const summary = {
+      shopId,
+      language,
+      resourceType: resourceType || 'all',
+      totalResources,
+      resourcesWithGaps,
+      totalTranslatableFields,
+      totalUntranslatedFields,
+      coverageRate: Number(coverageRate.toFixed(4)),
+      reportGeneratedAt: new Date().toISOString()
+    };
+
+    if (includeDetails) {
+      summary.detailsCount = details.length;
+    }
+
+    logger.info('增量翻译覆盖扫描完成', summary);
+
+    return {
+      summary,
+      details: includeDetails ? details : undefined
+    };
+  } catch (error) {
+    logger.error('执行增量扫描失败:', error);
+    throw error;
+  }
+}
+
 export async function performIncrementalTranslation(shopId, language, resourceIds = []) {
   try {
     logger.info('开始增量翻译', { shopId, language, resourceCount: resourceIds.length || 'all' });
@@ -290,7 +403,10 @@ export async function performIncrementalTranslation(shopId, language, resourceId
     for (const resource of resources) {
       try {
         // 检测未翻译字段
-        const untranslatedFields = await detectUntranslatedFields(resource, language);
+        const translationRecord = Array.isArray(resource.translations)
+          ? resource.translations.find((item) => item.language === language)
+          : null;
+        const untranslatedFields = await detectUntranslatedFields(resource, language, translationRecord);
 
         if (untranslatedFields.length === 0) {
           logger.debug(`资源 ${resource.id} 无需翻译`);

@@ -279,6 +279,7 @@ async function queueTranslation(shop, resourceType, resourceId, priority = 'NORM
         resource.id,
         shop,
         lang.code,
+        shop,
         {
           priority: priority === 'HIGH' ? 1 : priority === 'NORMAL' ? 5 : 10,
           source: 'webhook'

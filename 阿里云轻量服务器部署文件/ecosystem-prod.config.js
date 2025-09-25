@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'shop1-lightsler',
+      name: 'shop1-fynony',
       script: 'npm',
       args: 'start',
       cwd: '/var/www/app1-fynony',
@@ -17,9 +17,9 @@ module.exports = {
         SHOP_PREFIX: 'shop1',
         NODE_OPTIONS: '--max-old-space-size=1024'
       },
-      error_file: '/var/www/logs/shop1-error.log',
-      out_file: '/var/www/logs/shop1-out.log',
-      log_file: '/var/www/logs/shop1-combined.log'
+      error_file: '/var/www/logs/shop1-fynony-error.log',
+      out_file: '/var/www/logs/shop1-fynony-out.log',
+      log_file: '/var/www/logs/shop1-fynony-combined.log'
     },
     {
       name: 'shop2-onewind', 
@@ -38,9 +38,9 @@ module.exports = {
         SHOP_PREFIX: 'shop2',
         NODE_OPTIONS: '--max-old-space-size=1024'
       },
-      error_file: '/var/www/logs/shop2-error.log',
-      out_file: '/var/www/logs/shop2-out.log',
-      log_file: '/var/www/logs/shop2-combined.log'
+      error_file: '/var/www/logs/shop2-onewind-error.log',
+      out_file: '/var/www/logs/shop2-onewind-out.log',
+      log_file: '/var/www/logs/shop2-onewind-combined.log'
     }
   ]
 };

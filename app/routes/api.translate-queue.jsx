@@ -44,8 +44,21 @@ export const action = async ({ request }) => {
     }
     const mode = params.mode;
     
+    const headerShopDomain = request.headers.get("shopify-shop-domain") || "";
+    const shopDomain = session?.shop || headerShopDomain;
+
+    if (!shopDomain) {
+      return validationErrorResponse([
+        {
+          field: 'shop',
+          message: '缺少店铺上下文，无法创建翻译任务'
+        }
+      ]);
+    }
+
     // 获取店铺记录
-    const shop = await getOrCreateShop(session.shop, session.accessToken);
+    const shop = await getOrCreateShop(shopDomain, session.accessToken);
+
     
     // 获取所有资源
     const allResources = await getAllResources(shop.id);
@@ -68,7 +81,7 @@ export const action = async ({ request }) => {
     
     if (mode === 'batch') {
       // 批量翻译模式
-      jobResult = await addBatchTranslationJob(resourceIdsToTranslate, shop.id, targetLanguage);
+      jobResult = await addBatchTranslationJob(resourceIdsToTranslate, shop.id, targetLanguage, shopDomain);
       
       return successResponse({
         jobId: jobResult.jobId,
@@ -82,7 +95,7 @@ export const action = async ({ request }) => {
       const jobs = [];
       
       for (const resourceId of resourceIdsToTranslate) {
-        const jobInfo = await addTranslationJob(resourceId, shop.id, targetLanguage, {
+        const jobInfo = await addTranslationJob(resourceId, shop.id, targetLanguage, shopDomain, {
           delay: jobs.length * 2000 // 每个任务间隔2秒
         });
         jobs.push(jobInfo);
@@ -98,5 +111,5 @@ export const action = async ({ request }) => {
       }, `已创建 ${jobs.length} 个翻译任务`);
     }
     
-  }, "队列翻译", request.headers.get("shopify-shop-domain") || "");
+  }, "队列翻译", shopDomain);
 };
