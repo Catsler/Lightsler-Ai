@@ -13,13 +13,18 @@ import {
   createErrorResponse, 
   ErrorCollector 
 } from '../utils/error-handler.server.js';
-import { 
-  logger, 
-  apiLogger, 
-  validationLogger, 
+import {
+  logger,
+  apiLogger,
+  validationLogger,
   logShortTextTranslation,
   logTranslationQuality,
-  logEnglishRemnants 
+  logEnglishRemnants,
+  createTranslationLogger,
+  memoryLogReader,
+  persistentLogReader,
+  forceFlushPersistentLogs,
+  persistenceConfig
 } from '../utils/logger.server.js';
 
 // 导入质量分析器
@@ -36,10 +41,13 @@ import {
 import crypto from 'crypto';
 
 // 导入Sequential Thinking核心服务
-import { 
-  DecisionEngine, 
-  TranslationScheduler 
+import {
+  DecisionEngine,
+  TranslationScheduler
 } from './sequential-thinking-core.server.js';
+
+const translationLogger = createTranslationLogger('TRANSLATION');
+export { translationLogger };
 
 /**
  * 带超时的fetch函数
@@ -1627,494 +1635,92 @@ export async function getTranslationServiceStatus() {
   };
 }
 
-/**
- * 翻译调试日志记录器
- */
-class TranslationLogger {
-  constructor() {
-    this.logs = [];
-    this.maxLogs = 100;
-    // 批量写入配置
-    this.pendingDbLogs = [];
-    this.dbBatchSize = 10;
-    this.dbFlushInterval = 5000; // 5秒
-    this.lastDbFlush = Date.now();
-  }
 
-  /**
-   * 记录翻译步骤（增强版，支持数据库持久化）
-   */
-  async log(level, message, data = null) {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      data: data ? JSON.stringify(data, null, 2) : null
-    };
-    
-    // 保存到内存缓存
-    this.logs.unshift(logEntry);
-    if (this.logs.length > this.maxLogs) {
-      this.logs = this.logs.slice(0, this.maxLogs);
-    }
-    
-    // 同时输出到控制台
-    const prefix = `[Translation ${level.toUpperCase()}]`;
-    if (level === 'error') {
-      console.error(prefix, message, data);
-    } else if (level === 'warn') {
-      console.warn(prefix, message, data);
-    } else {
-      console.log(prefix, message, data);
-    }
-    
-    // 如果是错误或警告，准备写入数据库
-    if (level === 'error' || level === 'warn') {
-      await this.logToDatabase(level, message, data);
+
+
+function normalizeMemoryLog(entry) {
+  const context = entry.data ?? null;
+  let durationMs = null;
+
+  if (typeof context?.durationMs === 'number') {
+    durationMs = Math.round(context.durationMs);
+  } else if (typeof context?.duration === 'number') {
+    durationMs = Math.round(context.duration);
+  } else if (typeof context?.duration === 'string') {
+    const match = context.duration.match(/(\d+(?:\.\d+)?)/);
+    if (match) {
+      durationMs = Math.round(parseFloat(match[1]));
     }
   }
 
-  /**
-   * 将日志写入数据库
-   */
-  async logToDatabase(level, message, data) {
-    try {
-      // 延迟加载 Prisma 客户端，避免循环依赖
-      const { default: prisma } = await import("../db.server.js");
-      
-      // 构建错误日志对象
-      const errorLog = {
-        errorType: 'TRANSLATION',
-        errorCategory: level === 'error' ? 'ERROR' : 'WARNING',
-        errorCode: `TRANS_${level.toUpperCase()}`,
-        message: message,
-        fingerprint: this.generateFingerprint(message, data),
-        context: {
-          level,
-          data: data || {},
-          timestamp: new Date().toISOString(),
-          source: 'TranslationLogger'
-        },
-        environment: process.env.NODE_ENV || 'development',
-        isTranslationError: true,
-        translationContext: data
-      };
-      
-      // 如果数据中包含资源信息，关联资源
-      if (data?.resourceId) {
-        errorLog.resourceId = data.resourceId;
-      }
-      if (data?.resourceType) {
-        errorLog.resourceType = data.resourceType;
-      }
-      if (data?.shopId) {
-        errorLog.shopId = data.shopId;
-      }
-      
-      // 添加到待写入队列
-      this.pendingDbLogs.push(errorLog);
-      
-      // 检查是否需要批量写入
-      if (this.pendingDbLogs.length >= this.dbBatchSize || 
-          Date.now() - this.lastDbFlush > this.dbFlushInterval) {
-        await this.flushToDatabase();
-      }
-    } catch (error) {
-      // 数据库写入失败不应影响主流程
-      console.error('[TranslationLogger] 写入数据库失败:', error);
-    }
-  }
-
-  /**
-   * 批量写入数据库
-   */
-  async flushToDatabase() {
-    if (this.pendingDbLogs.length === 0) return;
-    
-    let logsToWrite; // 移到外部作用域，让 catch 块可以访问
-    
-    try {
-      const { default: prisma } = await import("../db.server.js");
-      logsToWrite = [...this.pendingDbLogs];
-      this.pendingDbLogs = [];
-      this.lastDbFlush = Date.now();
-      
-      // 批量创建错误日志（移除不支持的 skipDuplicates 参数）
-      await prisma.errorLog.createMany({
-        data: logsToWrite
-      });
-      
-      console.log(`[TranslationLogger] 成功写入 ${logsToWrite.length} 条日志到数据库`);
-    } catch (error) {
-      console.error('[TranslationLogger] 批量写入数据库失败:', error);
-      // 失败的日志重新加入队列（但限制重试）
-      if (logsToWrite && this.pendingDbLogs.length < this.dbBatchSize * 2) {
-        this.pendingDbLogs.unshift(...logsToWrite);
-      }
-    }
-  }
-
-  /**
-   * 生成错误指纹
-   */
-  generateFingerprint(message, data) {
-    const key = `${message}_${data?.errorType || ''}_${data?.resourceType || ''}`;
-    // 简单的哈希函数
-    let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      const char = key.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return `FP_${Math.abs(hash).toString(16).toUpperCase()}`;
-  }
-
-  /**
-   * 获取最近的日志（内存）
-   */
-  getRecentLogs(count = 20) {
-    return this.logs.slice(0, count);
-  }
-
-  /**
-   * 从数据库获取历史日志
-   */
-  async getHistoricalLogs(options = {}) {
-    try {
-      const { default: prisma } = await import("../db.server.js");
-      
-      const {
-        count = 50,
-        errorType = 'TRANSLATION',
-        startDate = null,
-        endDate = null,
-        resourceId = null,
-        severity = null
-      } = options;
-      
-      const where = {
-        errorType,
-        isTranslationError: true
-      };
-      
-      if (startDate || endDate) {
-        where.createdAt = {};
-        if (startDate) where.createdAt.gte = new Date(startDate);
-        if (endDate) where.createdAt.lte = new Date(endDate);
-      }
-      
-      if (resourceId) where.resourceId = resourceId;
-      if (severity) where.errorCategory = severity;
-      
-      const logs = await prisma.errorLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: count,
-        select: {
-          id: true,
-          message: true,
-          errorCategory: true,
-          createdAt: true,
-          resourceType: true,
-          resourceId: true,
-          translationContext: true,
-          fingerprint: true,
-          occurrences: true
-        }
-      });
-      
-      return logs;
-    } catch (error) {
-      console.error('[TranslationLogger] 获取历史日志失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 获取错误统计
-   */
-  async getErrorStats(hours = 24) {
-    try {
-      const { default: prisma } = await import("../db.server.js");
-      
-      const since = new Date();
-      since.setHours(since.getHours() - hours);
-      
-      const stats = await prisma.errorLog.groupBy({
-        by: ['errorCategory', 'resourceType'],
-        where: {
-          errorType: 'TRANSLATION',
-          createdAt: { gte: since }
-        },
-        _count: true
-      });
-      
-      return stats;
-    } catch (error) {
-      console.error('[TranslationLogger] 获取错误统计失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 清空内存日志
-   */
-  clear() {
-    this.logs = [];
-  }
-
-  /**
-   * 强制刷新到数据库
-   */
-  async forceFlush() {
-    await this.flushToDatabase();
-  }
+  return {
+    id: entry.id || `mem-${entry.timestamp.getTime()}-${Math.random().toString(16).slice(2, 6)}`,
+    timestamp: entry.timestamp,
+    level: entry.level,
+    category: entry.category || 'TRANSLATION',
+    message: entry.message,
+    shopId: entry.shopId ?? context?.shopId ?? null,
+    resourceId: entry.resourceId ?? context?.resourceId ?? null,
+    resourceType: context?.resourceType ?? null,
+    language: context?.targetLanguage ?? context?.language ?? null,
+    durationMs,
+    context,
+    tags: [],
+    source: 'memory'
+  };
 }
 
-// 全局翻译日志记录器
-export const translationLogger = new TranslationLogger();
-
-/**
- * 生成资源内容的哈希值
- */
-function generateContentHash(resource) {
-  const content = JSON.stringify({
-    title: resource.title,
-    description: resource.description,
-    descriptionHtml: resource.descriptionHtml,
-    handle: resource.handle,
-    summary: resource.summary,
-    label: resource.label,
-    seoTitle: resource.seoTitle,
-    seoDescription: resource.seoDescription,
-    contentFields: resource.contentFields,
-    resourceType: resource.resourceType
-  });
-  
-  return crypto.createHash('md5').update(content).digest('hex');
+function normalizePersistentLog(entry) {
+  return {
+    id: entry.id,
+    timestamp: entry.timestamp,
+    level: entry.level,
+    category: entry.category,
+    message: entry.message,
+    shopId: entry.shopId,
+    resourceId: entry.resourceId,
+    resourceType: entry.resourceType,
+    language: entry.language,
+    durationMs: entry.durationMs ?? null,
+    context: entry.context ?? null,
+    tags: Array.isArray(entry.tags) ? entry.tags : entry.tags ? [entry.tags].flat() : [],
+    source: 'database'
+  };
 }
 
-/**
- * 增强版翻译资源函数，包含详细日志
- * 支持产品关联内容的自动翻译
- */
-export async function translateResourceWithLogging(resource, targetLang, admin) {
-  const resourceId = resource.id || resource.resourceId || 'unknown';
-  const effectiveContentHash = resource.contentHash || generateContentHash(resource);
-  const skipConfigEnabled = Boolean(config.translation?.skipEnabled);
-  const skipRequiresHash = Boolean(config.translation?.skipOnlyWithHash);
-  const allowSkip = skipConfigEnabled && (!skipRequiresHash || Boolean(resource.contentHash));
+function mergeLogs(memoryLogs, persistentLogs, limit) {
+  const combined = [];
+  const seen = new Set();
 
-  const cachedTranslation = await getCachedTranslation(resourceId, targetLang, effectiveContentHash);
-  if (cachedTranslation) {
-    translationLogger.log('info', `使用缓存的翻译: ${resource.title}`, {
-      resourceId,
-      resourceType: resource.resourceType,
-      targetLanguage: targetLang,
-      cacheHit: true
-    });
-
-    const cache = getMemoryCache();
-    translationLogger.log('debug', '缓存命中统计', cache.getStats());
-
-    return {
-      skipped: false,
-      translations: cachedTranslation,
-      metadata: {
-        cacheHit: true,
-        contentHash: effectiveContentHash
-      }
-    };
-  }
-
-  let skipDecision = {
-    decision: 'translate',
-    reasoning: '',
-    confidence: 1
+  const add = (log) => {
+    const timestampValue = log.timestamp instanceof Date
+      ? log.timestamp.getTime()
+      : new Date(log.timestamp).getTime();
+    const key = `${timestampValue}-${log.level}-${log.message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    combined.push(log);
   };
 
-  if (allowSkip) {
-    try {
-      const decisionEngine = new DecisionEngine();
-      skipDecision = await decisionEngine.shouldSkipTranslation(resource, {
-        targetLanguage: targetLang,
-        priority: resource.priority || 'normal',
-        userRequested: resource.userRequested || false
-      });
-    } catch (error) {
-      translationLogger.log('warn', `跳过判定失败，继续翻译: ${resource.title}`, {
-        resourceId,
-        error: error.message
-      });
-      skipDecision = { decision: 'translate', reasoning: 'skip-evaluation-error', confidence: 0 };
-    }
+  memoryLogs.forEach(add);
+  persistentLogs.forEach(add);
+
+  combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  if (combined.length > limit) {
+    return combined.slice(0, limit);
   }
-
-  if (skipDecision.decision === 'skip') {
-    translationLogger.log('info', `智能跳过翻译: ${resource.title}`, {
-      resourceId,
-      resourceType: resource.resourceType,
-      targetLanguage: targetLang,
-      reason: skipDecision.reasoning,
-      confidence: skipDecision.confidence
-    });
-
-    return {
-      skipped: true,
-      skipReason: skipDecision.reasoning || 'content_unchanged',
-      metadata: {
-        confidence: skipDecision.confidence,
-        contentHash: effectiveContentHash
-      }
-    };
-  }
-
-  translationLogger.log('info', `开始翻译资源: ${resource.title}`, {
-    resourceId,
-    resourceType: resource.resourceType,
-    targetLanguage: targetLang,
-    decision: skipDecision.decision,
-    confidence: skipDecision.confidence,
-    fieldsToTranslate: {
-      title: !!resource.title,
-      description: resource.resourceType === 'page' ? true : !!(resource.descriptionHtml || resource.description),
-      handle: !!resource.handle,
-      summary: !!resource.summary,
-      label: !!resource.label,
-      seoTitle: !!resource.seoTitle,
-      seoDescription: !!resource.seoDescription
-    }
-  });
-
-  try {
-    const startTime = Date.now();
-    const translations = await translateResource(resource, targetLang, { admin });
-    const duration = Date.now() - startTime;
-
-    const translationStats = {
-      fieldsTranslated: 0,
-      fieldsSkipped: 0,
-      totalCharacters: 0,
-      translatedCharacters: 0
-    };
-
-    Object.entries(translations).forEach(([key, value]) => {
-      if (value) {
-        if (typeof value === 'string') {
-          if (value.trim()) {
-            translationStats.fieldsTranslated++;
-            translationStats.translatedCharacters += value.length;
-          } else {
-            translationStats.fieldsSkipped++;
-          }
-        } else if (typeof value === 'object') {
-          translationStats.fieldsTranslated++;
-          const jsonStr = JSON.stringify(value);
-          translationStats.translatedCharacters += jsonStr.length;
-        } else {
-          translationStats.fieldsTranslated++;
-        }
-      } else {
-        translationStats.fieldsSkipped++;
-      }
-    });
-
-    const originalText = [
-      resource.title,
-      resource.description || resource.descriptionHtml,
-      resource.summary,
-      resource.label,
-      resource.seoTitle,
-      resource.seoDescription
-    ].filter(Boolean).join(' ');
-
-    const translatedText = Object.values(translations)
-      .filter(Boolean)
-      .map(value => {
-        if (typeof value === 'string') {
-          return value;
-        } else if (typeof value === 'object') {
-          return JSON.stringify(value);
-        } else {
-          return String(value);
-        }
-      })
-      .join(' ');
-
-    translationStats.totalCharacters = originalText.length;
-    const isActuallyTranslated = originalText !== translatedText && translatedText.length > 0;
-
-    translationLogger.log('info', `翻译完成: ${resource.title}`, {
-      resourceId,
-      duration: `${duration}ms`,
-      success: true,
-      isActuallyTranslated,
-      stats: translationStats,
-      translations: Object.keys(translations).reduce((acc, key) => {
-        const value = translations[key];
-        if (!value) {
-          return acc;
-        }
-        if (typeof value === 'string') {
-          acc[key] = {
-            length: value.length,
-            preview: value.substring(0, 100) + (value.length > 100 ? '...' : '')
-          };
-        } else if (typeof value === 'object') {
-          const jsonStr = JSON.stringify(value);
-          acc[key] = {
-            length: jsonStr.length,
-            preview: jsonStr.substring(0, 100) + (jsonStr.length > 100 ? '...' : ''),
-            type: 'object'
-          };
-        } else {
-          acc[key] = {
-            value,
-            type: typeof value
-          };
-        }
-        return acc;
-      }, {})
-    });
-
-    if (!isActuallyTranslated) {
-      translationLogger.log('warn', `翻译结果与原文相同，可能翻译失败: ${resource.title}`, {
-        resourceId,
-        resourceType: resource.resourceType,
-        targetLanguage: targetLang
-      });
-    }
-
-    await setCachedTranslation(resourceId, targetLang, effectiveContentHash, translations);
-
-    return {
-      skipped: false,
-      translations,
-      metadata: {
-        duration,
-        stats: translationStats,
-        contentHash: effectiveContentHash
-      }
-    };
-  } catch (error) {
-    translationLogger.log('error', `翻译失败: ${resource.title}`, {
-      resourceId,
-      resourceType: resource.resourceType,
-      targetLanguage: targetLang,
-      error: error.message,
-      stack: error.stack
-    });
-    throw error;
-  }
+  return combined;
 }
-
 
 /**
  * 获取翻译统计信息
  */
 export function getTranslationStats() {
-  const logs = translationLogger.getRecentLogs(50);
-  
+  const memoryLogs = memoryLogReader.getRecent({
+    category: 'TRANSLATION',
+    limit: 200
+  });
+
   const stats = {
     totalTranslations: 0,
     successfulTranslations: 0,
@@ -2123,37 +1729,33 @@ export function getTranslationStats() {
     recentErrors: [],
     recentActivity: []
   };
-  
+
   let totalDuration = 0;
   let durationCount = 0;
-  
-  logs.forEach(log => {
+
+  memoryLogs.forEach(rawLog => {
+    const log = normalizeMemoryLog(rawLog);
+    const context = log.context || {};
+
     if (log.message.includes('翻译完成')) {
       stats.totalTranslations++;
-      if (log.data) {
-        try {
-          const data = JSON.parse(log.data);
-          if (data.success) {
-            stats.successfulTranslations++;
-          }
-          if (data.duration) {
-            totalDuration += parseInt(data.duration);
-            durationCount++;
-          }
-        } catch (e) {
-          // 忽略JSON解析错误
-        }
+      if (context.success) {
+        stats.successfulTranslations++;
+      }
+
+      if (typeof log.durationMs === 'number') {
+        totalDuration += log.durationMs;
+        durationCount++;
       }
     } else if (log.message.includes('翻译失败')) {
       stats.failedTranslations++;
       stats.recentErrors.push({
         timestamp: log.timestamp,
         message: log.message,
-        error: log.data
+        error: context?.error || context
       });
     }
-    
-    // 最近活动
+
     if (stats.recentActivity.length < 10) {
       stats.recentActivity.push({
         timestamp: log.timestamp,
@@ -2162,22 +1764,50 @@ export function getTranslationStats() {
       });
     }
   });
-  
+
   if (durationCount > 0) {
     stats.averageDuration = Math.round(totalDuration / durationCount);
   }
-  
-  // 只保留最近5个错误
+
   stats.recentErrors = stats.recentErrors.slice(0, 5);
-  
+
   return stats;
 }
 
 /**
  * 获取详细的翻译日志
  */
-export function getTranslationLogs(count = 20) {
-  return translationLogger.getRecentLogs(count);
+export async function getTranslationLogs(input = {}) {
+  const options = typeof input === 'number' ? { limit: input } : input || {};
+  const limit = Math.max(Math.min(options.limit ?? options.count ?? 50, 500), 1);
+  const levelFilter = options.level ? [options.level] : undefined;
+
+  const memoryLogs = memoryLogReader.getRecent({
+    category: 'TRANSLATION',
+    levels: levelFilter,
+    shopId: options.shopId,
+    resourceId: options.resourceId,
+    limit,
+    since: options.startTime
+  });
+
+  const persistentLogs = persistenceConfig.enabled
+    ? await persistentLogReader({
+        limit,
+        level: options.level,
+        shopId: options.shopId,
+        resourceId: options.resourceId,
+        resourceType: options.resourceType,
+        language: options.language,
+        startTime: options.startTime,
+        endTime: options.endTime
+      })
+    : [];
+
+  const normalizedMemoryLogs = memoryLogs.map(normalizeMemoryLog);
+  const normalizedPersistentLogs = (persistentLogs || []).map(normalizePersistentLog);
+
+  return mergeLogs(normalizedMemoryLogs, normalizedPersistentLogs, limit);
 }
 
 /**

@@ -1,6 +1,6 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
-import { translateResourceWithLogging } from './translation.server.js';
+import { translateResource } from './translation.server.js';
 import shopify from '../shopify.server.js';
 import { updateResourceTranslation } from './shopify-graphql.server.js';
 import { saveTranslation, updateResourceStatus, prisma } from './database.server.js';
@@ -470,7 +470,7 @@ async function handleTranslateResource(job) {
 
     const admin = createAdminClient(shop.domain, shop.accessToken);
 
-    const translationResult = await translateResourceWithLogging(resource, language, admin);
+    const translationResult = await translateResource(resource, language, { admin });
     job.progress(50);
 
     if (translationResult.skipped) {

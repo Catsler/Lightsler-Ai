@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server.js";
-import { translateResourceWithLogging, getTranslationStats, translationLogger } from "../services/translation.server.js";
+import { translateResource, getTranslationStats } from "../services/translation.server.js";
+import { logger as translationLogger } from "../utils/logger.server.js";
 import { translateThemeResource } from "../services/theme-translation.server.js";
 import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
@@ -183,7 +184,7 @@ export const action = async ({ request }) => {
           translations = { skipped: false, translations: themeTranslations };
         } else {
           // 使用标准翻译函数，传递admin参数以支持产品关联翻译
-          translations = await translateResourceWithLogging(resourceInput, targetLanguage, admin);
+          translations = await translateResource(resourceInput, targetLanguage, { admin });
         }
         
         if (translations.skipped) {

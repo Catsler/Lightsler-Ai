@@ -9,7 +9,9 @@ import {
   generateErrorGroupId, 
   extractErrorFeatures 
 } from "../utils/error-fingerprint.server.js";
-import { logger } from "../utils/logger.server.js";
+import { createTranslationLogger } from "../utils/base-logger.server.js";
+
+const logger = createTranslationLogger('ERROR_COLLECTOR');
 
 /**
  * 错误类型枚举
@@ -264,10 +266,13 @@ export class ErrorCollectorService {
     try {
       // 计算优先级（确保有默认值）
       const priority = this.calculatePriority(errorRecord);
-      
+
+      // 验证外键关系，如果相关记录不存在则清空外键字段
+      const sanitizedRecord = await this.validateForeignKeys(errorRecord);
+
       return await prisma.errorLog.create({
         data: {
-          ...errorRecord,
+          ...sanitizedRecord,
           priority: priority || 2 // 确保有默认值
         }
       });
@@ -275,6 +280,39 @@ export class ErrorCollectorService {
       logger.error('创建错误记录失败', { error: error.message });
       throw error;
     }
+  }
+
+  /**
+   * 验证并清理外键关系
+   */
+  async validateForeignKeys(errorRecord) {
+    const sanitized = { ...errorRecord };
+
+    // 验证 resourceId 外键
+    if (sanitized.resourceId) {
+      const resourceExists = await prisma.resource.findUnique({
+        where: { id: sanitized.resourceId },
+        select: { id: true }
+      }).catch(() => null);
+
+      if (!resourceExists) {
+        sanitized.resourceId = null;
+      }
+    }
+
+    // 验证 translationSessionId 外键
+    if (sanitized.translationSessionId) {
+      const sessionExists = await prisma.translationSession.findUnique({
+        where: { id: sanitized.translationSessionId },
+        select: { id: true }
+      }).catch(() => null);
+
+      if (!sessionExists) {
+        sanitized.translationSessionId = null;
+      }
+    }
+
+    return sanitized;
   }
 
   /**

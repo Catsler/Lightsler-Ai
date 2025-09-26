@@ -8,7 +8,7 @@ import {
   TranslationScheduler,
   OptimizationAnalyzer
 } from './sequential-thinking-core.server.js';
-import { translateResourceWithLogging } from './translation.server.js';
+import { translateResource } from './translation.server.js';
 import { TranslationError } from '../utils/error-handler.server.js';
 import { logger } from '../utils/logger.server.js';
 
@@ -79,7 +79,7 @@ export async function translateBatchWithIntelligence(resources, targetLang, opti
         // 使用现有的翻译函数处理批次中的每个资源
         const batchPromises = batch.map(async (resource) => {
           try {
-            const translation = await translateResourceWithLogging(resource, targetLang);
+            const translation = await translateResource(resource, targetLang);
 
             if (translation.skipped) {
               results.skipped.push({

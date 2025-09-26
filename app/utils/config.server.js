@@ -92,6 +92,11 @@ export const config = {
   logging: {
     level: getEnvVar('LOG_LEVEL', 'info'),
     fileEnabled: getEnvVar('LOG_FILE_ENABLED', false, 'boolean'),
+    persistenceLevel: getEnvVar('LOG_PERSISTENCE_LEVEL', 'warn'),
+    retentionDays: getEnvVar('LOG_RETENTION_DAYS', '30', 'string'),
+    batchSize: getEnvVar('LOG_BATCH_SIZE', 50, 'number'),
+    flushInterval: getEnvVar('LOG_FLUSH_INTERVAL', 5000, 'number'),
+    enablePersistentLogger: getEnvVar('ENABLE_PERSISTENT_LOGGER', true, 'boolean'),
   },
 };
 

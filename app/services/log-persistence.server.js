@@ -1,331 +1,748 @@
 /**
  * 日志持久化服务
- * 将内存中的日志定期保存到数据库，并提供日志轮转功能
+ * 将控制台日志扩展为内存+数据库的统一持久化通道
  */
 
 import { prisma } from '../db.server.js';
-import { TranslationLogger, logger } from '../utils/logger.server.js';
+import { config } from '../utils/config.server.js';
+import { createTranslationLogger, TranslationLogger, LOG_LEVELS } from '../utils/base-logger.server.js';
 import { collectError } from './error-collector.server.js';
 
-// 日志缓冲区
-class LogBuffer {
-  constructor(maxSize = 1000, flushInterval = 60000) {
-    this.buffer = [];
-    this.maxSize = maxSize;
-    this.flushInterval = flushInterval;
-    this.flushTimer = null;
-    this.isFlushingRunning = false;
-  }
-  
-  add(logEntry) {
-    this.buffer.push({
-      ...logEntry,
-      timestamp: logEntry.timestamp || new Date()
-    });
-    
-    // 如果缓冲区满了，立即刷新
-    if (this.buffer.length >= this.maxSize) {
-      this.flush();
-    } else if (!this.flushTimer) {
-      // 设置定时刷新
-      this.flushTimer = setTimeout(() => this.flush(), this.flushInterval);
+const consoleLogger = createTranslationLogger('LOG_PERSISTENCE');
+
+const LEVEL_VALUE_BY_NAME = {
+  ERROR: LOG_LEVELS.ERROR,
+  WARN: LOG_LEVELS.WARN,
+  INFO: LOG_LEVELS.INFO,
+  DEBUG: LOG_LEVELS.DEBUG
+};
+
+const LEVEL_NAME_BY_VALUE = Object.entries(LEVEL_VALUE_BY_NAME).reduce((acc, [name, value]) => {
+  acc[value] = name;
+  return acc;
+}, {});
+
+function clampLevel(value) {
+  if (value <= LOG_LEVELS.ERROR) return LOG_LEVELS.ERROR;
+  if (value >= LOG_LEVELS.DEBUG) return LOG_LEVELS.DEBUG;
+  return Math.round(value);
+}
+
+function toLevelName(level) {
+  if (typeof level === 'string') {
+    const upper = level.toUpperCase();
+    if (LEVEL_VALUE_BY_NAME[upper] !== undefined) {
+      return upper;
     }
   }
-  
-  async flush() {
-    if (this.isFlushingRunning || this.buffer.length === 0) return;
-    
-    this.isFlushingRunning = true;
-    const logsToFlush = [...this.buffer];
+  if (typeof level === 'number') {
+    return LEVEL_NAME_BY_VALUE[level] || 'INFO';
+  }
+  return 'INFO';
+}
+
+function toLevelValue(level) {
+  if (typeof level === 'number') {
+    return clampLevel(level);
+  }
+  if (typeof level === 'string') {
+    const upper = level.toUpperCase();
+    if (LEVEL_VALUE_BY_NAME[upper] !== undefined) {
+      return LEVEL_VALUE_BY_NAME[upper];
+    }
+  }
+  return LOG_LEVELS.INFO;
+}
+
+function parsePersistenceLevel(raw) {
+  if (raw === null || raw === undefined) {
+    return LEVEL_VALUE_BY_NAME.WARN;
+  }
+
+  if (typeof raw === 'number' && !Number.isNaN(raw)) {
+    return clampLevel(raw);
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return LEVEL_VALUE_BY_NAME.WARN;
+    }
+
+    const upper = trimmed.toUpperCase();
+    if (LEVEL_VALUE_BY_NAME[upper] !== undefined) {
+      return LEVEL_VALUE_BY_NAME[upper];
+    }
+
+    const numeric = Number(trimmed);
+    if (!Number.isNaN(numeric)) {
+      return clampLevel(numeric);
+    }
+  }
+
+  return LEVEL_VALUE_BY_NAME.WARN;
+}
+
+function applyRetentionOverrides(overrides, defaults) {
+  return {
+    ERROR: overrides.ERROR ?? defaults.ERROR,
+    WARN: overrides.WARN ?? defaults.WARN,
+    INFO: overrides.INFO ?? defaults.INFO,
+    DEBUG: overrides.DEBUG ?? defaults.DEBUG
+  };
+}
+
+function parseRetentionConfig(raw) {
+  const defaults = { ERROR: 30, WARN: 15, INFO: 7, DEBUG: 3 };
+
+  if (raw === null || raw === undefined) {
+    return defaults;
+  }
+
+  if (typeof raw === 'number' && !Number.isNaN(raw)) {
+    const value = Math.max(Math.floor(raw), 1);
+    return { ERROR: value, WARN: value, INFO: value, DEBUG: value };
+  }
+
+  if (typeof raw !== 'string') {
+    return defaults;
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return defaults;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const value = Math.max(parseInt(trimmed, 10), 1);
+    return { ERROR: value, WARN: value, INFO: value, DEBUG: value };
+  }
+
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return applyRetentionOverrides(parsed, defaults);
+      }
+    } catch (error) {
+      consoleLogger.warn('Failed to parse LOG_RETENTION_DAYS JSON config', { error: error.message });
+    }
+    return defaults;
+  }
+
+  const overrides = {};
+  for (const piece of trimmed.split(/[,|]/)) {
+    const [rawKey, rawValue] = piece.split(/[:=]/);
+    if (!rawKey || !rawValue) continue;
+    const key = rawKey.trim().toUpperCase();
+    const value = Number(rawValue.trim());
+    if (LEVEL_VALUE_BY_NAME[key] !== undefined && !Number.isNaN(value)) {
+      overrides[key] = Math.max(Math.floor(value), 1);
+    }
+  }
+
+  if (Object.keys(overrides).length === 0) {
+    return defaults;
+  }
+
+  return applyRetentionOverrides(overrides, defaults);
+}
+
+function sanitizeContext(data) {
+  if (!data) {
+    return null;
+  }
+
+  const visited = new WeakSet();
+
+  const replacer = (key, value) => {
+    if (typeof value === 'function') {
+      return `[Function ${value.name || 'anonymous'}]`;
+    }
+
+    if (typeof value === 'string' && value.length > 4000) {
+      return `${value.slice(0, 4000)}...`;
+    }
+
+    if (value && typeof value === 'object') {
+      if (visited.has(value)) {
+        return '[Circular]';
+      }
+      visited.add(value);
+    }
+
+    return value;
+  };
+
+  try {
+    const json = JSON.stringify(data, replacer);
+    return JSON.parse(json);
+  } catch (error) {
+    return {
+      serializationError: error.message
+    };
+  }
+}
+
+function extractDuration(data) {
+  if (!data) {
+    return null;
+  }
+
+  if (typeof data.durationMs === 'number') {
+    return Math.round(data.durationMs);
+  }
+
+  if (typeof data.duration === 'number') {
+    return Math.round(data.duration);
+  }
+
+  if (typeof data.duration === 'string') {
+    const match = data.duration.match(/(\d+(?:\.\d+)?)/);
+    if (match) {
+      return Math.round(parseFloat(match[1]));
+    }
+  }
+
+  if (typeof data.metrics?.duration === 'number') {
+    return Math.round(data.metrics.duration);
+  }
+
+  return null;
+}
+
+function detectTags(message, data) {
+  const tags = new Set();
+  const text = `${message || ''} ${data ? JSON.stringify(data) : ''}`.toLowerCase();
+
+  if (data && (data.shopId === null || data.shopId === undefined) && text.includes('shop')) {
+    tags.add('MISSING_SHOP_CONTEXT');
+  }
+
+  if (text.includes('timeout') || data?.statusCode === 504) {
+    tags.add('TIMEOUT');
+  }
+
+  if (text.includes('rate limit') || data?.statusCode === 429) {
+    tags.add('RATE_LIMIT');
+  }
+
+  const duration = extractDuration(data);
+  if (duration !== null && duration > 30000) {
+    tags.add('SLOW_OPERATION');
+  }
+
+  if (data?.retryable) {
+    tags.add('RETRYABLE');
+  }
+
+  return Array.from(tags);
+}
+
+function truncateMessage(message) {
+  if (!message) {
+    return '';
+  }
+  if (message.length <= 500) {
+    return message;
+  }
+  return `${message.slice(0, 500)}...`;
+}
+
+function chunk(items, size) {
+  if (size <= 0) {
+    return [items];
+  }
+
+  const result = [];
+  for (let i = 0; i < items.length; i += size) {
+    result.push(items.slice(i, i + size));
+  }
+  return result;
+}
+
+const persistenceEnabled = config.logging?.enablePersistentLogger !== false;
+const persistenceLevel = parsePersistenceLevel(config.logging?.persistenceLevel);
+const retentionConfig = parseRetentionConfig(config.logging?.retentionDays);
+const bufferSize = Math.max(Number(config.logging?.batchSize ?? 50), 1);
+const flushInterval = Math.max(Number(config.logging?.flushInterval ?? 5000), 1000);
+const memoryLimit = Math.max(bufferSize * 10, 200);
+
+class InMemoryLogStore {
+  constructor(limit = 200) {
+    this.limit = limit;
+    this.logs = [];
+  }
+
+  add(entry) {
+    this.logs.unshift(entry);
+    if (this.logs.length > this.limit) {
+      this.logs.length = this.limit;
+    }
+  }
+
+  query(options = {}) {
+    const {
+      category,
+      levels,
+      shopId,
+      resourceId,
+      limit = 50,
+      since
+    } = options;
+
+    let result = this.logs;
+
+    if (category) {
+      result = result.filter(log => log.category === category);
+    }
+
+    if (levels && levels.length > 0) {
+      const normalizedLevels = new Set(levels.map(toLevelName));
+      result = result.filter(log => normalizedLevels.has(log.level));
+    }
+
+    if (shopId !== undefined) {
+      result = result.filter(log => log.shopId === shopId);
+    }
+
+    if (resourceId !== undefined) {
+      result = result.filter(log => log.resourceId === resourceId);
+    }
+
+    if (since) {
+      const sinceDate = since instanceof Date ? since : new Date(since);
+      result = result.filter(log => log.timestamp >= sinceDate);
+    }
+
+    return result.slice(0, Math.max(limit, 0));
+  }
+
+  clear() {
+    this.logs = [];
+  }
+}
+
+class LogBuffer {
+  constructor({ maxSize, flushInterval: interval, persistenceLevel: level, enabled }) {
     this.buffer = [];
-    
+    this.maxSize = maxSize;
+    this.flushInterval = interval;
+    this.persistenceLevel = level;
+    this.enabled = enabled;
+    this.flushTimer = null;
+    this.isFlushing = false;
+  }
+
+  add(entry) {
+    if (!this.enabled) {
+      return;
+    }
+
+    const normalized = this.normalizeEntry(entry);
+
+    if (!this.shouldPersist(normalized.levelValue)) {
+      return;
+    }
+
+    this.buffer.push(normalized);
+
+    if (this.buffer.length >= this.maxSize) {
+      void this.flush();
+      return;
+    }
+
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => {
+        this.flush().catch(error => {
+          consoleLogger.error('Scheduled log flush failed', { error: error.message });
+        });
+      }, this.flushInterval);
+    }
+  }
+
+  normalizeEntry(entry) {
+    const timestamp = entry.timestamp instanceof Date
+      ? entry.timestamp
+      : new Date(entry.timestamp || Date.now());
+    const levelName = toLevelName(entry.level ?? entry.levelName);
+    const levelValue = toLevelValue(entry.level ?? entry.levelName);
+
+    return {
+      ...entry,
+      timestamp,
+      levelName,
+      levelValue,
+      retries: entry.retries ?? 0
+    };
+  }
+
+  shouldPersist(levelValue) {
+    return levelValue <= this.persistenceLevel;
+  }
+
+  async flush(force = false) {
+    if (!this.enabled) {
+      return;
+    }
+
+    if (this.isFlushing && !force) {
+      return;
+    }
+
+    if (this.buffer.length === 0) {
+      return;
+    }
+
+    this.isFlushing = true;
+    const logsToFlush = this.buffer.splice(0, this.buffer.length);
+
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
-    
+
     try {
       await this.persistLogs(logsToFlush);
     } catch (error) {
-      logger.error(`Log persistence failed: ${error.message}`);
-      // 失败的日志重新加入缓冲区（但限制重试次数）
-      const retriableLogs = logsToFlush.filter(log => 
-        (log.retryCount || 0) < 3
-      ).map(log => ({
-        ...log,
-        retryCount: (log.retryCount || 0) + 1
-      }));
-      
-      if (retriableLogs.length > 0) {
-        this.buffer.unshift(...retriableLogs);
+      consoleLogger.error('Log persistence failed', { error: error.message });
+      const retriable = logsToFlush
+        .filter(log => log.retries < 3)
+        .map(log => ({ ...log, retries: log.retries + 1 }));
+      if (retriable.length) {
+        this.buffer.unshift(...retriable);
+        if (!this.flushTimer) {
+          this.flushTimer = setTimeout(() => {
+            this.flush().catch(err => {
+              consoleLogger.error('Retrying log flush failed', { error: err.message });
+            });
+          }, this.flushInterval);
+        }
       }
     } finally {
-      this.isFlushingRunning = false;
+      this.isFlushing = false;
     }
   }
-  
+
   async persistLogs(logs) {
-    // 按类型分组日志
-    const translationLogs = [];
-    const errorLogs = [];
-    const performanceLogs = [];
-    
-    logs.forEach(log => {
-      switch (log.category) {
-        case 'TRANSLATION':
-          translationLogs.push(this.formatTranslationLog(log));
-          break;
-        case 'ERROR':
-          errorLogs.push(this.formatErrorLog(log));
-          break;
-        case 'PERFORMANCE':
-          performanceLogs.push(this.formatPerformanceLog(log));
-          break;
-      }
-    });
-    
-    // 批量保存到数据库
-    const promises = [];
-    
-    if (translationLogs.length > 0) {
-      promises.push(this.saveTranslationLogs(translationLogs));
+    if (logs.length === 0) {
+      return;
     }
-    
-    if (errorLogs.length > 0) {
-      promises.push(this.saveErrorLogs(errorLogs));
-    }
-    
-    if (performanceLogs.length > 0) {
-      promises.push(this.savePerformanceLogs(performanceLogs));
-    }
-    
-    await Promise.all(promises);
-  }
-  
-  formatTranslationLog(log) {
-    return {
-      level: log.level,
-      message: log.message,
-      resourceId: log.data?.resourceId,
-      resourceType: log.data?.resourceType,
-      targetLanguage: log.data?.targetLanguage,
-      duration: log.data?.duration,
-      success: log.data?.success,
-      metadata: log.data,
-      timestamp: log.timestamp
-    };
-  }
-  
-  formatErrorLog(log) {
-    return {
-      errorType: log.data?.errorType || 'UNKNOWN',
-      errorCategory: log.level === 'error' ? 'ERROR' : 'WARNING',
-      message: log.message,
-      stack: log.data?.stack,
-      context: log.data,
-      timestamp: log.timestamp
-    };
-  }
-  
-  formatPerformanceLog(log) {
-    return {
-      operation: log.data?.operation,
-      duration: log.data?.duration,
-      metrics: log.data?.metrics,
-      timestamp: log.timestamp
-    };
-  }
-  
-  async saveTranslationLogs(logs) {
-    // 创建翻译日志表（如果需要的话，可以扩展schema）
-    // 这里暂时保存到通用日志表或错误表中
-    const records = logs.map(log => ({
-      errorType: 'TRANSLATION',
-      errorCategory: 'INFO',
-      errorCode: 'TRANSLATION_LOG',
-      message: log.message,
-      context: log.metadata,
-      resourceType: log.resourceType,
-      resourceId: log.resourceId,
-      operation: 'translate',
-      severity: log.success ? 1 : 3,
-      status: 'logged',
-      createdAt: log.timestamp
-    }));
-    
-    // 批量插入
-    for (const record of records) {
-      await collectError(record);
-    }
-  }
-  
-  async saveErrorLogs(logs) {
-    for (const log of logs) {
-      await collectError({
-        ...log,
-        errorCode: 'LOGGED_ERROR',
-        severity: log.errorCategory === 'ERROR' ? 4 : 2,
-        status: 'new'
+
+    const records = logs.map(log => this.formatTranslationLog(log));
+    const chunks = chunk(records, 100);
+
+    for (const chunkRecords of chunks) {
+      if (chunkRecords.length === 0) continue;
+      await prisma.translationLog.createMany({
+        data: chunkRecords
       });
     }
+
+    await this.persistCriticalLogs(logs);
   }
-  
-  async savePerformanceLogs(logs) {
-    // 保存性能日志到错误表（用于分析）
-    const records = logs.map(log => ({
-      errorType: 'PERFORMANCE',
-      errorCategory: 'INFO',
-      errorCode: 'PERFORMANCE_METRIC',
-      message: `性能指标: ${log.operation}`,
-      context: {
-        operation: log.operation,
-        duration: log.duration,
-        metrics: log.metrics
-      },
-      severity: 1,
-      status: 'logged',
-      createdAt: log.timestamp
-    }));
-    
-    for (const record of records) {
-      await collectError(record);
+
+  formatTranslationLog(log) {
+    const data = log.data || {};
+    const durationMs = extractDuration(data);
+    const tags = detectTags(log.message, data);
+    const sanitizedContext = sanitizeContext(data);
+
+    const shopId = data.shopId ?? data.shopID ?? data.shop ?? null;
+    const resourceId = data.resourceId ?? data.resourceID ?? null;
+    const resourceType = data.resourceType ?? null;
+    const language = data.targetLanguage ?? data.language ?? null;
+
+    return {
+      id: log.id || `${log.timestamp.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: log.timestamp,
+      level: log.levelName,
+      category: log.category,
+      message: truncateMessage(log.message),
+      shopId,
+      resourceId,
+      resourceType,
+      language,
+      durationMs,
+      context: sanitizedContext,
+      tags: tags.length > 0 ? tags : null,
+      operation: data.operation ?? log.category,
+      source: data.source ?? log.source ?? log.category,
+      batchId: data.batchId ?? null,
+      requestId: data.requestId ?? data.traceId ?? null,
+      environment: process.env.NODE_ENV || 'development',
+      errorFlag: log.levelValue <= LEVEL_VALUE_BY_NAME.WARN,
+      createdAt: log.timestamp,
+      updatedAt: log.timestamp
+    };
+  }
+
+  async persistCriticalLogs(logs) {
+    for (const log of logs) {
+      if (log.levelValue > LEVEL_VALUE_BY_NAME.WARN) {
+        continue;
+      }
+
+      const data = log.data || {};
+      await collectError({
+        errorType: data.errorType || 'TRANSLATION',
+        message: log.message,
+        errorCode: data.errorCode || `LOG_${log.levelName}`,
+        stack: data.stack,
+        statusCode: data.statusCode,
+        resourceId: data.resourceId,
+        resourceType: data.resourceType,
+        shopId: data.shopId,
+        retryable: data.retryable,
+        fatal: log.levelName === 'ERROR',
+        context: data
+      }, {
+        operation: data.operation || log.category,
+        resourceType: data.resourceType,
+        resourceId: data.resourceId,
+        shopId: data.shopId,
+        requestUrl: data.requestUrl
+      });
     }
   }
 }
 
-// 日志轮转服务
 class LogRotationService {
-  constructor() {
-    this.rotationInterval = 24 * 60 * 60 * 1000; // 24小时
-    this.maxAge = 30 * 24 * 60 * 60 * 1000; // 30天
-    this.rotationTimer = null;
+  constructor(retentionByLevel) {
+    this.retentionByLevel = retentionByLevel;
+    this.rotationInterval = 6 * 60 * 60 * 1000;
+    this.timer = null;
   }
-  
+
   start() {
-    // 立即执行一次清理
-    this.rotate();
-    
-    // 设置定期清理
-    this.rotationTimer = setInterval(() => {
-      this.rotate();
+    this.rotate().catch(error => {
+      consoleLogger.error('Initial log rotation failed', { error: error.message });
+    });
+
+    this.timer = setInterval(() => {
+      this.rotate().catch(error => {
+        consoleLogger.error('Scheduled log rotation failed', { error: error.message });
+      });
     }, this.rotationInterval);
   }
-  
+
   stop() {
-    if (this.rotationTimer) {
-      clearInterval(this.rotationTimer);
-      this.rotationTimer = null;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
     }
   }
-  
+
   async rotate() {
-    try {
-      const cutoffDate = new Date(Date.now() - this.maxAge);
-      
-      // 删除旧的日志记录
-      const result = await prisma.errorLog.deleteMany({
+    const now = Date.now();
+
+    for (const [level, days] of Object.entries(this.retentionByLevel)) {
+      if (!days || days <= 0) {
+        continue;
+      }
+
+      const cutoff = new Date(now - days * 24 * 60 * 60 * 1000);
+      const result = await prisma.translationLog.deleteMany({
         where: {
-          createdAt: { lt: cutoffDate },
-          errorCategory: 'INFO', // 只删除信息类日志
-          status: 'logged' // 只删除已记录状态的
+          level,
+          timestamp: { lt: cutoff }
         }
       });
-      
-      logger.info(`Log rotation: deleted ${result.count} old logs`);
-      
-      // 归档重要日志（可选）
-      await this.archiveImportantLogs(cutoffDate);
-      
-    } catch (error) {
-      logger.error(`Log rotation failed: ${error.message}`);
-    }
-  }
-  
-  async archiveImportantLogs(cutoffDate) {
-    // 归档重要的错误日志到文件系统或其他存储
-    const importantLogs = await prisma.errorLog.findMany({
-      where: {
-        createdAt: { lt: cutoffDate },
-        severity: { gte: 3 }, // 严重度3及以上
-        status: { notIn: ['logged', 'resolved', 'ignored'] }
-      },
-      take: 1000
-    });
-    
-    if (importantLogs.length > 0) {
-      // TODO: 实现归档逻辑（保存到文件或云存储）
-      logger.info(`Archived ${importantLogs.length} important logs`);
+
+      if (result.count > 0) {
+        consoleLogger.info('Log rotation summary', {
+          level,
+          deleted: result.count,
+          cutoff: cutoff.toISOString()
+        });
+      }
     }
   }
 }
 
-// 增强的TranslationLogger（添加持久化支持）
-export class PersistentTranslationLogger extends TranslationLogger {
-  constructor(category = 'TRANSLATION') {
-    super(category);
-    this.logBuffer = logBufferInstance;
-  }
-  
-  log(level, message, data = {}) {
-    // 调用父类方法
-    super[level.toLowerCase()](message, data);
-    
-    // 添加到持久化缓冲区
-    this.logBuffer.add({
-      level,
-      category: this.category,
-      message,
-      data,
-      timestamp: new Date()
-    });
-  }
-  
-  // 重写各个日志方法以支持持久化
-  error(message, data = {}) {
-    this.log('error', message, data);
-  }
-  
-  warn(message, data = {}) {
-    this.log('warn', message, data);
-  }
-  
-  info(message, data = {}) {
-    this.log('info', message, data);
-  }
-  
-  debug(message, data = {}) {
-    this.log('debug', message, data);
-  }
-}
+const inMemoryLogStore = new InMemoryLogStore(memoryLimit);
+const logBufferInstance = new LogBuffer({
+  maxSize: bufferSize,
+  flushInterval,
+  persistenceLevel,
+  enabled: persistenceEnabled
+});
+const logRotationService = new LogRotationService(retentionConfig);
 
-// 全局实例
-const logBufferInstance = new LogBuffer();
-const logRotationService = new LogRotationService();
-
-// 启动日志轮转服务
-if (process.env.NODE_ENV === 'production') {
+if (persistenceEnabled && process.env.NODE_ENV !== 'test') {
   logRotationService.start();
 }
 
-// 进程退出时刷新日志
-process.on('beforeExit', async () => {
-  await logBufferInstance.flush();
-});
+export class PersistentTranslationLogger extends TranslationLogger {
+  constructor(category = 'TRANSLATION') {
+    super(category);
+  }
 
-process.on('SIGTERM', async () => {
-  await logBufferInstance.flush();
-  logRotationService.stop();
-});
+  log(level, message, data = {}) {
+    const normalized = toLevelName(level);
+    if (normalized === 'ERROR') {
+      this.error(message, data);
+      return;
+    }
+    if (normalized === 'WARN') {
+      this.warn(message, data);
+      return;
+    }
+    if (normalized === 'DEBUG') {
+      this.debug(message, data);
+      return;
+    }
+    this.info(message, data);
+  }
 
-// 导出
+  error(message, data = {}) {
+    this.write('ERROR', message, data);
+  }
+
+  warn(message, data = {}) {
+    this.write('WARN', message, data);
+  }
+
+  info(message, data = {}) {
+    this.write('INFO', message, data);
+  }
+
+  debug(message, data = {}) {
+    this.write('DEBUG', message, data);
+  }
+
+  write(levelName, message, data = {}) {
+    const timestamp = new Date();
+
+    if (levelName === 'ERROR') {
+      super.error(message, data);
+    } else if (levelName === 'WARN') {
+      super.warn(message, data);
+    } else if (levelName === 'INFO') {
+      super.info(message, data);
+    } else {
+      super.debug(message, data);
+    }
+
+    const entry = {
+      category: this.category,
+      level: levelName,
+      message,
+      data,
+      timestamp,
+      source: data.source || this.category
+    };
+
+    inMemoryLogStore.add({
+      id: `${timestamp.getTime()}-${Math.random().toString(16).slice(2)}`,
+      timestamp,
+      level: levelName,
+      message,
+      category: this.category,
+      data,
+      shopId: data.shopId ?? null,
+      resourceId: data.resourceId ?? null
+    });
+
+    logBufferInstance.add(entry);
+  }
+}
+
+if (persistenceEnabled) {
+  process.on('beforeExit', async () => {
+    await logBufferInstance.flush(true);
+  });
+
+  process.on('SIGTERM', async () => {
+    await logBufferInstance.flush(true);
+    logRotationService.stop();
+  });
+
+  process.on('SIGINT', async () => {
+    await logBufferInstance.flush(true);
+    logRotationService.stop();
+  });
+}
+
+export function getInMemoryLogs(filter = {}) {
+  return inMemoryLogStore.query(filter);
+}
+
+export function clearInMemoryLogs() {
+  inMemoryLogStore.clear();
+}
+
+export async function forceFlushLogs() {
+  await logBufferInstance.flush(true);
+}
+
+export async function fetchPersistentTranslationLogs(options = {}) {
+  const {
+    limit = 100,
+    offset = 0,
+    level,
+    shopId,
+    resourceId,
+    resourceType,
+    category,
+    language,
+    startTime,
+    endTime
+  } = options;
+
+  const where = {};
+
+  if (level) {
+    where.level = toLevelName(level);
+  }
+  if (category) {
+    where.category = category;
+  }
+  if (shopId) {
+    where.shopId = shopId;
+  }
+  if (resourceId) {
+    where.resourceId = resourceId;
+  }
+  if (resourceType) {
+    where.resourceType = resourceType;
+  }
+  if (language) {
+    where.language = language;
+  }
+  if (startTime || endTime) {
+    where.timestamp = {};
+    if (startTime) where.timestamp.gte = new Date(startTime);
+    if (endTime) where.timestamp.lte = new Date(endTime);
+  }
+
+  const logs = await prisma.translationLog.findMany({
+    where,
+    orderBy: { timestamp: 'desc' },
+    take: Math.max(Math.min(limit, 500), 1),
+    skip: Math.max(offset, 0)
+  });
+
+  return logs;
+}
+
+export const logPersistenceSettings = {
+  enabled: persistenceEnabled,
+  persistenceLevel,
+  retentionConfig,
+  bufferSize,
+  flushInterval
+};
+
 export {
+  InMemoryLogStore,
   LogBuffer,
   LogRotationService,
+  inMemoryLogStore,
   logBufferInstance,
   logRotationService
 };
 
-// 创建全局持久化日志实例
 export const persistentLogger = new PersistentTranslationLogger('SYSTEM');
 export const translationPersistentLogger = new PersistentTranslationLogger('TRANSLATION');
 export const performancePersistentLogger = new PersistentTranslationLogger('PERFORMANCE');
