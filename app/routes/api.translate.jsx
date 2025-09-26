@@ -179,19 +179,31 @@ export const action = async ({ request }) => {
 
         if (themeResourceTypes.includes(resource.resourceType)) {
           console.log(`使用Theme资源翻译函数处理: ${resource.resourceType}`);
-          translations = await translateThemeResource(resourceInput, targetLanguage);
+          const themeTranslations = await translateThemeResource(resourceInput, targetLanguage);
+          translations = { skipped: false, translations: themeTranslations };
         } else {
           // 使用标准翻译函数，传递admin参数以支持产品关联翻译
           translations = await translateResourceWithLogging(resourceInput, targetLanguage, admin);
         }
         
-        // 保存翻译结果到数据库 (status: pending, 等待手动发布)
-        await saveTranslation(resource.id, shop.id, targetLanguage, translations);
+        if (translations.skipped) {
+          await updateResourceStatus(resource.id, 'pending');
+          console.log(`ℹ️ 跳过资源翻译（内容未变化）: ${resource.title}`);
+          results.push({
+            resourceId: resource.id,
+            resourceType: resource.resourceType,
+            title: resource.title,
+            success: true,
+            skipped: true,
+            skipReason: translations.skipReason
+          });
+          continue;
+        }
 
-        // Phase 2: 不再自动同步到Shopify，改为pending状态等待手动发布
+        await saveTranslation(resource.id, shop.id, targetLanguage, translations.translations);
+
         console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${targetLanguage}`);
 
-        // 更新资源状态为完成
         await updateResourceStatus(resource.id, 'completed');
         
         results.push({
@@ -199,7 +211,7 @@ export const action = async ({ request }) => {
           resourceType: resource.resourceType,
           title: resource.title,
           success: true,
-          translations: translations
+          translations: translations.translations
         });
         
       } catch (error) {
@@ -218,8 +230,9 @@ export const action = async ({ request }) => {
       }
     }
     
-    const successCount = results.filter(r => r.success).length;
+    const successCount = results.filter(r => r.success && !r.skipped).length;
     const failureCount = results.filter(r => !r.success).length;
+    const skippedCount = results.filter(r => r.skipped).length;
     
     // 获取翻译统计和日志
     const translationStats = getTranslationStats();
@@ -230,11 +243,12 @@ export const action = async ({ request }) => {
       stats: {
         total: results.length,
         success: successCount,
-        failure: failureCount
+        failure: failureCount,
+        skipped: skippedCount
       },
       translationStats: translationStats,
       recentLogs: recentLogs
-    }, `翻译完成: ${successCount} 成功, ${failureCount} 失败`);
+    }, `翻译完成: ${successCount} 成功, ${failureCount} 失败, ${skippedCount} 跳过`);
     
   }, "批量翻译", request.headers.get("shopify-shop-domain") || "");
 };

@@ -84,7 +84,7 @@ export async function translateProductWithRelated(product, targetLang, admin) {
 
   // 1. 翻译产品主体（保持原有逻辑不变）
   const startTime = Date.now();
-  const mainTranslation = await translateResource(product, targetLang);
+  const mainTranslation = await translateResource(product, targetLang, { admin });
   const mainTranslationTime = Date.now() - startTime;
 
   logger.info(`产品主体翻译完成: ${product.title || product.id}`, {

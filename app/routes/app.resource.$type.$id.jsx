@@ -109,13 +109,14 @@ export const loader = async ({ request, params }) => {
 };
 
 export default function ResourceDetailPage() {
-  const { resource, currentLanguage, translatableKeys, coverageData } = useLoaderData();
+  const { resource, currentLanguage, translatableKeys, coverageData, shop } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
   const metafieldsFetcher = useFetcher();
   const translateFetcher = useFetcher();
   const coverageFetcher = useFetcher();
+  const shopQueryParam = shop ? `shop=${encodeURIComponent(shop)}` : '';
 
   // 合并覆盖率数据（优先使用 fetcher 的最新数据）
   const displayCoverageData = coverageFetcher.data?.success
@@ -151,11 +152,12 @@ export default function ResourceDetailPage() {
         resourceIds: JSON.stringify([resource.id]),
         clearCache: isRetranslate ? 'true' : 'false',
         forceRelatedTranslation: 'true',
-        userRequested: 'true'
+        userRequested: 'true',
+        shop
       },
       {
         method: 'POST',
-        action: '/api/translate'
+        action: shopQueryParam ? `/api/translate?${shopQueryParam}` : '/api/translate'
       }
     );
   };
@@ -187,7 +189,7 @@ export default function ResourceDetailPage() {
       // 延迟刷新覆盖率数据，确保翻译数据已同步
       setTimeout(() => {
         coverageFetcher.load(
-          `/api/resource-coverage/${resource.id}?language=${currentLanguage}`
+          `/api/resource-coverage/${resource.id}?language=${currentLanguage}${shopQueryParam ? `&${shopQueryParam}` : ''}`
         );
       }, 2000);
       setTimeout(() => {
@@ -255,10 +257,13 @@ export default function ResourceDetailPage() {
     formData.append('productGid', resource.fields.standard.gid);
     formData.append('targetLanguage', currentLanguage);
     formData.append('analyzeOnly', analyzeOnly.toString());
+    if (shop) {
+      formData.append('shop', shop);
+    }
 
     metafieldsFetcher.submit(formData, {
       method: 'POST',
-      action: '/api/translate-product-metafields'
+      action: shopQueryParam ? `/api/translate-product-metafields?${shopQueryParam}` : '/api/translate-product-metafields'
     });
   };
 
@@ -371,7 +376,7 @@ export default function ResourceDetailPage() {
             data={displayCoverageData}
             onRefresh={() => {
               coverageFetcher.load(
-                `/api/resource-coverage/${resource.id}?language=${currentLanguage}`
+                `/api/resource-coverage/${resource.id}?language=${currentLanguage}${shopQueryParam ? `&${shopQueryParam}` : ''}`
               );
             }}
             isRefreshing={coverageFetcher.state === 'loading'}

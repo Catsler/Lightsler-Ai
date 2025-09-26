@@ -73,6 +73,11 @@ export const config = {
     maxRetries: getEnvVar('TRANSLATION_MAX_RETRIES', 3, 'number'),
     maxChunkSize: getEnvVar('MAX_CHUNK_SIZE', 1000, 'number'), // 最大分块大小 - 减小以确保翻译完整
     longTextThreshold: getEnvVar('LONG_TEXT_THRESHOLD', 1500, 'number'), // 长文本阈值 - 更早触发分块
+    modelTokenLimit: getEnvVar('TRANSLATION_MODEL_TOKEN_LIMIT', 6000, 'number'),
+    tokenSafetyMargin: getEnvVar('TRANSLATION_TOKEN_SAFETY_MARGIN', 512, 'number'),
+    minResponseTokens: getEnvVar('TRANSLATION_MIN_RESPONSE_TOKENS', 256, 'number'),
+    skipEnabled: getEnvVar('ENABLE_TRANSLATION_SKIP', 'false') === 'true',
+    skipOnlyWithHash: getEnvVar('TRANSLATION_SKIP_ONLY_WITH_HASH', 'true') !== 'false',
   },
   
   // 队列配置

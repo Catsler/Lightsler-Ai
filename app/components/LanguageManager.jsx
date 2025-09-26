@@ -28,7 +28,8 @@ export function LanguageManager({
   currentLanguages = [], 
   primaryLanguage = null,
   onLanguageAdded,
-  onLanguagesUpdated 
+  onLanguagesUpdated,
+  shopId 
 }) {
   const fetcher = useFetcher();
   const [showModal, setShowModal] = useState(false);
@@ -72,8 +73,9 @@ export function LanguageManager({
   const loadLanguageData = useCallback(() => {
     setLoading(true);
     setError('');
-    fetcher.load('/api/locales?action=combined');
-  }, []);
+    const url = shopId ? `/api/locales?action=combined&shop=${encodeURIComponent(shopId)}` : '/api/locales?action=combined';
+    fetcher.load(url);
+  }, [shopId]);
 
   const normalizeLanguageData = useCallback((data) => {
     const primary = data?.shop?.primary ?? null;
@@ -148,11 +150,12 @@ export function LanguageManager({
     fetcher.submit(
       {
         action: 'enableMultiple',
-        locales: selectedLanguages
+        locales: selectedLanguages,
+        ...(shopId ? { shop: shopId } : {})
       },
       {
         method: 'POST',
-        action: '/api/locales',
+        action: shopId ? `/api/locales?shop=${encodeURIComponent(shopId)}` : '/api/locales',
         encType: 'application/json'
       }
     );
@@ -171,10 +174,10 @@ export function LanguageManager({
   const syncLanguages = () => {
     setLoading(true);
     fetcher.submit(
-      { action: 'sync' },
+      { action: 'sync', ...(shopId ? { shop: shopId } : {}) },
       {
         method: 'POST',
-        action: '/api/locales',
+        action: shopId ? `/api/locales?shop=${encodeURIComponent(shopId)}` : '/api/locales',
         encType: 'application/json'
       }
     );

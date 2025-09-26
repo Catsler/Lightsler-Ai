@@ -80,20 +80,19 @@ export async function translateBatchWithIntelligence(resources, targetLang, opti
         const batchPromises = batch.map(async (resource) => {
           try {
             const translation = await translateResourceWithLogging(resource, targetLang);
-            
-            // 检查是否被智能跳过
+
             if (translation.skipped) {
               results.skipped.push({
                 resource,
-                reason: translation.reason,
-                confidence: translation.confidence
+                reason: translation.skipReason,
+                confidence: translation.metadata?.confidence
               });
               return { resource, status: 'skipped', translation };
             }
-            
-            results.successful.push({ resource, translation });
+
+            results.successful.push({ resource, translation: translation.translations, metadata: translation.metadata });
             results.stats.translated++;
-            return { resource, status: 'success', translation };
+            return { resource, status: 'success', translation: translation.translations, metadata: translation.metadata };
           } catch (error) {
             results.failed.push({ resource, error: error.message });
             results.stats.failed++;

@@ -1900,11 +1900,12 @@ function generateContentHash(resource) {
  */
 export async function translateResourceWithLogging(resource, targetLang, admin) {
   const resourceId = resource.id || resource.resourceId || 'unknown';
+  const effectiveContentHash = resource.contentHash || generateContentHash(resource);
+  const skipConfigEnabled = Boolean(config.translation?.skipEnabled);
+  const skipRequiresHash = Boolean(config.translation?.skipOnlyWithHash);
+  const allowSkip = skipConfigEnabled && (!skipRequiresHash || Boolean(resource.contentHash));
 
-  // 先检查内存缓存
-  const contentHash = resource.contentHash || generateContentHash(resource);
-  const cachedTranslation = await getCachedTranslation(resourceId, targetLang, contentHash);
-
+  const cachedTranslation = await getCachedTranslation(resourceId, targetLang, effectiveContentHash);
   if (cachedTranslation) {
     translationLogger.log('info', `使用缓存的翻译: ${resource.title}`, {
       resourceId,
@@ -1913,38 +1914,42 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
       cacheHit: true
     });
 
-    // 更新缓存统计
     const cache = getMemoryCache();
-    const stats = cache.getStats();
-    translationLogger.log('debug', '缓存命中统计', stats);
+    translationLogger.log('debug', '缓存命中统计', cache.getStats());
 
-    return cachedTranslation;
+    return {
+      skipped: false,
+      translations: cachedTranslation,
+      metadata: {
+        cacheHit: true,
+        contentHash: effectiveContentHash
+      }
+    };
   }
 
-  // 检查是否为产品资源，如果是且启用了关联翻译，使用增强版函数
-  if (resource.resourceType?.toUpperCase() === 'PRODUCT' && admin) {
-    const { translateProductWithRelated, isRelatedTranslationEnabled } = await import('./product-translation-enhanced.server.js');
+  let skipDecision = {
+    decision: 'translate',
+    reasoning: '',
+    confidence: 1
+  };
 
-    if (isRelatedTranslationEnabled()) {
-      translationLogger.log('info', `使用增强版产品翻译: ${resource.title}`, {
-        resourceId,
-        resourceType: resource.resourceType,
+  if (allowSkip) {
+    try {
+      const decisionEngine = new DecisionEngine();
+      skipDecision = await decisionEngine.shouldSkipTranslation(resource, {
         targetLanguage: targetLang,
-        relatedTranslationEnabled: true
+        priority: resource.priority || 'normal',
+        userRequested: resource.userRequested || false
       });
-
-      return await translateProductWithRelated(resource, targetLang, admin);
+    } catch (error) {
+      translationLogger.log('warn', `跳过判定失败，继续翻译: ${resource.title}`, {
+        resourceId,
+        error: error.message
+      });
+      skipDecision = { decision: 'translate', reasoning: 'skip-evaluation-error', confidence: 0 };
     }
   }
-  
-  // Sequential Thinking: 智能决策是否需要翻译
-  const decisionEngine = new DecisionEngine();
-  const skipDecision = await decisionEngine.shouldSkipTranslation(resource, {
-    targetLanguage: targetLang,
-    priority: resource.priority || 'normal',
-    userRequested: resource.userRequested || false
-  });
-  
+
   if (skipDecision.decision === 'skip') {
     translationLogger.log('info', `智能跳过翻译: ${resource.title}`, {
       resourceId,
@@ -1953,15 +1958,17 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
       reason: skipDecision.reasoning,
       confidence: skipDecision.confidence
     });
-    
-    // 返回空翻译结果，表示跳过
+
     return {
       skipped: true,
-      reason: skipDecision.reasoning,
-      confidence: skipDecision.confidence
+      skipReason: skipDecision.reasoning || 'content_unchanged',
+      metadata: {
+        confidence: skipDecision.confidence,
+        contentHash: effectiveContentHash
+      }
     };
   }
-  
+
   translationLogger.log('info', `开始翻译资源: ${resource.title}`, {
     resourceId,
     resourceType: resource.resourceType,
@@ -1969,34 +1976,31 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
     decision: skipDecision.decision,
     confidence: skipDecision.confidence,
     fieldsToTranslate: {
-      title: !!resource.title,  
+      title: !!resource.title,
       description: resource.resourceType === 'page' ? true : !!(resource.descriptionHtml || resource.description),
       handle: !!resource.handle,
       summary: !!resource.summary,
       label: !!resource.label,
-      seoTitle: !!resource.seoTitle, 
+      seoTitle: !!resource.seoTitle,
       seoDescription: !!resource.seoDescription
     }
   });
 
   try {
     const startTime = Date.now();
-    const translations = await translateResource(resource, targetLang);
+    const translations = await translateResource(resource, targetLang, { admin });
     const duration = Date.now() - startTime;
-    
-    // 统计翻译结果
+
     const translationStats = {
       fieldsTranslated: 0,
       fieldsSkipped: 0,
       totalCharacters: 0,
       translatedCharacters: 0
     };
-    
+
     Object.entries(translations).forEach(([key, value]) => {
-      // 处理不同类型的值
       if (value) {
         if (typeof value === 'string') {
-          // 字符串类型的翻译
           if (value.trim()) {
             translationStats.fieldsTranslated++;
             translationStats.translatedCharacters += value.length;
@@ -2004,21 +2008,17 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
             translationStats.fieldsSkipped++;
           }
         } else if (typeof value === 'object') {
-          // 对象类型的翻译（如Theme资源的translationFields）
           translationStats.fieldsTranslated++;
-          // 计算对象中的字符数
           const jsonStr = JSON.stringify(value);
           translationStats.translatedCharacters += jsonStr.length;
         } else {
-          // 其他类型
           translationStats.fieldsTranslated++;
         }
       } else {
         translationStats.fieldsSkipped++;
       }
     });
-    
-    // 检查是否真的翻译了
+
     const originalText = [
       resource.title,
       resource.description || resource.descriptionHtml,
@@ -2027,11 +2027,10 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
       resource.seoTitle,
       resource.seoDescription
     ].filter(Boolean).join(' ');
-    
+
     const translatedText = Object.values(translations)
       .filter(Boolean)
       .map(value => {
-        // 处理不同类型的值
         if (typeof value === 'string') {
           return value;
         } else if (typeof value === 'object') {
@@ -2041,10 +2040,10 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
         }
       })
       .join(' ');
-    
+
     translationStats.totalCharacters = originalText.length;
     const isActuallyTranslated = originalText !== translatedText && translatedText.length > 0;
-    
+
     translationLogger.log('info', `翻译完成: ${resource.title}`, {
       resourceId,
       duration: `${duration}ms`,
@@ -2052,152 +2051,63 @@ export async function translateResourceWithLogging(resource, targetLang, admin) 
       isActuallyTranslated,
       stats: translationStats,
       translations: Object.keys(translations).reduce((acc, key) => {
-        if (translations[key]) {
-          const value = translations[key];
-          if (typeof value === 'string') {
-            acc[key] = {
-              length: value.length,
-              preview: value.substring(0, 100) + (value.length > 100 ? '...' : '')
-            };
-          } else if (typeof value === 'object') {
-            const jsonStr = JSON.stringify(value);
-            acc[key] = {
-              length: jsonStr.length,
-              preview: jsonStr.substring(0, 100) + (jsonStr.length > 100 ? '...' : ''),
-              type: 'object'
-            };
-          } else {
-            acc[key] = {
-              value: value,
-              type: typeof value
-            };
-          }
+        const value = translations[key];
+        if (!value) {
+          return acc;
+        }
+        if (typeof value === 'string') {
+          acc[key] = {
+            length: value.length,
+            preview: value.substring(0, 100) + (value.length > 100 ? '...' : '')
+          };
+        } else if (typeof value === 'object') {
+          const jsonStr = JSON.stringify(value);
+          acc[key] = {
+            length: jsonStr.length,
+            preview: jsonStr.substring(0, 100) + (jsonStr.length > 100 ? '...' : ''),
+            type: 'object'
+          };
+        } else {
+          acc[key] = {
+            value,
+            type: typeof value
+          };
         }
         return acc;
       }, {})
     });
-    
+
     if (!isActuallyTranslated) {
       translationLogger.log('warn', `翻译结果与原文相同，可能翻译失败: ${resource.title}`, {
         resourceId,
-        originalLength: originalText.length,
-        translatedLength: translatedText.length
-      });
-      
-      // 记录到数据库：翻译未生效的警告
-      await collectError({
-        errorType: ERROR_TYPES.TRANSLATION,
-        errorCategory: 'WARNING',
-        errorCode: 'TRANSLATION_NOT_EFFECTIVE',
-        message: `Translation result same as original for resource: ${resource.title}`,
-        operation: 'translateResource',
-        resourceId,
         resourceType: resource.resourceType,
-        targetLanguage: targetLang,
-        severity: 2,
-        retryable: true,
-        context: {
-          originalLength: originalText.length,
-          translatedLength: translatedText.length,
-          stats: translationStats
-        }
+        targetLanguage: targetLang
       });
-    } else {
-      // 对成功的翻译进行质量评估
-      try {
-        const qualityAssessment = await qualityErrorAnalyzer.assessTranslationQuality({
-          resourceId,
-          language: targetLang,
-          originalText,
-          translatedText,
-          resourceType: resource.resourceType,
-          shopId: resource.shopId,
-          sessionId: resource.translationSessionId // 如果有会话ID
-        });
+    }
 
-        translationLogger.log('info', `质量评估完成: ${resource.title}`, {
-          resourceId,
-          targetLanguage: targetLang,
-          overallScore: qualityAssessment.overallScore,
-          qualityLevel: qualityAssessment.qualityLevel,
-          issues: qualityAssessment.issues,
-          recommendations: qualityAssessment.recommendations
-        });
+    await setCachedTranslation(resourceId, targetLang, effectiveContentHash, translations);
 
-        // 如果质量分数过低，记录警告
-        if (qualityAssessment.overallScore < 0.5) {
-          await collectError({
-            errorType: ERROR_TYPES.TRANSLATION,
-            errorCategory: 'WARNING',
-            errorCode: 'LOW_QUALITY_TRANSLATION',
-            message: `Low quality translation detected: ${qualityAssessment.qualityLevel}`,
-            operation: 'translateResource',
-            resourceId,
-            resourceType: resource.resourceType,
-            targetLanguage: targetLang,
-            severity: 3,
-            retryable: true,
-            context: {
-              overallScore: qualityAssessment.overallScore,
-              qualityLevel: qualityAssessment.qualityLevel,
-              issues: qualityAssessment.issues,
-              breakdown: qualityAssessment.breakdown
-            }
-          });
-        }
-
-      } catch (qualityError) {
-        translationLogger.log('error', `质量评估失败: ${resource.title}`, {
-          resourceId,
-          error: qualityError.message
-        });
-        // 质量评估失败不应该影响翻译流程
+    return {
+      skipped: false,
+      translations,
+      metadata: {
+        duration,
+        stats: translationStats,
+        contentHash: effectiveContentHash
       }
-    }
-    
-    // 将成功的翻译结果存入内存缓存
-    if (isActuallyTranslated) {
-      await setCachedTranslation(resourceId, targetLang, contentHash, translations);
-      translationLogger.log('debug', `翻译结果已缓存: ${resource.title}`, {
-        resourceId,
-        targetLanguage: targetLang,
-        contentHash
-      });
-    }
-    
-    return translations;
-    
+    };
   } catch (error) {
     translationLogger.log('error', `翻译失败: ${resource.title}`, {
       resourceId,
+      resourceType: resource.resourceType,
+      targetLanguage: targetLang,
       error: error.message,
       stack: error.stack
     });
-    
-    // 记录到数据库
-    await collectError({
-      errorType: ERROR_TYPES.TRANSLATION,
-      errorCategory: 'ERROR',
-      errorCode: error.code || 'TRANSLATION_FAILED',
-      message: error.message,
-      stack: error.stack,
-      operation: 'translateResource',
-      resourceId,
-      resourceType: resource.resourceType,
-      targetLanguage: targetLang,
-      severity: error.statusCode === 429 ? 3 : 4, // API限流为中等严重，其他为高
-      retryable: error.statusCode !== 400, // 400错误不可重试
-      statusCode: error.statusCode,
-      context: {
-        resourceTitle: resource.title,
-        targetLanguage: targetLang,
-        errorDetails: error.response?.data || error.details
-      }
-    });
-    
     throw error;
   }
 }
+
 
 /**
  * 获取翻译统计信息
@@ -2958,12 +2868,15 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
       // 移除一些HTML属性和类名以减少长度，但保持内容完整性
       let optimizedText = text;
       if (text.includes('<')) {
+        const protectedTokenPattern = /__PROTECTED_/;
+        const preserveProtected = (attr) => (protectedTokenPattern.test(attr) ? attr : '');
+
         optimizedText = text
-          .replace(/class="[^"]*"/g, '') // 移除class属性
-          .replace(/style="[^"]*"/g, '') // 移除style属性
-          .replace(/data-[^=]*="[^"]*"/g, '') // 移除data属性
-          .replace(/id="[^"]*"/g, '') // 移除id属性
-          .replace(/\s+/g, ' ') // 压缩空白字符
+          .replace(/class="[^"]*"/g, preserveProtected)
+          .replace(/style="[^"]*"/g, preserveProtected)
+          .replace(/data-[^=]*="[^"]*"/g, preserveProtected)
+          .replace(/id="[^"]*"/g, preserveProtected)
+          .replace(/\s+/g, ' ')
           .trim();
       }
       
@@ -4303,7 +4216,8 @@ function isThemeResource(resourceType) {
   return type.startsWith('ONLINE_STORE_THEME');
 }
 
-export async function translateResource(resource, targetLang) {
+export async function translateResource(resource, targetLang, options = {}) {
+  const { admin } = options || {};
   // 性能监控 - 开始计时
   const performanceStart = Date.now();
   const performanceMetrics = {

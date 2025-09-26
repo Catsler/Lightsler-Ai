@@ -109,6 +109,8 @@ function Index() {
   const statusFetcher = useFetcher();
   const clearFetcher = useFetcher();
   
+  const shopQueryParam = shopId ? `shop=${encodeURIComponent(shopId)}` : '';
+  
   // React Hooks必须在顶层调用，不能在条件语句中
   const shopify = useAppBridge();
   const navigate = useNavigate();
@@ -387,7 +389,7 @@ function Index() {
   // 加载状态 - 添加错误重试机制
   const loadStatus = useCallback((lang = selectedLanguage) => {
     try {
-      statusFetcher.load(`/api/status?language=${lang}`);
+      statusFetcher.load(`/api/status?language=${lang}${shopQueryParam ? `&${shopQueryParam}` : ''}`);
     } catch (error) {
       console.error('状态加载失败:', error);
       addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
@@ -649,46 +651,55 @@ function Index() {
   const scanProducts = useCallback(() => {
     try {
       addLog('🔍 开始扫描产品...', 'info');
-      scanProductsFetcher.submit({}, { 
-        method: 'POST', 
-        action: '/api/scan-products' 
-      });
+      scanProductsFetcher.submit(
+        shopId ? { shop: shopId } : {},
+        {
+          method: 'POST',
+          action: shopQueryParam ? `/api/scan-products?${shopQueryParam}` : '/api/scan-products'
+        }
+      );
     } catch (error) {
       console.error('扫描产品失败:', error);
       addLog('❌ 扫描产品失败，请检查网络连接', 'error');
       setAppBridgeError(true);
     }
-  }, [addLog, scanProductsFetcher]);
+  }, [addLog, scanProductsFetcher, shopId, shopQueryParam]);
 
   // 扫描集合
   const scanCollections = useCallback(() => {
     try {
       addLog('🔍 开始扫描集合...', 'info');
-      scanCollectionsFetcher.submit({}, { 
-        method: 'POST', 
-        action: '/api/scan-collections' 
-      });
+      scanCollectionsFetcher.submit(
+        shopId ? { shop: shopId } : {},
+        {
+          method: 'POST',
+          action: shopQueryParam ? `/api/scan-collections?${shopQueryParam}` : '/api/scan-collections'
+        }
+      );
     } catch (error) {
       console.error('扫描集合失败:', error);
       addLog('❌ 扫描集合失败，请检查网络连接', 'error');
       setAppBridgeError(true);
     }
-  }, [addLog, scanCollectionsFetcher]);
+  }, [addLog, scanCollectionsFetcher, shopId, shopQueryParam]);
 
   // 扫描所有资源
   const scanAllResources = useCallback(() => {
     try {
       addLog('🔍 开始扫描所有资源类型...', 'info');
-      scanAllFetcher.submit({}, { 
-        method: 'POST', 
-        action: '/api/scan-all' 
-      });
+      scanAllFetcher.submit(
+        shopId ? { shop: shopId } : {},
+        {
+          method: 'POST',
+          action: shopQueryParam ? `/api/scan-all?${shopQueryParam}` : '/api/scan-all'
+        }
+      );
     } catch (error) {
       console.error('扫描所有资源失败:', error);
       addLog('❌ 扫描所有资源失败，请检查网络连接', 'error');
       setAppBridgeError(true);
     }
-  }, [addLog, scanAllFetcher]);
+  }, [addLog, scanAllFetcher, shopId, shopQueryParam]);
 
   // 扫描选定的资源类型
   const scanSelectedResourceType = useCallback(() => {
@@ -696,10 +707,10 @@ function Index() {
       const selectedType = resourceTypeOptions.find(opt => opt.value === selectedResourceType);
       addLog(`🔍 开始扫描${selectedType?.label || selectedResourceType}...`, 'info');
       scanResourcesFetcher.submit(
-        { resourceType: selectedResourceType }, 
-        { 
-          method: 'POST', 
-          action: '/api/scan-resources',
+        { resourceType: selectedResourceType, ...(shopId ? { shop: shopId } : {}) },
+        {
+          method: 'POST',
+          action: shopQueryParam ? `/api/scan-resources?${shopQueryParam}` : '/api/scan-resources',
           encType: 'application/json'
         }
       );
@@ -708,7 +719,7 @@ function Index() {
       addLog('❌ 扫描资源失败，请检查网络连接', 'error');
       setAppBridgeError(true);
     }
-  }, [addLog, scanResourcesFetcher, selectedResourceType, resourceTypeOptions]);
+  }, [addLog, scanResourcesFetcher, selectedResourceType, resourceTypeOptions, shopId, shopQueryParam]);
 
   // 处理分类翻译
   const handleCategoryTranslation = useCallback((categoryKey, resourceIds) => {
@@ -758,10 +769,11 @@ function Index() {
         resourceIds: JSON.stringify(resourceIds),
         clearCache: clearCache.toString(),
         forceRelatedTranslation: 'true',
-        userRequested: 'true'
+        userRequested: 'true',
+        shop: shopId
       }, {
         method: 'POST',
-        action: '/api/translate'
+        action: shopQueryParam ? `/api/translate?${shopQueryParam}` : '/api/translate'
       });
       
     } catch (error) {
@@ -775,7 +787,7 @@ function Index() {
         return newSet;
       });
     }
-  }, [selectedLanguage, clearCache, translationService, addLog, showToast, translatingCategories]);
+  }, [selectedLanguage, clearCache, translationService, addLog, showToast, translatingCategories, shopId, shopQueryParam]);
 
   // 处理分类发布（发布到Shopify）
   const handleCategorySync = useCallback(async (categoryKey, category) => {
@@ -804,10 +816,11 @@ function Index() {
         action: 'syncByCategory',
         categoryKey: categoryKey,
         language: selectedLanguage,
-        resourceIds: JSON.stringify(categoryResourceIds)
+        resourceIds: JSON.stringify(categoryResourceIds),
+        shop: shopId
       }, { 
         method: 'POST', 
-        action: '/api/sync-translations' 
+        action: shopQueryParam ? `/api/sync-translations?${shopQueryParam}` : '/api/sync-translations' 
       });
       
     } catch (error) {
@@ -821,7 +834,7 @@ function Index() {
         return newSet;
       });
     }
-  }, [selectedLanguage, addLog, syncingCategories, syncFetcher]);
+  }, [selectedLanguage, addLog, syncingCategories, syncFetcher, shopId, shopQueryParam]);
 
   // 开始翻译（带防抖和操作锁）
   const startTranslation = useCallback(() => {
@@ -843,26 +856,60 @@ function Index() {
           resourceIds: JSON.stringify(resourceIds),
           clearCache: clearCache.toString(),
           forceRelatedTranslation: 'true',
-          userRequested: 'true'
+          userRequested: 'true',
+          shop: shopId
         }, {
           method: 'POST',
-          action: '/api/translate'
+          action: shopQueryParam ? `/api/translate?${shopQueryParam}` : '/api/translate'
         });
       })(); // 立即调用返回的函数
     }, 1000);
-  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation]);
+  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation, shopId, shopQueryParam]);
 
   // 清空数据（带操作锁）
+  useEffect(() => {
+    if (translateFetcher.state !== 'idle' || !translateFetcher.data) {
+      return;
+    }
+
+    const { success, message, data } = translateFetcher.data;
+    if (!success) {
+      addLog(`❌ 翻译失败: ${message || '未知错误'}`, 'error');
+      showToast(message || '翻译失败', { isError: true });
+      loadStatus();
+      return;
+    }
+
+    const stats = data?.stats || {};
+    const successCount = stats.success || 0;
+    const failureCount = stats.failure || 0;
+    const skippedCount = stats.skipped || 0;
+
+    if (successCount > 0) {
+      addLog(`✅ ${successCount} 个资源翻译成功`, 'success');
+    }
+    if (skippedCount > 0) {
+      addLog(`ℹ️ ${skippedCount} 个资源内容未变化，已跳过`, 'info');
+    }
+    if (failureCount > 0) {
+      addLog(`⚠️ ${failureCount} 个资源翻译失败，请检查日志`, 'warning');
+      showToast(`${failureCount} 个资源翻译失败`, { isError: true });
+    }
+
+    loadStatus();
+  }, [translateFetcher.state, translateFetcher.data, addLog, showToast, loadStatus]);
+
   const clearData = useCallback(() => {
     safeAsyncOperation('清空数据', async () => {
       addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
 
       clearFetcher.submit({
         type: 'language',
-        language: selectedLanguage
+        language: selectedLanguage,
+        shop: shopId
       }, {
         method: 'POST',
-        action: '/api/clear'
+        action: shopQueryParam ? `/api/clear?${shopQueryParam}` : '/api/clear'
       });
 
       // 只清空当前语言的数据
@@ -873,7 +920,7 @@ function Index() {
 
       setSelectedResources([]);
     })(); // 立即调用返回的函数
-  }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation]);
+  }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation, shopId, shopQueryParam]);
 
   // 处理资源选择
   const handleResourceSelection = useCallback((resourceId, checked) => {
@@ -972,14 +1019,15 @@ function Index() {
 
         publishFetcher.submit({
           language: selectedLanguage,
-          publishAll: "false" // 只发布当前语言
+          publishAll: "false", // 只发布当前语言
+          shop: shopId
         }, {
           method: 'POST',
-          action: '/api/publish'
+          action: shopQueryParam ? `/api/publish?${shopQueryParam}` : '/api/publish'
         });
       })(); // 立即调用返回的函数
     }, 1500); // 发布操作延迟更长，避免重复
-  }, [addLog, publishFetcher, selectedLanguage, debounce, safeAsyncOperation]);
+  }, [addLog, publishFetcher, selectedLanguage, debounce, safeAsyncOperation, shopId, shopQueryParam]);
 
   const publishAllPending = useCallback(() => {
     debounce('publishAll', () => {
@@ -990,14 +1038,15 @@ function Index() {
         batchPublishFetcher.submit({
           batchSize: "5", // 每批5个，避免API限流
           delayMs: "1000", // 批次间延迟1秒
-          filters: JSON.stringify({}) // 发布所有语言
+          filters: JSON.stringify({}), // 发布所有语言
+          shop: shopId
         }, {
           method: 'POST',
-          action: '/api/batch-publish'
+          action: shopQueryParam ? `/api/batch-publish?${shopQueryParam}` : '/api/batch-publish'
         });
       })(); // 立即调用返回的函数
     }, 2000); // 批量发布延迟最长
-  }, [addLog, batchPublishFetcher, debounce, safeAsyncOperation]);
+  }, [addLog, batchPublishFetcher, debounce, safeAsyncOperation, shopId, shopQueryParam]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -1125,6 +1174,7 @@ function Index() {
                       primaryLanguage={primaryLanguage}
                       onLanguageAdded={handleLanguageAdded}
                       onLanguagesUpdated={handleLanguagesUpdated}
+                      shopId={shopId}
                     />
                   </Box>
                 </InlineStack>

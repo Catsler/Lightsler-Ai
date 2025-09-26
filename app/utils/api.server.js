@@ -117,6 +117,28 @@ export function extractTranslationFromResponse(apiResult) {
  * @param {number} maxTokens - 最大token数，默认8000
  * @returns {number} 动态计算的token限制
  */
+export function estimateTokenCount(text = '', targetLang = '') {
+  if (!text) {
+    return 0;
+  }
+
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  const cjkPattern = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g;
+  const cjkChars = (normalized.match(cjkPattern) || []).length;
+  const nonCjkChars = normalized.length - cjkChars;
+
+  const cjkTokens = cjkChars / 1.5;
+  const nonCjkTokens = nonCjkChars / 4;
+  const localeMultiplier = ['ja', 'ko', 'zh-CN', 'zh-TW'].includes(targetLang) ? 1.2 : 1;
+
+  const estimated = (cjkTokens + nonCjkTokens) * localeMultiplier;
+  return Math.max(0, Math.ceil(estimated));
+}
+
 export function calculateDynamicTokenLimit(text, targetLang, minTokens = 2000, maxTokens = 8000) {
   // 不同语言的token比率不同，韩语/日语需要更多token
   const tokenMultiplier = ['ja', 'ko', 'zh-CN', 'zh-TW'].includes(targetLang) ? 4 : 2.5;
@@ -151,6 +173,24 @@ export async function makeTranslationAPICall(text, targetLang, systemPrompt, opt
   }
 
   const dynamicMaxTokens = maxTokens || calculateDynamicTokenLimit(text, targetLang);
+  const estimatedInputTokens = estimateTokenCount(systemPrompt) + estimateTokenCount(text, targetLang);
+  const modelTokenLimit = config.translation.modelTokenLimit ?? 0;
+  const safetyMargin = config.translation.tokenSafetyMargin ?? 512;
+  const minResponseTokens = config.translation.minResponseTokens ?? 256;
+
+  let safeMaxTokens = dynamicMaxTokens;
+  if (modelTokenLimit > 0) {
+    const availableForResponse = modelTokenLimit - estimatedInputTokens - safetyMargin;
+    if (availableForResponse > 0) {
+      safeMaxTokens = Math.min(dynamicMaxTokens, Math.max(minResponseTokens, availableForResponse));
+    } else {
+      safeMaxTokens = Math.max(minResponseTokens, Math.floor(dynamicMaxTokens * 0.5));
+    }
+  }
+
+  if (!Number.isFinite(safeMaxTokens) || safeMaxTokens <= 0) {
+    safeMaxTokens = minResponseTokens;
+  }
   
   // 创建超时控制
   const controller = new AbortController();
@@ -158,7 +198,7 @@ export async function makeTranslationAPICall(text, targetLang, systemPrompt, opt
   
   try {
     const headers = createAPIHeaders();
-    const requestBody = createTranslationRequestBody(text, targetLang, systemPrompt, dynamicMaxTokens);
+    const requestBody = createTranslationRequestBody(text, targetLang, systemPrompt, safeMaxTokens);
     
     const response = await fetch(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
@@ -174,6 +214,7 @@ export async function makeTranslationAPICall(text, targetLang, systemPrompt, opt
       textLength: text.length,
       targetLang,
       model: config.translation.model,
+      maxTokens: safeMaxTokens,
       ...context
     };
     
@@ -185,7 +226,7 @@ export async function makeTranslationAPICall(text, targetLang, systemPrompt, opt
       text: translatedText,
       isOriginal: false,
       language: targetLang,
-      tokenLimit: dynamicMaxTokens
+      tokenLimit: safeMaxTokens
     };
     
   } catch (error) {

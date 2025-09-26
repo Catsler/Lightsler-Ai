@@ -1,7 +1,11 @@
 import React from "react";
 
 export function useDisableSWInDev() {
-  const { useEffect } = React;
+  const useEffect = React && typeof React.useEffect === 'function' ? React.useEffect : null;
+
+  if (!useEffect || typeof window === 'undefined') {
+    return;
+  }
 
   useEffect(() => {
     // 防御性检查：SSR 安全 + 环境验证

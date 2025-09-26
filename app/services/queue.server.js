@@ -1,6 +1,7 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
-import { translateResource } from './translation.server.js';
+import { translateResourceWithLogging } from './translation.server.js';
+import shopify from '../shopify.server.js';
 import { updateResourceTranslation } from './shopify-graphql.server.js';
 import { saveTranslation, updateResourceStatus, prisma } from './database.server.js';
 // import { authenticate } from '../shopify.server.js'; // 只在需要时导入
@@ -111,6 +112,46 @@ function assertBatchJobPayload(payload) {
     error.code = 'QUEUE_BATCH_JOB_VALIDATION';
     throw error;
   }
+}
+
+function createAdminClient(shopDomain, accessToken) {
+  if (!shopDomain) {
+    throw new Error('缺少 shopDomain，无法创建 Shopify Admin 客户端');
+  }
+  if (!accessToken) {
+    throw new Error(`店铺 ${shopDomain} 缺少 accessToken，无法创建 Shopify Admin 客户端`);
+  }
+
+  const configuredScopes = Array.isArray(shopify.api?.config?.scopes)
+    ? shopify.api.config.scopes.join(',')
+    : (shopify.api?.config?.scopes || process.env.SCOPES || '');
+
+  const session = {
+    id: `offline_${shopDomain}`,
+    shop: shopDomain,
+    state: 'offline',
+    isOnline: false,
+    scope: configuredScopes,
+    accessToken
+  };
+
+  const graphqlClient = new shopify.api.clients.Graphql({
+    session,
+    apiVersion: shopify.api?.config?.apiVersion
+  });
+
+  return {
+    graphql: async (query, options = {}) => {
+      const result = await graphqlClient.request(query, {
+        variables: options?.variables,
+        retries: options?.tries ? options.tries - 1 : 0,
+        headers: options?.headers,
+        signal: options?.signal
+      });
+
+      return new Response(JSON.stringify(result));
+    }
+  };
 }
 
 const processorDefinitions = [];
@@ -407,12 +448,6 @@ async function handleTranslateResource(job) {
     await updateResourceStatus(resourceId, 'processing');
     job.progress(20);
 
-    const translations = await translateResource(resource, language);
-    job.progress(50);
-
-    await saveTranslation(resourceId, shopId, language, translations);
-    job.progress(70);
-
     let shop = await prisma.shop.findUnique({
       where: { id: shopId }
     });
@@ -429,6 +464,32 @@ async function handleTranslateResource(job) {
       throw new Error(`店铺 ${shopId || shopDomain} 不存在`);
     }
 
+    if (!shop.accessToken) {
+      throw new Error(`店铺 ${shop.domain} 缺少访问令牌，无法翻译`);
+    }
+
+    const admin = createAdminClient(shop.domain, shop.accessToken);
+
+    const translationResult = await translateResourceWithLogging(resource, language, admin);
+    job.progress(50);
+
+    if (translationResult.skipped) {
+      console.log(`ℹ️ 跳过翻译，内容未变化: ${resource.title}`);
+      await updateResourceStatus(resourceId, 'pending');
+      job.progress(100);
+      return {
+        resourceId,
+        resourceType: resource.resourceType,
+        title: resource.title,
+        success: true,
+        skipped: true,
+        skipReason: translationResult.skipReason
+      };
+    }
+
+    await saveTranslation(resourceId, shopId, language, translationResult.translations);
+    job.progress(70);
+
     console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);
     job.progress(90);
 
@@ -440,7 +501,7 @@ async function handleTranslateResource(job) {
       resourceType: resource.resourceType,
       title: resource.title,
       success: true,
-      translations
+      translations: translationResult.translations
     };
   } catch (error) {
     console.error(`翻译任务失败 ${resourceId}:`, error);
