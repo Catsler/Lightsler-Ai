@@ -2,6 +2,40 @@
 
 ## 🚧 进行中
 
+### 日志文件输出功能 (2025-09-26) - ✅ 完成
+**范围**: 实现日志本地文件输出，便于开发调试
+- [x] 安装 pino 和 pino-pretty 日志库
+- [x] 修改 base-logger.server.js 使用 pino transport
+- [x] 创建 logs 目录并配置 .gitignore
+- [x] 添加 LOG_FILE_ENABLED 环境变量
+- [x] 测试验证文件输出功能
+
+**实施方案**: 极简方案，遵循 KISS 原则
+- 使用成熟的 pino 库，避免自己实现异步写入
+- 单文件 append-only 模式，暂不实现复杂轮转
+- 最小化配置，只需 LOG_FILE_ENABLED=true
+- 使用标准工具查看：tail -f logs/app.log
+
+**完成时间**: 2025-09-26
+**输出位置**: logs/app.log (JSON 格式)
+
+### 日志持久化统一 (2025-09-26) - 阶段 1 ✅ 完成
+**范围**: 统一日志出口、引入 TranslationLog 表、改造 translation.server.js 及 /api/translation-logs
+- [x] 新增 prisma TranslationLog 模型与配置项，铺设持久化结构
+- [x] 创建 unified-logger.server.js + 重构 log-persistence，实现内存+数据库双写
+- [x] 替换 translationLogger 自定义实现，合并内存/数据库日志查询，扩展 API 过滤能力
+- [x] **修复Prisma Schema漂移问题** - 执行 `npm run setup` 同步数据库结构
+- [x] **验证日志系统工作** - 创建并运行 test-logging-system.js 测试工具
+- [x] **确认日志持久化** - TranslationLog 和 ErrorLog 表成功写入数据
+
+**完成时间**: 2025-09-26
+**修复要点**:
+- 问题根因：Prisma Schema 未同步导致 Query Engine 崩溃
+- 解决方案：运行 `npm run setup` 执行数据库迁移
+- 验证结果：日志系统完全恢复正常，成功写入 TranslationLog 3条，ErrorLog 39条
+- 后续计划：阶段 2 查询与监控增强（自动标签、统计接口、force flush 管控）
+
+
 ### HTML Body模块宽度异常问题修复 (2025-09-24) - 最小化原则 ✅ 完成
 **问题**: Theme翻译对比页面中，HTML Body内容模块出现宽度异常，导致双栏布局不对称
 **根因**: CSS Grid子项的min-content计算导致`1fr 1fr`分栏失效，长HTML内容撑开列宽

@@ -26,6 +26,9 @@ diagnose-*.js
 *.bak
 *.old
 
+# Logs directory
+logs/
+
 # Cache directories
 .serena/
 screenshoots/

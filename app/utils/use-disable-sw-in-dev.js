@@ -1,15 +1,14 @@
-import React from "react";
+import { useEffect } from "react";
 
 export function useDisableSWInDev() {
-  const useEffect = React && typeof React.useEffect === 'function' ? React.useEffect : null;
-
-  if (!useEffect || typeof window === 'undefined') {
+  // SSR 安全检查
+  if (typeof window === 'undefined') {
     return;
   }
 
   useEffect(() => {
-    // 防御性检查：SSR 安全 + 环境验证
-    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !import.meta?.env?.DEV) {
+    // 防御性检查：环境验证
+    if (!("serviceWorker" in navigator) || !import.meta?.env?.DEV) {
       return;
     }
 

@@ -148,6 +148,32 @@ NODE_ENV=development|production          # 环境标识
 ENABLE_PRODUCT_RELATED_TRANSLATION=true  # 产品关联翻译
 ```
 
+## 日志查看
+
+### 本地日志文件
+```bash
+# 实时查看所有日志
+tail -f logs/app.log
+
+# 查看最近100条日志
+tail -100 logs/app.log
+
+# 只看错误日志（使用 jq 解析 JSON）
+tail -f logs/app.log | jq 'select(.level==50)'
+
+# 按关键词过滤
+tail -f logs/app.log | grep "TRANSLATION"
+
+# 使用 rg 高亮显示
+tail -f logs/app.log | rg --line-buffered "ERROR" --color always
+```
+
+**注意**: 日志为 JSON 格式，包含以下字段：
+- `level`: 30=INFO, 40=WARN, 50=ERROR
+- `time`: Unix 时间戳
+- `msg`: 日志消息
+- 其他自定义字段
+
 ## 常用命令
 
 ### 数据库管理
