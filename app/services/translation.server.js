@@ -47,6 +47,104 @@ import {
 } from './sequential-thinking-core.server.js';
 
 const translationLogger = createTranslationLogger('TRANSLATION');
+
+const CONFIG_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)+$/;
+
+function isLikelyConfigKey(text) {
+  if (typeof text !== 'string') {
+    return false;
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.length < 3 || trimmed.length > 120) {
+    return false;
+  }
+
+  return CONFIG_KEY_PATTERN.test(trimmed);
+}
+
+function toReadableConfigKey(text) {
+  return text
+    .split('_')
+    .filter(Boolean)
+    .map(segment => segment.trim())
+    .join(' ');
+}
+
+async function translateConfigKeyWithFallback(originalText, targetLang) {
+  const normalizedText = toReadableConfigKey(originalText);
+  const startTime = Date.now();
+
+  logger.info('配置键备用翻译策略触发', {
+    originalText,
+    normalizedText,
+    targetLang
+  });
+
+  const fallbackPrompt = `你将收到一个由小写字母和下划线组成的配置键，例如 "social_facebook"。
+
+请将它翻译成自然的${getLanguageName(targetLang)}短语，供最终用户在界面中阅读：
+- 将下划线视为单词之间的空格
+- 只返回翻译后的短语，不要保留下划线
+- 不要生成任何以__PROTECTED_开头的占位符
+- 保持译文简洁明了`;
+
+  const result = await makeTranslationAPICallWithRetry(normalizedText, targetLang, fallbackPrompt, {
+    maxRetries: 1,
+    context: {
+      functionName: 'translateConfigKeyWithFallback',
+      originalText,
+      normalizedText
+    }
+  });
+
+  if (!result.success) {
+    return {
+      success: false,
+      text: originalText,
+      error: result.error || '备用翻译调用失败',
+      isOriginal: true,
+      language: targetLang
+    };
+  }
+
+  const translatedText = (result.text || '').trim();
+  if (!translatedText) {
+    return {
+      success: false,
+      text: originalText,
+      error: '备用翻译返回空结果',
+      isOriginal: true,
+      language: targetLang
+    };
+  }
+
+  if (translatedText.includes('__PROTECTED_')) {
+    return {
+      success: false,
+      text: originalText,
+      error: '备用翻译仍返回占位符',
+      isOriginal: true,
+      language: targetLang
+    };
+  }
+
+  const processingTime = Date.now() - startTime;
+
+  logger.logTranslationSuccess(originalText, translatedText, {
+    processingTime,
+    strategy: 'config-key-fallback',
+    tokenUsage: result.tokenLimit
+  });
+
+  return {
+    success: true,
+    text: translatedText,
+    isOriginal: false,
+    language: targetLang,
+    processingTime
+  };
+}
 export { translationLogger };
 
 /**
@@ -730,7 +828,8 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
 - 确保翻译自然流畅，符合目标语言习惯
 - 确保所有占位符保持原样
 
-重要：如果原文超过你的处理能力，请明确说明"TEXT_TOO_LONG"，不要返回不完整的翻译。`;
+`;
+  // 移除了"TEXT_TOO_LONG"指令，因为它可能导致API错误地返回这个标识
 
   // 使用统一的API调用函数进行翻译
   const translationFunction = withErrorHandling(async () => {
@@ -761,8 +860,33 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
     }
 
     // 检查是否返回了"TEXT_TOO_LONG"标识
-    if (translatedText === "TEXT_TOO_LONG") {
-      logger.warn('文本过长，API无法完整处理');
+    if (translatedText === "TEXT_TOO_LONG" || translatedText.includes("TEXT_TOO_LONG")) {
+      // 添加更详细的错误日志
+      logger.warn('API返回TEXT_TOO_LONG标识', {
+        originalText: text.substring(0, 100),
+        originalLength: text.length,
+        targetLang: targetLang,
+        returnedText: translatedText,
+        tokenLimit: result.tokenLimit
+      });
+
+      // 对于短文本，这明显是错误的响应，应该重试或使用备用策略
+      if (text.length < 100) {
+        logger.error('短文本被错误判断为过长', {
+          text: text,
+          length: text.length,
+          targetLang: targetLang
+        });
+        // 返回原文，但标记为需要重试
+        return {
+          success: false,
+          text: text,
+          error: '短文本被API错误判断为过长',
+          isOriginal: true,
+          retryable: true
+        };
+      }
+
       return {
         success: false,
         text: text,
@@ -858,9 +982,48 @@ export async function translateTextEnhanced(text, targetLang, retryCount = 0) {
     const isTranslated = await validateTranslation(text, translatedText, targetLang);
 
     // 轻量防御检查：原文无占位符但译文有占位符时回退
+    // 但需要排除某些特殊情况，比如技术术语可能真的需要保护
     if (!text.includes('__PROTECTED_') && translatedText.includes('__PROTECTED_')) {
-      logger.warn('检测到异常占位符生成，回退到原文', { originalText: text, translatedText });
-      return { success: false, text, error: '异常占位符检测', isOriginal: true, language: targetLang };
+      // 检查是否整个翻译都变成了占位符（这通常是错误的）
+      const placeholderPattern = /^__PROTECTED_[A-Z_]+_?[A-Z_]*__$/;
+      if (placeholderPattern.test(translatedText.trim())) {
+        if (isLikelyConfigKey(text)) {
+          logger.info('检测到配置键占位符，尝试使用备用策略', {
+            originalText: text,
+            targetLang,
+            textLength: text.length
+          });
+
+          const fallbackResponse = await translateConfigKeyWithFallback(text, targetLang);
+          if (fallbackResponse.success) {
+            return fallbackResponse;
+          }
+
+          logger.warn('配置键备用翻译策略未能产出有效结果', {
+            originalText: text,
+            targetLang,
+            fallbackError: fallbackResponse.error
+          });
+        }
+
+        logger.warn('检测到异常占位符生成，回退到原文', {
+          originalText: text,
+          translatedText,
+          textLength: text.length,
+          targetLang: targetLang
+        });
+
+        // 对于短文本（如单个词或短语），这明显是API错误
+        if (text.length < 50 && !text.includes('<') && !text.includes('>')) {
+          logger.error('短文本被错误转换为占位符', {
+            text: text,
+            translatedText: translatedText,
+            targetLang: targetLang
+          });
+        }
+
+        return { success: false, text, error: '异常占位符检测', isOriginal: true, language: targetLang };
+      }
     }
 
     // 记录翻译成功
@@ -3861,7 +4024,14 @@ export async function translateResource(resource, targetLang, options = {}) {
   if (isThemeResource(resource.resourceType)) {
     console.log(`[翻译服务] 检测到Theme资源，使用专用翻译逻辑: ${resource.resourceType}`);
     const { translateThemeResource } = await import('./theme-translation.server.js');
-    return translateThemeResource(resource, targetLang);
+    const themeResult = await translateThemeResource(resource, targetLang);
+
+    // 统一返回格式，确保与普通资源一致
+    return {
+      ...themeResult,
+      skipped: false,
+      translations: themeResult
+    };
   }
   
   // 以下是原有的非Theme资源翻译逻辑
@@ -4164,7 +4334,18 @@ export async function translateResource(resource, targetLang, options = {}) {
   
   console.log(`⏱️ 翻译性能: ${performanceMetrics.totalTime}ms`);
 
-  return translated;
+  // 返回兼容对象：同时支持扁平访问和嵌套访问
+  // Phase 1: 兼容期 - 支持两种访问方式
+  // 旧代码可以直接访问 result.titleTrans
+  // 新代码可以访问 result.translations.titleTrans
+  return {
+    // 保留扁平字段（向后兼容）
+    ...translated,
+
+    // 新增标准结构（向前兼容）
+    skipped: false,
+    translations: translated
+  };
 }
 
 /**

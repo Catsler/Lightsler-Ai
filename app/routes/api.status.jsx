@@ -53,6 +53,16 @@ export const loader = async ({ request }) => {
         const langTranslation = targetLanguage
           ? r.translations?.find(t => t.language === targetLanguage)
           : undefined;
+
+        // 获取总翻译数（当有语言过滤时，使用 _count；否则使用 translations 数组长度）
+        const totalTranslationCount = targetLanguage
+          ? (r._count?.translations || 0)
+          : (r.translations?.length || 0);
+
+        // 判断是否有其他语言的翻译
+        const currentLangCount = langTranslation ? 1 : 0;
+        const hasOtherLanguageTranslations = totalTranslationCount > currentLangCount;
+
         return {
           id: r.id,
           resourceType: r.resourceType,
@@ -62,8 +72,10 @@ export const loader = async ({ request }) => {
           handle: r.handle,
           name: r.name,
           status: r.status,
-          translationCount: r.translations?.length || 0,
+          translationCount: r.translations?.length || 0,  // 当前查询返回的翻译数
+          totalTranslationCount,  // 所有语言的翻译总数
           hasTranslationForLanguage: !!hasLang,
+          hasOtherLanguageTranslations,  // 是否有其他语言的翻译
           translationStatus: langTranslation?.status || null,
           translationSyncStatus: langTranslation?.syncStatus || null,
           createdAt: r.createdAt,

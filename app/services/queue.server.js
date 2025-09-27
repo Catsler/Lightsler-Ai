@@ -487,7 +487,10 @@ async function handleTranslateResource(job) {
       };
     }
 
-    await saveTranslation(resourceId, shopId, language, translationResult.translations);
+    // 确保传递正确的数据结构给 saveTranslation
+    // translationResult 可能包含 translations 字段，也可能直接就是翻译数据
+    const translationData = translationResult.translations || translationResult;
+    await saveTranslation(resourceId, shopId, language, translationData);
     job.progress(70);
 
     console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);

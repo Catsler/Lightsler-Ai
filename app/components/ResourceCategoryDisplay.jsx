@@ -88,26 +88,39 @@ export function ResourceCategoryDisplay({
   // 获取资源状态标签 - 基于语言特定状态
   const getResourceStatusBadge = (resource) => {
     // 检查当前语言是否有翻译
-    if (!resource.hasTranslationForLanguage) {
-      return <Badge tone="attention">待翻译</Badge>;
+    if (resource.hasTranslationForLanguage) {
+      // 根据同步状态显示不同状态
+      if (resource.translationSyncStatus === 'synced') {
+        return <Badge tone="success">已发布</Badge>;
+      }
+      if (resource.translationSyncStatus === 'pending') {
+        return <Badge tone="warning">待发布</Badge>;
+      }
+      if (resource.translationSyncStatus === 'syncing') {
+        return <Badge tone="info">发布中</Badge>;
+      }
+      if (resource.translationSyncStatus === 'failed') {
+        return <Badge tone="critical">发布失败</Badge>;
+      }
+      // 如果有翻译但状态未知，显示处理中
+      return <Badge tone="info">处理中</Badge>;
     }
 
-    // 根据同步状态显示不同状态
-    if (resource.translationSyncStatus === 'synced') {
-      return <Badge tone="success">已发布</Badge>;
-    }
-    if (resource.translationSyncStatus === 'pending') {
-      return <Badge tone="warning">待发布</Badge>;
-    }
-    if (resource.translationSyncStatus === 'syncing') {
-      return <Badge tone="info">发布中</Badge>;
-    }
-    if (resource.translationSyncStatus === 'failed') {
-      return <Badge tone="critical">发布失败</Badge>;
+    // 当前语言没有翻译，但检查是否有其他语言的翻译
+    if (resource.hasOtherLanguageTranslations) {
+      const otherCount = resource.totalTranslationCount || 0;
+      return (
+        <InlineStack gap="100" wrap={false}>
+          <Badge tone="attention">待翻译</Badge>
+          <Text variant="bodySm" tone="subdued">
+            ({otherCount} 其他语言)
+          </Text>
+        </InlineStack>
+      );
     }
 
-    // 如果有翻译但状态未知，显示处理中
-    return <Badge tone="info">处理中</Badge>;
+    // 完全没有任何翻译
+    return <Badge tone="attention">待翻译</Badge>;
   };
   
   // 获取语言标签

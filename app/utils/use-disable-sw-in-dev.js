@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 
 export function useDisableSWInDev() {
-  // SSR 安全检查
-  if (typeof window === 'undefined') {
-    return;
-  }
-
+  // 必须无条件调用 useEffect，遵守 React Hooks 规则
+  // Hook 必须在所有条件判断之前调用，保持调用顺序一致
   useEffect(() => {
+    // SSR 安全检查 - 移到 effect 内部
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     // 防御性检查：环境验证
     if (!("serviceWorker" in navigator) || !import.meta?.env?.DEV) {
       return;

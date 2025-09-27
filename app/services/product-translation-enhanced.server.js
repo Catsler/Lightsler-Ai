@@ -422,7 +422,9 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
           contentFields: updatedContentFields
         };
 
-        const translations = await translateResource(optionInput, targetLang);
+        const translationResult = await translateResource(optionInput, targetLang);
+        // 确保传递正确的数据结构
+        const translations = translationResult.translations || translationResult;
         await saveTranslation(optionResourceId, product.shopId, targetLang, translations);
 
         logger.debug(`选项翻译并保存完成: ${option.title || optionInput.resourceId}`);
@@ -544,6 +546,7 @@ async function translateProductMetafieldsIfExists(product, targetLang, admin) {
           }
         };
 
+        // 注意这里的 translations 已经是构造好的对象，直接传递
         await saveTranslation(metafieldResource.id, product.shopId, targetLang, translations);
 
         successCount++;

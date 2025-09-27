@@ -116,9 +116,14 @@ export async function getPendingResources(shopId, resourceType = null) {
  * @returns {Promise<Array>} 资源列表
  */
 export async function getAllResources(shopId, language = null) {
+  // 当有语言过滤时，添加 _count 以获取所有翻译的总数
+  // 这样前端可以知道其他语言的翻译情况
   const includeClause = language ? {
     translations: {
       where: { language: language }
+    },
+    _count: {
+      select: { translations: true }  // 返回所有翻译的总数，不受 where 过滤影响
     }
   } : {
     translations: true
@@ -142,17 +147,23 @@ export async function getAllResources(shopId, language = null) {
 export async function saveTranslation(resourceId, shopId, language, translations) {
   // 记录语言参数，帮助调试
   console.log(`[saveTranslation] 保存翻译 - 资源ID: ${resourceId}, 语言: ${language}, 店铺: ${shopId}`);
-  
-  // 构建翻译数据对象
+
+  // 防御性检查：处理可能的嵌套结构
+  // 兼容两种调用方式：
+  // 1. 直接传递翻译字段对象 { titleTrans, descTrans, ... }
+  // 2. 传递包含 translations 字段的对象 { translations: { titleTrans, descTrans, ... } }
+  const actualTranslations = translations?.translations || translations || {};
+
+  // 构建翻译数据对象，使用防御性访问
   const translationData = {
-    titleTrans: translations.titleTrans || null,
-    descTrans: translations.descTrans || null,
-    handleTrans: translations.handleTrans || null,
-    summaryTrans: translations.summaryTrans || null,
-    labelTrans: translations.labelTrans || null,
-    seoTitleTrans: translations.seoTitleTrans || null,
-    seoDescTrans: translations.seoDescTrans || null,
-    translationFields: translations.translationFields || null,
+    titleTrans: actualTranslations.titleTrans || null,
+    descTrans: actualTranslations.descTrans || null,
+    handleTrans: actualTranslations.handleTrans || null,
+    summaryTrans: actualTranslations.summaryTrans || null,
+    labelTrans: actualTranslations.labelTrans || null,
+    seoTitleTrans: actualTranslations.seoTitleTrans || null,
+    seoDescTrans: actualTranslations.seoDescTrans || null,
+    translationFields: actualTranslations.translationFields || null,
     status: 'completed',
     syncStatus: 'pending' // 新翻译默认为待同步状态
   };
@@ -391,6 +402,106 @@ export async function getResourceWithTranslations(resourceId, shopId) {
     console.error('[getResourceWithTranslations] 获取资源失败:', error);
     throw error;
   }
+}
+
+function mapGroupCounts(groups, key) {
+  if (!Array.isArray(groups) || groups.length === 0) {
+    return {};
+  }
+
+  return groups.reduce((acc, item) => {
+    const groupKey = item[key] ?? 'unknown';
+    acc[groupKey] = item._count?._all ?? 0;
+    return acc;
+  }, {});
+}
+
+export async function getHealthSnapshot(shopId) {
+  const [
+    totalResources,
+    resourcesByStatus,
+    resourcesByType,
+    resourcesLastScanned,
+    translationTotal,
+    translationsByStatus,
+    translationsByLanguage,
+    translationsBySyncStatus,
+    lastTranslation,
+    lastSynced
+  ] = await Promise.all([
+    prisma.resource.count({ where: { shopId } }),
+    prisma.resource.groupBy({
+      by: ['status'],
+      where: { shopId },
+      _count: { _all: true }
+    }),
+    prisma.resource.groupBy({
+      by: ['resourceType'],
+      where: { shopId },
+      _count: { _all: true }
+    }),
+    prisma.resource.findFirst({
+      where: {
+        shopId,
+        lastScannedAt: { not: null }
+      },
+      orderBy: { lastScannedAt: 'desc' },
+      select: { lastScannedAt: true }
+    }),
+    prisma.translation.count({ where: { shopId } }),
+    prisma.translation.groupBy({
+      by: ['status'],
+      where: { shopId },
+      _count: { _all: true }
+    }),
+    prisma.translation.groupBy({
+      by: ['language'],
+      where: { shopId },
+      _count: { _all: true }
+    }),
+    prisma.translation.groupBy({
+      by: ['syncStatus'],
+      where: { shopId },
+      _count: { _all: true }
+    }),
+    prisma.translation.findFirst({
+      where: { shopId },
+      orderBy: { updatedAt: 'desc' },
+      select: { updatedAt: true, language: true, resourceId: true }
+    }),
+    prisma.translation.findFirst({
+      where: {
+        shopId,
+        syncedAt: { not: null }
+      },
+      orderBy: { syncedAt: 'desc' },
+      select: { syncedAt: true, language: true, resourceId: true }
+    })
+  ]);
+
+  const resourceStatusCounts = mapGroupCounts(resourcesByStatus, 'status');
+  const resourceTypeCounts = mapGroupCounts(resourcesByType, 'resourceType');
+  const translationStatusCounts = mapGroupCounts(translationsByStatus, 'status');
+  const translationLanguageCounts = mapGroupCounts(translationsByLanguage, 'language');
+  const translationSyncCounts = mapGroupCounts(translationsBySyncStatus, 'syncStatus');
+
+  return {
+    resources: {
+      total: totalResources,
+      byStatus: resourceStatusCounts,
+      byType: resourceTypeCounts,
+      lastScannedAt: resourcesLastScanned?.lastScannedAt?.toISOString() ?? null
+    },
+    translations: {
+      total: translationTotal,
+      byStatus: translationStatusCounts,
+      byLanguage: translationLanguageCounts,
+      bySyncStatus: translationSyncCounts,
+      pendingSync: translationSyncCounts.pending ?? 0,
+      lastTranslatedAt: lastTranslation?.updatedAt?.toISOString() ?? null,
+      lastSyncedAt: lastSynced?.syncedAt?.toISOString() ?? null
+    }
+  };
 }
 
 export { prisma };

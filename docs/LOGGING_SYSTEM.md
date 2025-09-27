@@ -27,8 +27,8 @@
 // 记录日志
 await translationLogger.log(level, message, data);
 
-// 获取内存日志
-translationLogger.getRecentLogs(count);
+// 获取内存日志（已自动裁剪字段并完成序列化清洗）
+getRecentLogSummaries({ limit: count });
 
 // 获取历史日志
 await translationLogger.getHistoricalLogs(options);
@@ -36,6 +36,9 @@ await translationLogger.getHistoricalLogs(options);
 // 获取错误统计
 await translationLogger.getErrorStats(hours);
 ```
+
+> 注：`getRecentLogSummaries` 会返回已序列化的精简日志结构（id、level、message、timestamp 等），便于直接用于 API 响应或前端展示。
+
 
 #### ErrorLog 数据表
 完整的错误日志表结构，包含:

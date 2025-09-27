@@ -4,6 +4,7 @@
  */
 
 import { LOG_LEVELS, TranslationLogger as BaseTranslationLogger, createTranslationLogger as createBaseLogger } from '../utils/base-logger.server.js';
+import { sanitizeForJson } from '../utils/api-response.server.js';
 import {
   PersistentTranslationLogger,
   persistentLogger,
@@ -17,6 +18,67 @@ import {
 } from './log-persistence.server.js';
 
 const persistenceEnabled = logPersistenceSettings.enabled;
+
+const LOG_CONTEXT_WHITELIST = new Set([
+  'shopId',
+  'resourceId',
+  'resourceType',
+  'language',
+  'targetLanguage',
+  'targetLang',
+  'textLength',
+  'textPreview',
+  'processingTime',
+  'strategy',
+  'status',
+  'syncStatus',
+  'error',
+  'errorCode',
+  'retryCount',
+  'queue',
+  'operation'
+]);
+
+function extractLogContext(raw = {}) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const context = {};
+  for (const key of LOG_CONTEXT_WHITELIST) {
+    if (raw[key] !== undefined) {
+      context[key] = raw[key];
+    }
+  }
+
+  return Object.keys(context).length > 0 ? sanitizeForJson(context) : null;
+}
+
+function toLogSummary(entry) {
+  const timestamp = entry.timestamp instanceof Date
+    ? entry.timestamp
+    : new Date(entry.timestamp || Date.now());
+
+  const data = entry.data || {};
+  const base = {
+    id: String(entry.id ?? `${timestamp.getTime()}-${entry.level ?? 'INFO'}`),
+    timestamp: timestamp.toISOString(),
+    level: entry.level ?? 'INFO',
+    category: entry.category ?? 'TRANSLATION',
+    message: entry.message ?? '',
+    shopId: entry.shopId ?? data.shopId ?? null,
+    resourceId: entry.resourceId ?? data.resourceId ?? null,
+    resourceType: data.resourceType ?? null,
+    language: data.language ?? data.targetLanguage ?? data.targetLang ?? null
+  };
+
+  const context = extractLogContext(data);
+  if (context) {
+    return { ...base, context };
+  }
+  return base;
+}
+
 
 export { LOG_LEVELS, BaseTranslationLogger as TranslationLogger, PersistentTranslationLogger };
 
@@ -109,6 +171,29 @@ export function logTranslationQuality(qualityMetrics) {
     isComplete,
     hasRemnants
   });
+}
+
+export function getRecentLogSummaries(options = {}) {
+  const {
+    limit = 50,
+    category = 'TRANSLATION',
+    levels,
+    shopId,
+    resourceId,
+    since
+  } = options;
+
+  const normalizedLimit = Math.max(Math.min(limit, 200), 1);
+  const logs = getInMemoryLogs({
+    limit: normalizedLimit,
+    category,
+    levels,
+    shopId,
+    resourceId,
+    since
+  }) || [];
+
+  return logs.map(toLogSummary);
 }
 
 export const memoryLogReader = {

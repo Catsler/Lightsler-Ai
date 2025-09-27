@@ -1,5 +1,95 @@
 import { json } from "@remix-run/node";
 
+export function sanitizeForJson(value, seen = new WeakSet()) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  const valueType = typeof value;
+
+  if (valueType === 'bigint') {
+    return value.toString();
+  }
+
+  if (valueType === 'number' || valueType === 'string' || valueType === 'boolean') {
+    return value;
+  }
+
+  if (valueType === 'symbol') {
+    return value.toString();
+  }
+
+  if (valueType === 'function') {
+    return `[Function ${value.name || 'anonymous'}]`;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack
+    };
+  }
+
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    return value.map(item => sanitizeForJson(item, seen));
+  }
+
+  if (value instanceof Map) {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    const entries = {};
+    for (const [key, mapValue] of value.entries()) {
+      entries[String(key)] = sanitizeForJson(mapValue, seen);
+    }
+    return entries;
+  }
+
+  if (value instanceof Set) {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    return Array.from(value).map(item => sanitizeForJson(item, seen));
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    return Array.from(value, item => sanitizeForJson(item, seen));
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return Array.from(new Uint8Array(value));
+  }
+
+  if (valueType === 'object') {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+    const sanitized = {};
+    for (const [key, innerValue] of Object.entries(value)) {
+      sanitized[key] = sanitizeForJson(innerValue, seen);
+    }
+    return sanitized;
+  }
+
+  return value;
+}
+
 
 /**
  * 统一API响应格式处理
@@ -13,12 +103,14 @@ import { json } from "@remix-run/node";
  * @returns {Response} JSON响应
  */
 export function successResponse(data, message = "操作成功", status = 200) {
-  return json({
+  const payload = {
     success: true,
     message,
-    data,
+    data: sanitizeForJson(data),
     timestamp: new Date().toISOString()
-  }, { status });
+  };
+
+  return json(payload, { status });
 }
 
 /**
@@ -30,13 +122,16 @@ export function successResponse(data, message = "操作成功", status = 200) {
  */
 export function errorResponse(message = "操作失败", error = null, status = 500) {
   console.error("API错误:", { message, error, timestamp: new Date().toISOString() });
-  
-  return json({
+
+  const includeError = process.env.NODE_ENV === 'development';
+  const payload = {
     success: false,
     message,
-    error: process.env.NODE_ENV === 'development' ? error : null,
+    error: includeError ? sanitizeForJson(error) : null,
     timestamp: new Date().toISOString()
-  }, { status });
+  };
+
+  return json(payload, { status });
 }
 
 /**
@@ -45,12 +140,14 @@ export function errorResponse(message = "操作失败", error = null, status = 5
  * @returns {Response} JSON响应
  */
 export function validationErrorResponse(validationErrors) {
-  return json({
+  const payload = {
     success: false,
     message: "参数验证失败",
-    errors: validationErrors,
+    errors: sanitizeForJson(validationErrors),
     timestamp: new Date().toISOString()
-  }, { status: 400 });
+  };
+
+  return json(payload, { status: 400 });
 }
 
 /**
@@ -87,7 +184,7 @@ export function createApiResponse(data = null, message = '', success = true) {
   return {
     success,
     message: message || (success ? '操作成功' : '操作失败'),
-    data,
+    data: sanitizeForJson(data),
     timestamp: new Date().toISOString()
   };
 }
@@ -180,8 +277,11 @@ export async function withErrorHandling(operation, operationName, shopDomain = '
       status: 'failed', 
       error: errorMessage
     }, false);
-    
     // 区分不同类型的错误
+    if (/serialize|circular structure|Do not know how to serialize/i.test(errorMessage)) {
+      return errorResponse("响应数据包含无法序列化的内容，请联系管理员处理", error, 500);
+    }
+
     
     if (errorMessage.includes('GraphQL错误') || errorMessage.includes('更新') || errorMessage.includes('用户错误')) {
       return errorResponse(`${operationName}失败: ${errorMessage}`, errorMessage, 400);

@@ -1328,7 +1328,7 @@ function Index() {
                 <BlockStack gap="3">
                   <Text as="h2" variant="headingMd">暂无资源数据</Text>
                   <Text as="p" tone="subdued">
-                    请先选择资源类型并点击"扫描选定类型"按钮来加载资源数据
+                    请先完成以下流程后再启动翻译：① 扫描资源 ② 执行翻译 ③ 发布同步。当前未检测到任何已扫描资源，请使用下方按钮开始扫描。
                   </Text>
                   <InlineStack gap="2">
                     <Button onClick={scanSelectedResourceType} loading={isScanning}>

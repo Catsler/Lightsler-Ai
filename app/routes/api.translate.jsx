@@ -1,6 +1,6 @@
 import { authenticate } from "../shopify.server.js";
 import { translateResource, getTranslationStats } from "../services/translation.server.js";
-import { logger as translationLogger } from "../utils/logger.server.js";
+import { getRecentLogSummaries } from "../utils/logger.server.js";
 import { translateThemeResource } from "../services/theme-translation.server.js";
 import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
@@ -201,7 +201,10 @@ export const action = async ({ request }) => {
           continue;
         }
 
-        await saveTranslation(resource.id, shop.id, targetLanguage, translations.translations);
+        // 防御性检查：确保传递正确的数据结构给 saveTranslation
+        // translateResource 可能返回 { translations: {...} } 或直接返回翻译数据
+        const translationData = translations.translations || translations;
+        await saveTranslation(resource.id, shop.id, targetLanguage, translationData);
 
         console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${targetLanguage}`);
 
@@ -237,19 +240,24 @@ export const action = async ({ request }) => {
     
     // 获取翻译统计和日志
     const translationStats = getTranslationStats();
-    const recentLogs = translationLogger.getRecentLogs(10);
-    
-    return successResponse({
-      results: results,
+    const recentLogs = getRecentLogSummaries({ limit: 10 });
+
+    const responseData = {
+      results,
       stats: {
         total: results.length,
         success: successCount,
         failure: failureCount,
         skipped: skippedCount
       },
-      translationStats: translationStats,
-      recentLogs: recentLogs
-    }, `翻译完成: ${successCount} 成功, ${failureCount} 失败, ${skippedCount} 跳过`);
+      translationStats,
+      recentLogs
+    };
+
+    return successResponse(
+      responseData,
+      `翻译完成: ${successCount} 成功, ${failureCount} 失败, ${skippedCount} 跳过`
+    );
     
   }, "批量翻译", request.headers.get("shopify-shop-domain") || "");
 };
