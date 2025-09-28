@@ -78,6 +78,13 @@ export const action = async ({ request }) => {
     // 保存资源到数据库
     console.log(`开始保存${resources.length}个${normalizedResourceType}资源到数据库`);
     const savedResources = await saveResources(shop.id, resources);
+    
+    // 同步Markets配置到数据库（异步执行，不阻塞响应）
+    import("../services/market-urls.server.js").then(({ syncMarketConfig }) => {
+      syncMarketConfig(shop.id, admin).catch(err => {
+        console.error('同步Markets配置失败:', err);
+      });
+    });
 
     console.log(`${normalizedResourceType}资源扫描完成:`, {
       shopDomain,

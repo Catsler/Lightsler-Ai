@@ -22,6 +22,7 @@ export default function App() {
         <Link to="/app" rel="home">
           Home
         </Link>
+        <Link to="/app/language-domains">语言域名</Link>
         <Link to="/app/errors">搜集错误</Link>
       </NavMenu>
       <Outlet />

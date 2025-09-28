@@ -41,6 +41,7 @@ model Shop {
   resources   Resource[]
   translations Translation[]
   webhookEvents WebhookEvent[]
+  settings    ShopSettings?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -440,4 +441,33 @@ model QueueBackup {
   @@index([shopId, restored])
   @@index([jobName, createdAt])
   @@index([restored, createdAt])
+}
+
+// 店铺设置表 - 存储店铺级别的配置信息
+model ShopSettings {
+  id             String   @id @default(cuid())
+  shopId         String   @unique
+  
+  // Markets配置
+  marketConfig   Json?    // Markets域名配置JSON
+  marketConfigAt DateTime? // 配置获取时间
+  configVersion  String?  // 配置版本哈希
+  
+  // URL转换设置
+  urlStrategy    String   @default("subfolder") // URL策略: subfolder/subdomain/domain/none
+  enableLinkConversion Boolean @default(false) // 是否启用链接转换
+  
+  // 其他设置
+  autoTranslate  Boolean  @default(false) // 自动翻译开关
+  translationDelay Int    @default(0) // 翻译延迟(毫秒)
+  
+  // 时间戳
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // 关系
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  @@index([shopId])
+  @@index([marketConfigAt])
 }

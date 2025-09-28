@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server.js";
-import { getOrCreateShop, getAllResources, getTranslationStats } from "../services/database.server.js";
+import { getOrCreateShop, getAllResources, getTranslationStats, getResourceStats } from "../services/database.server.js";
 import { getJobStatus, getQueueStats } from "../services/queue.server.js";
 import { getTranslationServiceStatus, getTranslationStats as getTranslationServiceStats } from "../services/translation.server.js";
 import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
@@ -15,12 +15,16 @@ export const loader = async ({ request }) => {
     const { session } = await authenticate.admin(request);
     const url = new URL(request.url);
     const targetLanguage = url.searchParams.get('language');
+    const filterMode = url.searchParams.get('filterMode') || 'all';  // 新增参数
     
     // 获取店铺记录
     const shop = await getOrCreateShop(session.shop, session.accessToken);
     
     // 获取数据库统计（支持语言过滤）
     const dbStats = await getTranslationStats(shop.id, targetLanguage);
+    
+    // 获取增强的资源统计
+    const resourceStats = await getResourceStats(shop.id, targetLanguage);
     
     // 获取队列统计
     const queueStats = await getQueueStats();
@@ -29,8 +33,8 @@ export const loader = async ({ request }) => {
     const translationServiceStatus = await getTranslationServiceStatus();
     const translationServiceStats = getTranslationServiceStats();
     
-    // 获取资源列表（支持语言过滤）
-    const resources = await getAllResources(shop.id, targetLanguage);
+    // 获取资源列表（支持语言和过滤模式）
+    const resources = await getAllResources(shop.id, targetLanguage, filterMode);
     
     return successResponse({
       shop: {
@@ -38,9 +42,11 @@ export const loader = async ({ request }) => {
         domain: shop.domain
       },
       stats: {
-        database: dbStats,
-        queue: queueStats
+        database: resourceStats,  // 使用新的增强统计
+        queue: queueStats,
+        legacy: dbStats  // 保留旧的统计以向后兼容
       },
+      filterMode,  // 返回当前过滤模式
       translationService: {
         ...translationServiceStatus,
         stats: translationServiceStats

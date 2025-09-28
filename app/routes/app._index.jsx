@@ -12,6 +12,7 @@ import {
   Select,
   Checkbox,
   Badge,
+  Banner,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -117,6 +118,7 @@ function Index() {
   console.log('[Index Component] App Bridge initialized successfully');
   
   // Language selector persistence: read saved preference on init
+  const [viewMode, setViewMode] = useState('all');  // 新增：视图模式状态
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     const defaultTarget = supportedLanguages[0]?.value;
 
@@ -154,9 +156,10 @@ function Index() {
   // 从当前语言数据中提取资源和统计信息
   const resources = currentLanguageData?.resources || [];
   const stats = currentLanguageData?.stats || {
-    totalResources: 0,
-    pendingResources: 0,
-    completedResources: 0
+    total: 0,
+    translated: 0,
+    pending: 0,
+    translationRate: 0
   };
   const [translationService, setTranslationService] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -386,16 +389,16 @@ function Index() {
   const isTranslating = translateFetcher.state === 'submitting';
   const isClearing = clearFetcher.state === 'submitting';
 
-  // 加载状态 - 添加错误重试机制
-  const loadStatus = useCallback((lang = selectedLanguage) => {
+  // 加载状态 - 添加错误重试机制和filterMode参数
+  const loadStatus = useCallback((lang = selectedLanguage, mode = viewMode) => {
     try {
-      statusFetcher.load(`/api/status?language=${lang}${shopQueryParam ? `&${shopQueryParam}` : ''}`);
+      statusFetcher.load(`/api/status?language=${lang}&filterMode=${mode}${shopQueryParam ? `&${shopQueryParam}` : ''}`);
     } catch (error) {
       console.error('状态加载失败:', error);
       addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
       setAppBridgeError(true);
     }
-  }, [addLog, selectedLanguage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addLog, selectedLanguage, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 处理API响应
   // 状态比较和去重处理函数
@@ -426,9 +429,10 @@ function Index() {
           [selectedLanguage]: {
             resources: resourcesData || [],
             stats: statsData?.database || {
-              totalResources: 0,
-              pendingResources: 0,
-              completedResources: 0
+              total: 0,
+              translated: 0,
+              pending: 0,
+              translationRate: 0
             },
             lastUpdated: Date.now()
           }
@@ -616,8 +620,16 @@ function Index() {
   // 页面加载时获取状态 - 只在首次加载时执行
   useEffect(() => {
     console.log('[Index Component] Initial useEffect - loading status');
-    loadStatus();
+    loadStatus(selectedLanguage, viewMode);
   }, []); // 只在组件挂载时执行一次
+  
+  // 监听viewMode变化，重新加载数据
+  useEffect(() => {
+    if (viewMode) {
+      console.log('[View Mode Change] Reloading with mode:', viewMode);
+      loadStatus(selectedLanguage, viewMode);
+    }
+  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 组件卸载时清理防抖定时器
   useEffect(() => {
@@ -1158,17 +1170,34 @@ function Index() {
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">操作面板</Text>
                 
-                <InlineStack gap="300">
-                  <Box minWidth="200px">
-                    <Select
-                      label="目标语言"
-                      options={dynamicLanguages}
-                      value={selectedLanguage}
-                      onChange={handleLanguageChange}
-                      helpText="Select target language for translation (selection auto-saved)"
-                    />
-                  </Box>
-                  <Box paddingBlockStart="600">
+                <BlockStack gap="400">
+                  <Select
+                    label="目标语言"
+                    options={dynamicLanguages}
+                    value={selectedLanguage}
+                    onChange={handleLanguageChange}
+                    helpText="选择要翻译的目标语言（自动保存选择）"
+                  />
+                  
+                  <Select
+                    label="显示筛选"
+                    options={[
+                      { label: '全部资源', value: 'all' },
+                      { label: '仅已翻译', value: 'with-translations' },
+                      { label: '仅待翻译', value: 'without-translations' }
+                    ]}
+                    value={viewMode}
+                    onChange={(value) => {
+                      setViewMode(value);
+                      loadStatus(selectedLanguage, value);
+                    }}
+                    helpText={viewMode !== 'all' ? 
+                      `当前显示: ${viewMode === 'with-translations' ? '已翻译' : '待翻译'}的资源` : 
+                      '显示所有可翻译的资源'
+                    }
+                  />
+                  
+                  <Box>
                     <LanguageManager
                       currentLanguages={dynamicLanguages}
                       primaryLanguage={primaryLanguage}
@@ -1177,7 +1206,7 @@ function Index() {
                       shopId={shopId}
                     />
                   </Box>
-                </InlineStack>
+                </BlockStack>
 
                 {primaryLanguage && (
                   <Text variant="bodySm" tone="subdued">
@@ -1242,6 +1271,27 @@ function Index() {
           </Layout.Section>
         </Layout>
 
+        {/* 智能提示Banner */}
+        {stats.translated === 0 && viewMode === 'all' && resources.length > 0 && (
+          <Layout>
+            <Layout.Section>
+              <Banner status="info" title="开始翻译">
+                当前语言暂无翻译记录。请选择需要翻译的资源，然后点击"开始翻译"按钮。
+              </Banner>
+            </Layout.Section>
+          </Layout>
+        )}
+        
+        {viewMode === 'with-translations' && resources.length === 0 && (
+          <Layout>
+            <Layout.Section>
+              <Banner>
+                没有找到已翻译的资源。请切换到"全部资源"查看所有可翻译内容。
+              </Banner>
+            </Layout.Section>
+          </Layout>
+        )}
+
         {/* 统计信息 */}
         <Layout>
           <Layout.Section>
@@ -1249,22 +1299,47 @@ function Index() {
               <Card>
                 <BlockStack gap="200">
                   <Text as="h3" variant="headingMd">总资源数</Text>
-                  <Text as="p" variant="headingLg">{stats.totalResources}</Text>
+                  <Text as="p" variant="headingLg">{stats.total || 0}</Text>
                 </BlockStack>
               </Card>
               <Card>
                 <BlockStack gap="200">
                   <Text as="h3" variant="headingMd">待翻译</Text>
-                  <Text as="p" variant="headingLg" tone="critical">{stats.pendingResources}</Text>
+                  <Text as="p" variant="headingLg" tone="critical">{stats.pending || 0}</Text>
                 </BlockStack>
               </Card>
               <Card>
                 <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">已完成</Text>
-                  <Text as="p" variant="headingLg" tone="success">{stats.completedResources}</Text>
+                  <Text as="h3" variant="headingMd">已翻译</Text>
+                  <Text as="p" variant="headingLg" tone="success">{stats.translated || 0}</Text>
+                  {stats.translationRate !== undefined && (
+                    <Text variant="bodySm" tone="subdued">
+                      {stats.translationRate}% 完成率
+                    </Text>
+                  )}
                 </BlockStack>
-              </Card>
-            </InlineStack>
+              </Card>            </InlineStack>
+          </Layout.Section>
+        </Layout>
+
+        {/* 语言域名配置入口 */}
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between">
+                  <BlockStack gap="100">
+                    <Text variant="headingMd">语言域名配置</Text>
+                    <Text variant="bodySm" color="subdued">
+                      查看所有语言的URL映射配置
+                    </Text>
+                  </BlockStack>
+                  <Button url="/app/language-domains" size="slim">
+                    查看配置
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
           </Layout.Section>
         </Layout>
 

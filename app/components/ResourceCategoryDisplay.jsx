@@ -8,11 +8,13 @@ import {
   Checkbox,
   Collapsible,
   Grid,
+  Icon,
   InlineStack,
   Text,
+  Tooltip,
   ProgressBar
 } from '@shopify/polaris';
-import { ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
+import { ChevronDownIcon, ChevronRightIcon, InfoIcon } from '@shopify/polaris-icons';
 import { RESOURCE_CATEGORIES, organizeResourcesByCategory } from '../config/resource-categories';
 import { filterResourcesForList } from '../utils/resource-filters';
 
@@ -34,7 +36,8 @@ export function ResourceCategoryDisplay({
   onSyncCategory, // 已废弃，请使用发布管理页面
   translatingCategories = new Set(),
   syncingCategories = new Set(), // 已废弃
-  clearCache = false
+  clearCache = false,
+  showOtherLanguageHints = true // 新增：是否显示其他语言翻译提示
 }) {
   // 废弃提示
   if (onSyncCategory && typeof onSyncCategory === 'function') {
@@ -107,14 +110,14 @@ export function ResourceCategoryDisplay({
     }
 
     // 当前语言没有翻译，但检查是否有其他语言的翻译
-    if (resource.hasOtherLanguageTranslations) {
+    if (showOtherLanguageHints && resource.hasOtherLanguageTranslations) {
       const otherCount = resource.totalTranslationCount || 0;
       return (
-        <InlineStack gap="100" wrap={false}>
+        <InlineStack gap="100" wrap={false} blockAlign="center">
           <Badge tone="attention">待翻译</Badge>
-          <Text variant="bodySm" tone="subdued">
-            ({otherCount} 其他语言)
-          </Text>
+          <Tooltip content={`已有 ${otherCount} 个其他语言翻译可参考`}>
+            <Icon source={InfoIcon} tone="subdued" />
+          </Tooltip>
         </InlineStack>
       );
     }

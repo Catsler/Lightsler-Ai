@@ -166,6 +166,17 @@ export const action = async ({ request }) => {
       });
     }
     
+    // 同步Markets配置到数据库（异步执行，不阻塞响应）
+    import("../services/market-urls.server.js").then(({ syncMarketConfig }) => {
+      syncMarketConfig(shop.id, admin).then(config => {
+        if (config) {
+          console.log(`✓ Markets配置已同步: ${Object.keys(config.mappings || {}).length}种语言`);
+        }
+      }).catch(err => {
+        console.error('✗ Markets配置同步失败:', err);
+      });
+    });
+    
     // 返回扫描结果
     return json({
       success: true,

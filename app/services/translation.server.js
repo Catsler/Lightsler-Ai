@@ -109,7 +109,11 @@ async function translateConfigKeyWithFallback(originalText, targetLang) {
   }
 
   const translatedText = (result.text || '').trim();
-  if (!translatedText) {
+
+  // 清理错误生成的占位符 - 如果整个翻译变成了占位符，使用标准化的原文
+  const cleanedText = translatedText.replace(/^__PROTECTED_[A-Z_]+__$/, normalizedText);
+
+  if (!cleanedText) {
     return {
       success: false,
       text: originalText,
@@ -119,7 +123,8 @@ async function translateConfigKeyWithFallback(originalText, targetLang) {
     };
   }
 
-  if (translatedText.includes('__PROTECTED_')) {
+  // 检查清理后的文本是否仍包含占位符
+  if (cleanedText.includes('__PROTECTED_')) {
     return {
       success: false,
       text: originalText,
@@ -131,7 +136,7 @@ async function translateConfigKeyWithFallback(originalText, targetLang) {
 
   const processingTime = Date.now() - startTime;
 
-  logger.logTranslationSuccess(originalText, translatedText, {
+  logger.logTranslationSuccess(originalText, cleanedText, {
     processingTime,
     strategy: 'config-key-fallback',
     tokenUsage: result.tokenLimit
@@ -139,7 +144,7 @@ async function translateConfigKeyWithFallback(originalText, targetLang) {
 
   return {
     success: true,
-    text: translatedText,
+    text: cleanedText,
     isOriginal: false,
     language: targetLang,
     processingTime
@@ -3232,16 +3237,62 @@ async function processHtmlSpecialElements(htmlContent, targetLang) {
   return processedContent;
 }
 
-export async function postProcessTranslation(translatedText, targetLang, originalText = '') {
+export async function postProcessTranslation(translatedText, targetLang, originalText = '', options = {}) {
+  let processedText = translatedText;
+
+  // 链接转换处理（在所有语言处理前，确保链接正确）
+  if (options.enableLinkConversion && options.marketConfig) {
+    try {
+      const startTime = Date.now();
+      const { convertLinksForLocale } = await import('./link-converter.server.js');
+
+      // 统计原始URL数量
+      const originalUrlMatches = processedText.match(/href=["'][^"']*["']/g) || [];
+      const originalUrlCount = originalUrlMatches.length;
+
+      processedText = convertLinksForLocale(processedText, targetLang, options.marketConfig);
+
+      // 统计转换后URL数量
+      const convertedUrlMatches = processedText.match(/href=["'][^"']*["']/g) || [];
+      const convertedUrlCount = convertedUrlMatches.length;
+      const duration = Date.now() - startTime;
+
+      logger.info('链接转换完成', {
+        eventType: 'linkConversion',
+        phase: 'complete',
+        targetLanguage: targetLang,
+        resourceId: options.resourceId,
+        shopId: options.shopId,
+        originalUrlCount,
+        convertedUrlCount,
+        duration,
+        strategy: options.marketConfig?.mappings?.[targetLang]?.type || 'unknown'
+      });
+    } catch (error) {
+      await captureError('LINK_CONVERSION_ERROR', error, {
+        eventType: 'linkConversion',
+        targetLanguage: targetLang,
+        resourceId: options.resourceId,
+        shopId: options.shopId
+      });
+      logger.error('链接转换失败', {
+        eventType: 'linkConversion',
+        phase: 'error',
+        targetLanguage: targetLang,
+        shopId: options.shopId,
+        error: error.message
+      });
+      // 失败时继续使用原始文本
+    }
+  }
+
   // 只对中文目标语言进行英文残留检查
   if (targetLang !== 'zh-CN' && targetLang !== 'zh-TW') {
-    return translatedText;
+    return processedText;
   }
-  
+
   console.log(`🔍 开始翻译后处理，检查英文残留...`);
-  
-  let processedText = translatedText;
-  
+
   try {
     // 0. 首先处理HTML特殊元素
     processedText = await processHtmlSpecialElements(processedText, targetLang);
@@ -4010,7 +4061,7 @@ function isThemeResource(resourceType) {
 }
 
 export async function translateResource(resource, targetLang, options = {}) {
-  const { admin } = options || {};
+  const { admin, shopId } = options || {};
   // 性能监控 - 开始计时
   const performanceStart = Date.now();
   const performanceMetrics = {
@@ -4034,6 +4085,65 @@ export async function translateResource(resource, targetLang, options = {}) {
     };
   }
   
+  // 获取Markets配置以支持链接转换
+  let marketConfig = null;
+  let enableLinkConversion = false;
+
+  if (shopId) {
+    try {
+      const { getCachedMarketConfig, getUrlConversionSettings, syncMarketConfig } = await import('./market-urls.server.js');
+      const urlSettings = await getUrlConversionSettings(shopId);
+      enableLinkConversion = urlSettings.enableLinkConversion;
+
+      if (enableLinkConversion) {
+        marketConfig = await getCachedMarketConfig(shopId);
+
+        // 兜底：如果开关开了但没配置，自动同步
+        if (!marketConfig && admin) {
+          logger.warn('链接转换已启用但缺少Markets配置，自动同步', {
+            eventType: 'linkConversion',
+            phase: 'config_sync',
+            shopId
+          });
+          marketConfig = await syncMarketConfig(shopId, admin);
+        }
+
+        if (!marketConfig) {
+          logger.error('无法获取Markets配置，链接转换将被跳过', {
+            eventType: 'linkConversion',
+            phase: 'config_missing',
+            shopId
+          });
+          enableLinkConversion = false; // 降级
+        } else {
+          logger.info('链接转换已启用', {
+            eventType: 'linkConversion',
+            phase: 'config_ready',
+            shopId,
+            targetLanguage: targetLang,
+            languageCount: Object.keys(marketConfig.mappings || {}).length
+          });
+        }
+      }
+    } catch (error) {
+      await captureError('GET_MARKET_CONFIG', error, { shopId });
+      logger.error('获取Markets配置失败', {
+        eventType: 'linkConversion',
+        phase: 'config_error',
+        shopId,
+        error: error.message
+      });
+      enableLinkConversion = false; // 降级
+    }
+  }
+
+  const postProcessOptions = {
+    enableLinkConversion,
+    marketConfig,
+    shopId,
+    resourceId: resource?.gid || resource?.id
+  };
+
   // 以下是原有的非Theme资源翻译逻辑
   const translated = {
     titleTrans: null,
@@ -4073,9 +4183,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     
     // 后处理标题翻译，清理英文残留
     translated.titleTrans = await postProcessTranslation(
-      translated.titleTrans, 
-      targetLang, 
-      resource.title
+      translated.titleTrans,
+      targetLang,
+      resource.title,
+      postProcessOptions
     );
   }
 
@@ -4111,9 +4222,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     // 后处理描述翻译，这是最重要的内容清理
     console.log(`🔧 开始描述内容后处理...`);
     translated.descTrans = await postProcessTranslation(
-      translated.descTrans, 
-      targetLang, 
-      descriptionToTranslate
+      translated.descTrans,
+      targetLang,
+      descriptionToTranslate,
+      postProcessOptions
     );
     console.log(`✅ 描述内容后处理完成`);
   }
@@ -4133,9 +4245,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     
     // 后处理摘要翻译
     translated.summaryTrans = await postProcessTranslation(
-      translated.summaryTrans, 
-      targetLang, 
-      resource.summary
+      translated.summaryTrans,
+      targetLang,
+      resource.summary,
+      postProcessOptions
     );
   }
 
@@ -4146,9 +4259,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     
     // 后处理标签翻译
     translated.labelTrans = await postProcessTranslation(
-      translated.labelTrans, 
-      targetLang, 
-      resource.label
+      translated.labelTrans,
+      targetLang,
+      resource.label,
+      postProcessOptions
     );
   }
 
@@ -4178,9 +4292,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     
     // 后处理SEO标题翻译
     translated.seoTitleTrans = await postProcessTranslation(
-      translated.seoTitleTrans, 
-      targetLang, 
-      resource.seoTitle
+      translated.seoTitleTrans,
+      targetLang,
+      resource.seoTitle,
+      postProcessOptions
     );
     
     console.log(`✅ SEO标题翻译完成: "${resource.seoTitle}" -> "${translated.seoTitleTrans}"`);
@@ -4219,9 +4334,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     
     // 后处理SEO描述翻译
     translated.seoDescTrans = await postProcessTranslation(
-      translated.seoDescTrans, 
-      targetLang, 
-      resource.seoDescription
+      translated.seoDescTrans,
+      targetLang,
+      resource.seoDescription,
+      postProcessOptions
     );
     
     console.log(`✅ SEO描述翻译完成: "${resource.seoDescription}" -> "${translated.seoDescTrans}"`);
@@ -4238,7 +4354,8 @@ export async function translateResource(resource, targetLang, options = {}) {
         dynamicTranslationFields.name = await postProcessTranslation(
           dynamicTranslationFields.name,
           targetLang,
-          contentFields.name
+          contentFields.name,
+          postProcessOptions
         );
       }
       if (Array.isArray(contentFields.values) && contentFields.values.length > 0) {
@@ -4250,7 +4367,7 @@ export async function translateResource(resource, targetLang, options = {}) {
           }
           const translatedValue = await translateText(value, targetLang);
           dynamicTranslationFields.values.push(
-            await postProcessTranslation(translatedValue, targetLang, value)
+            await postProcessTranslation(translatedValue, targetLang, value, postProcessOptions)
           );
         }
       }
@@ -4262,7 +4379,8 @@ export async function translateResource(resource, targetLang, options = {}) {
         dynamicTranslationFields.value = await postProcessTranslation(
           translatedValue,
           targetLang,
-          contentFields.value
+          contentFields.value,
+          postProcessOptions
         );
       }
       break;

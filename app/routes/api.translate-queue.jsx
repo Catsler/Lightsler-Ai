@@ -111,5 +111,5 @@ export const action = async ({ request }) => {
       }, `已创建 ${jobs.length} 个翻译任务`);
     }
     
-  }, "队列翻译", shopDomain);
+  }, "队列翻译", request.headers.get("shopify-shop-domain") || 'unknown');
 };

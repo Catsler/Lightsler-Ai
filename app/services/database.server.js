@@ -115,7 +115,20 @@ export async function getPendingResources(shopId, resourceType = null) {
  * @param {string} language - 可选：目标语言过滤
  * @returns {Promise<Array>} 资源列表
  */
-export async function getAllResources(shopId, language = null) {
+export async function getAllResources(shopId, language = null, filterMode = 'all') {
+  // 构建查询条件
+  let whereClause = { shopId };
+  
+  // 根据filterMode添加翻译过滤条件
+  if (language && filterMode !== 'all') {
+    const translationCondition = filterMode === 'with-translations' 
+      ? { some: { language } }  // 有该语言翻译的资源
+      : { none: { language } };  // 没有该语言翻译的资源
+    
+    whereClause.translations = translationCondition;
+  }
+  
+  // 构建include子句
   // 当有语言过滤时，添加 _count 以获取所有翻译的总数
   // 这样前端可以知道其他语言的翻译情况
   const includeClause = language ? {
@@ -130,10 +143,47 @@ export async function getAllResources(shopId, language = null) {
   };
 
   return await prisma.resource.findMany({
-    where: { shopId: shopId },
+    where: whereClause,
     include: includeClause,
     orderBy: { createdAt: 'desc' }
   });
+}
+
+// 获取资源统计信息
+export async function getResourceStats(shopId, language = null) {
+  // 并行查询以提高性能
+  const [total, withTranslations, withoutTranslations] = await Promise.all([
+    // 总资源数
+    prisma.resource.count({ 
+      where: { shopId } 
+    }),
+    // 有指定语言翻译的资源数
+    language ? prisma.resource.count({
+      where: { 
+        shopId,
+        translations: { 
+          some: { language } 
+        }
+      }
+    }) : 0,
+    // 没有指定语言翻译的资源数
+    language ? prisma.resource.count({
+      where: { 
+        shopId,
+        translations: { 
+          none: { language } 
+        }
+      }
+    }) : 0
+  ]);
+  
+  return {
+    total,
+    translated: withTranslations,
+    pending: withoutTranslations,
+    // 计算百分比
+    translationRate: total > 0 ? Math.round((withTranslations / total) * 100) : 0
+  };
 }
 
 /**
