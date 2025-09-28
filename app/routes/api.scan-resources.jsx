@@ -1,14 +1,14 @@
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, saveResources } from "../services/database.server.js";
-import { withErrorHandling } from "../utils/api-response.server.js";
+import { withErrorHandling as withApiError } from "../utils/api-response.server.js";
 
 /**
  * 通用资源扫描API
  * 支持多种资源类型：PRODUCT, COLLECTION, ARTICLE, BLOG, PAGE, MENU, FILTER
  */
 export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
+  return withApiError(async () => {
     // 将服务端导入移到action函数内部，避免Vite构建错误
     const { 
       fetchResourcesByType,

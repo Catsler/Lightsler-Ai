@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '../db.server.js';
-import { persistentLogger, performancePersistentLogger } from './log-persistence.server.js';
+import { logger } from '../utils/logger.server.js';
 
 // 性能指标类型
 export const METRIC_TYPES = {
@@ -132,7 +132,7 @@ class PerformanceMonitor {
     this.checkThreshold(type, name, value);
     
     // 记录到日志
-    performancePersistentLogger.debug(`性能指标: ${name}`, {
+    logger.debug(`性能指标: ${name}`, {
       type,
       value,
       metadata
@@ -145,14 +145,14 @@ class PerformanceMonitor {
     if (!threshold) return;
     
     if (value > threshold.critical) {
-      performancePersistentLogger.error(`性能严重下降: ${name}`, {
+      logger.error(`性能严重下降: ${name}`, {
         type,
         value,
         threshold: threshold.critical,
         severity: 'critical'
       });
     } else if (value > threshold.warning) {
-      performancePersistentLogger.warn(`性能下降: ${name}`, {
+      logger.warn(`性能下降: ${name}`, {
         type,
         value,
         threshold: threshold.warning,
@@ -221,7 +221,7 @@ class PerformanceMonitor {
     
     for (const stat of stats) {
       // 保存到日志系统
-      performancePersistentLogger.info('性能指标聚合', stat);
+      logger.info('性能指标聚合', stat);
       
       // 如果性能异常，创建告警
       if (stat.p95 > (this.thresholds[stat.type]?.critical || Infinity)) {
@@ -235,7 +235,7 @@ class PerformanceMonitor {
   
   // 创建性能告警
   async createPerformanceAlert(stat) {
-    persistentLogger.error('性能告警', {
+    logger.error('性能告警', {
       type: stat.type,
       name: stat.name,
       p95: stat.p95,

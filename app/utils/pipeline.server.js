@@ -4,7 +4,7 @@
  */
 
 import crypto from 'crypto';
-import { translationPersistentLogger as tlog, performancePersistentLogger as plog } from '../services/log-persistence.server.js';
+import { logger } from './logger.server.js';
 import { collectError } from '../services/error-collector.server.js';
 
 // 标准化的环节与步骤枚举
@@ -48,7 +48,7 @@ export function startPipeline(params = {}) {
     extra: params.extra || {},
   };
 
-  tlog.info('流水线开始', { ...ctx, event: 'pipeline.start', timestamp: nowISO() });
+  logger.info('流水线开始', { ...ctx, event: 'pipeline.start', timestamp: nowISO() });
   return ctx;
 }
 
@@ -57,7 +57,7 @@ export function startPipeline(params = {}) {
  */
 export function endPipeline(pipelineCtx, status = 'COMPLETED', stats = {}) {
   const duration = Date.now() - (pipelineCtx.startedAt || Date.now());
-  tlog.info('流水线结束', {
+  logger.info('流水线结束', {
     ...pipelineCtx,
     event: 'pipeline.end',
     status,
@@ -87,12 +87,12 @@ export async function runStep(pipelineCtx, stepName, fn, options = {}) {
     meta: options.meta || {},
   };
 
-  tlog.info('步骤开始', { ...stepCtx, event: 'step.start', timestamp: nowISO() });
+  logger.info('步骤开始', { ...stepCtx, event: 'step.start', timestamp: nowISO() });
 
   try {
     const result = await fn();
     const duration = Date.now() - stepCtx.startedAt;
-    tlog.info('步骤成功', {
+    logger.info('步骤成功', {
       ...stepCtx,
       status: STEP_STATUS.SUCCEEDED,
       event: 'step.success',
@@ -101,7 +101,7 @@ export async function runStep(pipelineCtx, stepName, fn, options = {}) {
       timestamp: nowISO(),
     });
     if (result?.metrics) {
-      plog.info('性能指标', {
+      logger.info('性能指标', {
         operation: `${pipelineCtx.phase}.${stepName}`,
         duration,
         metrics: result.metrics,
@@ -130,7 +130,7 @@ export async function runStep(pipelineCtx, stepName, fn, options = {}) {
       },
     };
     await collectError(errPayload, { operation: errPayload.operation });
-    tlog.error('步骤失败', { ...stepCtx, status: STEP_STATUS.FAILED, event: 'step.fail', duration, error: error.message });
+    logger.error('步骤失败', { ...stepCtx, status: STEP_STATUS.FAILED, event: 'step.fail', duration, error: error.message });
     return { success: false, error };
   }
 }

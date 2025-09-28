@@ -10,6 +10,37 @@ module.exports = {
     shopify: "readonly"
   },
   rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "./log-persistence.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          },
+          {
+            "name": "../log-persistence.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          },
+          {
+            "name": "../../log-persistence.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          },
+          {
+            "name": "./base-logger.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          },
+          {
+            "name": "../base-logger.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          },
+          {
+            "name": "../../base-logger.server.js",
+            "message": "请使用 logger.server.js 而非直接导入底层日志实现"
+          }
+        ]
+      }
+    ],
     "no-restricted-syntax": [
       "error",
       {

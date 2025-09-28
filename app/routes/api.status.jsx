@@ -2,7 +2,7 @@ import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, getAllResources, getTranslationStats, getResourceStats } from "../services/database.server.js";
 import { getJobStatus, getQueueStats } from "../services/queue.server.js";
 import { getTranslationServiceStatus, getTranslationStats as getTranslationServiceStats } from "../services/translation.server.js";
-import { successResponse, withErrorHandling } from "../utils/api-response.server.js";
+import { successResponse, withErrorHandling as withApiError } from "../utils/api-response.server.js";
 import { getResourceCategory } from "../config/resource-categories.js";
 
 /**
@@ -11,7 +11,7 @@ import { getResourceCategory } from "../config/resource-categories.js";
 
 // GET请求：获取总体状态
 export const loader = async ({ request }) => {
-  return withErrorHandling(async () => {
+  return withApiError(async () => {
     const { session } = await authenticate.admin(request);
     const url = new URL(request.url);
     const targetLanguage = url.searchParams.get('language');
@@ -102,7 +102,7 @@ export const loader = async ({ request }) => {
 
 // POST请求：查询特定任务状态
 export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
+  return withApiError(async () => {
     const { session } = await authenticate.admin(request);
     const formData = await request.formData();
     

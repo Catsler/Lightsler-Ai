@@ -4,10 +4,10 @@ import { getRecentLogSummaries } from "../utils/logger.server.js";
 import { translateThemeResource } from "../services/theme-translation.server.js";
 import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
-import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
+import { successResponse, withErrorHandling as withApiError, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
 
 export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
+  return withApiError(async () => {
     // 将服务端导入移到action函数内部，避免Vite构建错误
     const { updateResourceTranslation } = await import("../services/shopify-graphql.server.js");
     

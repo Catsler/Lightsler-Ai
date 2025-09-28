@@ -159,7 +159,13 @@ function Index() {
     total: 0,
     translated: 0,
     pending: 0,
-    translationRate: 0
+    translationRate: 0,
+    pendingTranslations: 0,
+    totalPendingTranslations: 0,
+    syncedTranslations: 0,
+    totalResources: 0,
+    pendingResources: 0,
+    completedResources: 0
   };
   const [translationService, setTranslationService] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -423,16 +429,29 @@ function Index() {
       if (hasStatusChanged(currentData, lastStatusData)) {
         const { resources: resourcesData, stats: statsData, translationService: serviceData } = currentData;
         
+        // 定义默认统计值，确保所有字段都有默认值
+        const DEFAULT_STATS = {
+          total: 0,
+          translated: 0,
+          pending: 0,
+          translationRate: 0,
+          pendingTranslations: 0,
+          totalPendingTranslations: 0,
+          syncedTranslations: 0,
+          totalResources: 0,
+          pendingResources: 0,
+          completedResources: 0
+        };
+
         // 将数据存储到对应语言的槽位
         setAllLanguagesData(prev => ({
           ...prev,
           [selectedLanguage]: {
             resources: resourcesData || [],
-            stats: statsData?.database || {
-              total: 0,
-              translated: 0,
-              pending: 0,
-              translationRate: 0
+            stats: {
+              ...DEFAULT_STATS,           // 先设置默认值
+              ...statsData?.legacy,       // 合并 legacy（包含 pendingTranslations 等）
+              ...statsData?.database      // 最后合并 database（优先级更高）
             },
             lastUpdated: Date.now()
           }

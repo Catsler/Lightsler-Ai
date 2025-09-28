@@ -5,6 +5,14 @@
 import { config } from '../../utils/config.server.js';
 import { collectError, ERROR_TYPES } from '../error-collector.server.js';
 
+// 导入Translation Hooks
+import { 
+  translationHooksManager,
+  shouldTranslate,
+  schedule,
+  validate
+} from '../translation-hooks-manager.server.js';
+
 // 导入新的工具函数
 import {
   createTranslationAPIClient,
@@ -755,6 +763,35 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
     };
   }
 
+  // 构建翻译上下文
+  const translationContext = {
+    text: normalizedText,
+    targetLang,
+    resourceType: options.resourceType,
+    shopId: options.shopId,
+    resourceId: options.resourceId,
+    sessionId: options.sessionId,
+    requestId: options.requestId,
+    metadata: {
+      retryCount: options.retryCount ?? 0,
+      allowSimplePrompt: options.allowSimplePrompt !== false,
+      ...options.metadata
+    }
+  };
+
+  // 1. shouldTranslate Hook - 检查是否需要翻译
+  const shouldTranslateResult = await shouldTranslate(translationContext);
+  if (!shouldTranslateResult) {
+    logger.debug('翻译被hooks跳过', { context: translationContext });
+    return {
+      success: true,
+      text: normalizedText,
+      isOriginal: true,
+      language: targetLang,
+      meta: { skippedByHooks: true }
+    };
+  }
+
   const allowSimplePrompt = options.allowSimplePrompt !== false;
   const retryCount = options.retryCount ?? 0;
   const additionalFallbacks = Array.isArray(options.fallbacks) ? options.fallbacks : [];
@@ -784,18 +821,30 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
     }
   }
 
-  const response = await translationClient.execute({
-    text: normalizedText,
-    targetLang,
-    systemPrompt: buildEnhancedPrompt(targetLang),
-    strategy: 'enhanced',
-    context: {
-      functionName: options.context?.functionName || 'translateTextWithFallback',
-      retryCount,
-      ...options.context
-    },
-    fallbacks: fallbackStrategies
-  });
+  // 2. schedule Hook - 调度翻译任务
+  const translationTask = async () => {
+    return await translationClient.execute({
+      text: normalizedText,
+      targetLang,
+      systemPrompt: buildEnhancedPrompt(targetLang),
+      strategy: 'enhanced',
+      context: {
+        functionName: options.context?.functionName || 'translateTextWithFallback',
+        retryCount,
+        ...options.context
+      },
+      fallbacks: fallbackStrategies
+    });
+  };
+
+  const scheduleContext = {
+    priority: options.priority,
+    retryCount: options.retryCount ?? 0,
+    deadlineMs: options.deadlineMs,
+    metadata: translationContext.metadata
+  };
+
+  const response = await schedule(translationTask, scheduleContext);
 
   if (response.success) {
     const postProcessContext = {
@@ -806,6 +855,32 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
     };
 
     response.text = await applyPostProcessors(response.text, postProcessContext);
+
+    // 3. validate Hook - 验证翻译结果
+    const validationResult = await validate(response, translationContext);
+    if (!validationResult.success) {
+      logger.warn('翻译结果验证失败', {
+        context: translationContext,
+        validationErrors: validationResult.errors,
+        validationWarnings: validationResult.warnings
+      });
+
+      // 如果验证失败，根据策略决定是否返回原文
+      if (options.allowOriginalFallback !== false) {
+        return {
+          success: false,
+          text: normalizedText,
+          isOriginal: true,
+          error: `翻译验证失败: ${validationResult.errors?.join(', ') || '未知错误'}`,
+          meta: {
+            validationFailed: true,
+            validationErrors: validationResult.errors,
+            validationWarnings: validationResult.warnings
+          }
+        };
+      }
+    }
+
     return response;
   }
 
@@ -1643,6 +1718,40 @@ export async function translateResource(resource, targetLang, options = {}) {
     targetLang 
   });
 
+  // 构建翻译上下文
+  const translationContext = {
+    text: resource.title || resource.description || '',
+    targetLang,
+    resourceType: resource.resourceType,
+    shopId: options.shopId,
+    resourceId: resource.id,
+    sessionId: options.sessionId,
+    requestId: options.requestId,
+    metadata: {
+      resourceData: {
+        hasTitle: !!resource.title,
+        hasDescription: !!resource.description,
+        hasDescriptionHtml: !!resource.descriptionHtml,
+        hasSeoFields: !!(resource.seoTitle || resource.seoDescription)
+      },
+      ...options.metadata
+    }
+  };
+
+  // 1. shouldTranslate Hook - 检查是否需要翻译此资源
+  const shouldTranslateResult = await shouldTranslate(translationContext);
+  if (!shouldTranslateResult) {
+    translationLogger.info('资源翻译被hooks跳过', { 
+      resourceId: resource.id,
+      resourceType: resource.resourceType 
+    });
+    return {
+      skipped: true,
+      reason: 'skipped_by_hooks',
+      translations: {}
+    };
+  }
+
   // 检查是否为Theme资源，如果是则使用独立的Theme翻译逻辑
   if (resource.resourceType && resource.resourceType.includes('THEME')) {
     translationLogger.info('检测到Theme资源，使用专用翻译逻辑', { 
@@ -1662,18 +1771,20 @@ export async function translateResource(resource, targetLang, options = {}) {
     }
   }
   
-  // 初始化翻译结果对象
-  const translated = {
-    titleTrans: null,
-    descTrans: null,
-    handleTrans: null,
-    summaryTrans: null,
-    labelTrans: null,
-    seoTitleTrans: null,
-    seoDescTrans: null,
-  };
+  // 2. schedule Hook - 调度资源翻译任务
+  const resourceTranslationTask = async () => {
+    // 初始化翻译结果对象
+    const translated = {
+      titleTrans: null,
+      descTrans: null,
+      handleTrans: null,
+      summaryTrans: null,
+      labelTrans: null,
+      seoTitleTrans: null,
+      seoDescTrans: null,
+    };
 
-  try {
+    try {
     // 翻译标题（关键字段）
     if (resource.title) {
       translated.titleTrans = await translateText(resource.title, targetLang);
@@ -1822,22 +1933,54 @@ export async function translateResource(resource, targetLang, options = {}) {
       processedFields: processedFields.join(', ')
     });
 
-    // 返回兼容对象：同时支持扁平访问和嵌套访问
-    return {
-      // 保留扁平字段（向后兼容）
-      ...translated,
-      // 新增标准结构（向前兼容）
-      skipped: false,
-      translations: translated
-    };
+      // 返回兼容对象：同时支持扁平访问和嵌套访问
+      return {
+        // 保留扁平字段（向后兼容）
+        ...translated,
+        // 新增标准结构（向前兼容）
+        skipped: false,
+        translations: translated
+      };
 
-  } catch (error) {
-    translationLogger.error('资源翻译失败', { 
+    } catch (error) {
+      translationLogger.error('资源翻译失败', { 
+        resourceId: resource.id,
+        error: error.message 
+      });
+      throw error;
+    }
+  };
+
+  const scheduleContext = {
+    priority: options.priority,
+    retryCount: options.retryCount ?? 0,
+    deadlineMs: options.deadlineMs,
+    metadata: {
+      resourceType: resource.resourceType,
       resourceId: resource.id,
-      error: error.message 
+      fieldCount: Object.keys(resource).length
+    }
+  };
+
+  const result = await schedule(resourceTranslationTask, scheduleContext);
+
+  // 3. validate Hook - 验证翻译结果
+  const validationResult = await validate(result, translationContext);
+  if (!validationResult.success) {
+    translationLogger.warn('资源翻译结果验证失败', {
+      resourceId: resource.id,
+      resourceType: resource.resourceType,
+      validationErrors: validationResult.errors,
+      validationWarnings: validationResult.warnings
     });
-    throw error;
+
+    // 根据策略决定是否返回原始数据或失败结果
+    if (validationResult.errors && validationResult.errors.length > 0) {
+      throw new Error(`资源翻译验证失败: ${validationResult.errors.join(', ')}`);
+    }
   }
+
+  return result;
 }
 
 /**

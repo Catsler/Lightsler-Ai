@@ -98,6 +98,16 @@ export const config = {
     flushInterval: getEnvVar('LOG_FLUSH_INTERVAL', 5000, 'number'),
     enablePersistentLogger: getEnvVar('ENABLE_PERSISTENT_LOGGER', true, 'boolean'),
   },
+
+  // Translation Hooks 灰度配置
+  translationHooks: {
+    enabled: getEnvVar('TRANSLATION_HOOKS_ENABLED', 'false', 'boolean'),
+    enabledResourceTypes: getEnvVar('TRANSLATION_HOOKS_RESOURCE_TYPES', '').split(',').filter(Boolean),
+    rolloutPercentage: getEnvVar('TRANSLATION_HOOKS_ROLLOUT_PERCENTAGE', 0, 'number'), // 0-100
+    timeoutMs: getEnvVar('TRANSLATION_HOOKS_TIMEOUT', 5000, 'number'),
+    monitoringEnabled: getEnvVar('TRANSLATION_HOOKS_MONITORING', 'true', 'boolean'),
+    enableShopIdFilter: getEnvVar('TRANSLATION_HOOKS_SHOP_FILTER', '').split(',').filter(Boolean)
+  },
 };
 
 /**
