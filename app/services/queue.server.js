@@ -9,6 +9,7 @@ import { config } from '../utils/config.server.js';
 import { MemoryQueue } from './memory-queue.server.js';
 import { collectError, ERROR_TYPES } from './error-collector.server.js';
 import { createShopRedisConfig, parseRedisUrl } from '../utils/redis-parser.server.js';
+import { logger } from '../utils/logger.server.js';
 
 /**
  * Redis任务队列服务
@@ -37,7 +38,7 @@ if (config.redis.enabled && process.env.REDIS_URL) {
 
     // 错误处理
     reconnectOnError: (err) => {
-      console.warn(`Redis连接错误 [Shop: ${SHOP_ID}]:`, err.message);
+      logger.warn(`Redis连接错误 [Shop: ${SHOP_ID}]:`, err.message);
       const retryableErrors = ['READONLY', 'ECONNRESET', 'EPIPE', 'ENOTFOUND', 'TIMEOUT'];
       return retryableErrors.some(e => err.message.includes(e));
     }
@@ -165,7 +166,7 @@ let redisRecoveryNotified = false;
 
 try {
   if (config.redis.enabled && redisConfig) {
-    console.log(`[Queue] 初始化Redis连接 [Shop: ${SHOP_ID}, DB: ${redisConfig.db || 0}]`);
+    logger.info(`[Queue] 初始化Redis连接 [Shop: ${SHOP_ID}, DB: ${redisConfig.db || 0}]`);
     redis = new Redis(redisConfig);
 
     // 处理连接错误
@@ -173,12 +174,12 @@ try {
       // 忽略常见的非致命错误
       const ignorableErrors = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
       if (ignorableErrors.some(e => error.message.includes(e))) {
-        console.debug('Redis连接临时中断:', error.message);
+        logger.debug('Redis连接临时中断:', error.message);
         return;
       }
 
       if (!redis._isConnected && redisConnectionAttempts >= MAX_REDIS_ATTEMPTS) {
-        console.warn('Redis连接失败，切换到内存模式');
+        logger.warn('Redis连接失败，切换到内存模式');
         redis = null;
       }
     });
@@ -186,14 +187,14 @@ try {
     // 成功连接后重置计数器
     redis.on('connect', () => {
       redisConnectionAttempts = 0;
-      console.log('Redis连接成功');
+      logger.info('Redis连接成功');
     });
   } else {
-    console.log('Redis未配置，将使用内存模式');
+    logger.info('Redis未配置，将使用内存模式');
     redis = null;
   }
 } catch (error) {
-  console.warn('Redis连接失败，将使用内存模式:', error.message);
+  logger.warn('Redis连接失败，将使用内存模式:', error.message);
   redis = null;
 }
 
@@ -246,7 +247,7 @@ function attachLifecycleEvents(queue) {
   attachedQueues.add(queue);
 
   queue.on('error', async (error) => {
-    console.error('队列错误:', error);
+    logger.error('队列错误:', error);
 
     try {
       await collectError({
@@ -263,7 +264,7 @@ function attachLifecycleEvents(queue) {
         }
       });
     } catch (collectErr) {
-      console.warn('记录队列系统错误失败:', collectErr?.message || collectErr);
+      logger.warn('记录队列系统错误失败:', collectErr?.message || collectErr);
     }
 
     if (!useMemoryQueue) {
@@ -272,7 +273,7 @@ function attachLifecycleEvents(queue) {
   });
 
   queue.on('failed', async (job, err) => {
-    console.error(`任务失败 ${job?.id}:`, err);
+    logger.error(`任务失败 ${job?.id}:`, err);
 
     try {
       await collectError({
@@ -295,12 +296,12 @@ function attachLifecycleEvents(queue) {
         }
       });
     } catch (collectErr) {
-      console.warn('记录任务失败错误失败:', collectErr?.message || collectErr);
+      logger.warn('记录任务失败错误失败:', collectErr?.message || collectErr);
     }
   });
 
   queue.on('completed', (job, result) => {
-    console.log(`任务完成 ${job?.id}:`, result);
+    logger.info(`任务完成 ${job?.id}:`, result);
   });
 }
 
@@ -309,7 +310,7 @@ function createBullQueue() {
     throw new Error('Redis配置不可用，无法创建Bull队列');
   }
 
-  console.log(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}]`);
+  logger.info(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}]`);
 
   return new Bull(QUEUE_NAME, {
     redis: redisConfig,
@@ -356,12 +357,12 @@ function startHealthCheck() {
     try {
       await redis.ping();
       if (!redisRecoveryNotified) {
-        console.log('🔄 检测到Redis恢复，可手动切回Redis队列');
+        logger.info('🔄 检测到Redis恢复，可手动切回Redis队列');
         redisRecoveryNotified = true;
       }
     } catch (error) {
       redisRecoveryNotified = false;
-      console.debug('Redis仍不可用:', error?.message || error);
+      logger.debug('Redis仍不可用:', error?.message || error);
     }
   }, 30000);
 
@@ -377,7 +378,7 @@ async function requestMemoryFallback(reason) {
 
   isSwitchingQueue = true;
   redisRecoveryNotified = false;
-  console.warn(reason);
+  logger.warn(reason);
 
   const previousQueue = translationQueue;
   const memoryQueue = createMemoryQueueInstance();
@@ -388,13 +389,13 @@ async function requestMemoryFallback(reason) {
   registerProcessors(memoryQueue);
   attachLifecycleEvents(memoryQueue);
 
-  console.log('⚠️ 队列已切换到内存模式');
+  logger.info('⚠️ 队列已切换到内存模式');
 
   if (previousQueue?.close) {
     try {
       await previousQueue.close();
     } catch (error) {
-      console.warn('关闭Redis队列失败:', error?.message || error);
+      logger.warn('关闭Redis队列失败:', error?.message || error);
     }
   }
 
@@ -407,7 +408,7 @@ function initializeQueue() {
     try {
       translationQueue = createBullQueue();
     } catch (error) {
-      console.warn('Bull队列创建失败，使用内存模式:', error?.message || error);
+      logger.warn('Bull队列创建失败，使用内存模式:', error?.message || error);
       useMemoryQueue = true;
     }
   }
@@ -426,7 +427,7 @@ function initializeQueue() {
     stopHealthCheck();
   }
 
-  console.log(`🚀 翻译队列已启动: ${useMemoryQueue ? '内存模式' : 'Redis模式'}`);
+  logger.info(`🚀 翻译队列已启动: ${useMemoryQueue ? '内存模式' : 'Redis模式'}`);
 }
 
 async function handleTranslateResource(job) {
@@ -474,7 +475,7 @@ async function handleTranslateResource(job) {
     job.progress(50);
 
     if (translationResult.skipped) {
-      console.log(`ℹ️ 跳过翻译，内容未变化: ${resource.title}`);
+      logger.info(`ℹ️ 跳过翻译，内容未变化: ${resource.title}`);
       await updateResourceStatus(resourceId, 'pending');
       job.progress(100);
       return {
@@ -493,7 +494,7 @@ async function handleTranslateResource(job) {
     await saveTranslation(resourceId, shopId, language, translationData);
     job.progress(70);
 
-    console.log(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);
+    logger.info(`✅ 翻译完成，状态设为pending等待发布: ${resource.title} -> ${language}`);
     job.progress(90);
 
     await updateResourceStatus(resourceId, 'completed');
@@ -507,7 +508,7 @@ async function handleTranslateResource(job) {
       translations: translationResult.translations
     };
   } catch (error) {
-    console.error(`翻译任务失败 ${resourceId}:`, error);
+    logger.error(`翻译任务失败 ${resourceId}:`, error);
 
     try {
       await collectError({
@@ -531,13 +532,13 @@ async function handleTranslateResource(job) {
         }
       });
     } catch (collectErr) {
-      console.warn('记录翻译任务错误失败:', collectErr?.message || collectErr);
+      logger.warn('记录翻译任务错误失败:', collectErr?.message || collectErr);
     }
 
     try {
       await updateResourceStatus(resourceId, 'pending');
     } catch (statusError) {
-      console.warn('更新资源状态失败:', statusError?.message || statusError);
+      logger.warn('更新资源状态失败:', statusError?.message || statusError);
     }
 
     throw error;

@@ -48,14 +48,14 @@ class QueueManager {
 
     try {
       if (redisConfig) {
-        console.log(`[QueueManager] 尝试初始化Redis队列 [Shop: ${SHOP_ID}]`);
+        logger.debug(`[QueueManager] 尝试初始化Redis队列 [Shop: ${SHOP_ID}]`);
         await this.initializeRedisQueue();
       } else {
-        console.log(`[QueueManager] Redis配置不可用，初始化内存队列 [Shop: ${SHOP_ID}]`);
+        logger.debug(`[QueueManager] Redis配置不可用，初始化内存队列 [Shop: ${SHOP_ID}]`);
         await this.initializeMemoryQueue();
       }
     } catch (error) {
-      console.error(`[QueueManager] 队列初始化失败:`, error);
+      logger.error(`[QueueManager] 队列初始化失败:`, error);
       await this.initializeMemoryQueue();
     }
 
@@ -97,9 +97,9 @@ class QueueManager {
       this.currentQueue = this.redisQueue;
       this.metrics.redisErrors = 0;
 
-      console.log(`[QueueManager] Redis队列初始化成功 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] Redis队列初始化成功 [Shop: ${SHOP_ID}]`);
     } catch (error) {
-      console.error(`[QueueManager] Redis队列初始化失败:`, error);
+      logger.error(`[QueueManager] Redis队列初始化失败:`, error);
       throw error;
     }
   }
@@ -117,9 +117,9 @@ class QueueManager {
       this.currentQueue = this.memoryQueue;
       this.metrics.fallbackCount++;
 
-      console.log(`[QueueManager] 内存队列初始化成功 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] 内存队列初始化成功 [Shop: ${SHOP_ID}]`);
     } catch (error) {
-      console.error(`[QueueManager] 内存队列初始化失败:`, error);
+      logger.error(`[QueueManager] 内存队列初始化失败:`, error);
       throw error;
     }
   }
@@ -131,7 +131,7 @@ class QueueManager {
     if (!this.redisQueue) return;
 
     this.redisQueue.on('error', async (error) => {
-      console.error(`[QueueManager] Redis队列错误:`, error);
+      logger.error(`[QueueManager] Redis队列错误:`, error);
       this.metrics.redisErrors++;
 
       await this.collectError('REDIS_QUEUE_ERROR', error);
@@ -143,16 +143,16 @@ class QueueManager {
     });
 
     this.redisQueue.on('failed', async (job, err) => {
-      console.error(`[QueueManager] 任务失败 ${job?.id}:`, err);
+      logger.error(`[QueueManager] 任务失败 ${job?.id}:`, err);
       await this.collectError('JOB_FAILED', err, { jobId: job?.id, jobData: job?.data });
     });
 
     this.redisQueue.on('completed', (job, result) => {
-      console.log(`[QueueManager] 任务完成 ${job?.id}`);
+      logger.debug(`[QueueManager] 任务完成 ${job?.id}`);
     });
 
     this.redisQueue.on('stalled', async (job) => {
-      console.warn(`[QueueManager] 任务卡住 ${job?.id}`);
+      logger.warn(`[QueueManager] 任务卡住 ${job?.id}`);
       await this.collectError('JOB_STALLED', new Error('Job stalled'), { jobId: job?.id });
     });
   }
@@ -173,9 +173,9 @@ class QueueManager {
       // 立即移除测试任务
       await testJob.remove();
 
-      console.log(`[QueueManager] Redis连接测试成功 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] Redis连接测试成功 [Shop: ${SHOP_ID}]`);
     } catch (error) {
-      console.error(`[QueueManager] Redis连接测试失败:`, error);
+      logger.error(`[QueueManager] Redis连接测试失败:`, error);
       throw error;
     }
   }
@@ -189,7 +189,7 @@ class QueueManager {
     }
 
     this.isTransitioning = true;
-    console.warn(`[QueueManager] 降级到内存模式: ${reason} [Shop: ${SHOP_ID}]`);
+    logger.warn(`[QueueManager] 降级到内存模式: ${reason} [Shop: ${SHOP_ID}]`);
 
     try {
       // 1. 保存Redis队列中的待处理任务
@@ -206,7 +206,7 @@ class QueueManager {
         try {
           await this.redisQueue.close();
         } catch (error) {
-          console.warn(`[QueueManager] 关闭Redis队列失败:`, error);
+          logger.warn(`[QueueManager] 关闭Redis队列失败:`, error);
         }
         this.redisQueue = null;
       }
@@ -216,9 +216,9 @@ class QueueManager {
         migratedJobs: waitingJobs.length
       });
 
-      console.log(`[QueueManager] 已降级到内存模式，迁移了${waitingJobs.length}个任务 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] 已降级到内存模式，迁移了${waitingJobs.length}个任务 [Shop: ${SHOP_ID}]`);
     } catch (error) {
-      console.error(`[QueueManager] 降级过程失败:`, error);
+      logger.error(`[QueueManager] 降级过程失败:`, error);
     } finally {
       this.isTransitioning = false;
     }
@@ -233,7 +233,7 @@ class QueueManager {
     }
 
     this.isTransitioning = true;
-    console.log(`[QueueManager] 尝试恢复到Redis模式 [Shop: ${SHOP_ID}]`);
+    logger.debug(`[QueueManager] 尝试恢复到Redis模式 [Shop: ${SHOP_ID}]`);
 
     try {
       // 1. 保存内存队列中的任务
@@ -251,10 +251,10 @@ class QueueManager {
         this.memoryQueue = null;
       }
 
-      console.log(`[QueueManager] 已恢复到Redis模式，迁移了${memoryJobs.length}个任务 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] 已恢复到Redis模式，迁移了${memoryJobs.length}个任务 [Shop: ${SHOP_ID}]`);
       this.metrics.lastMigration = Date.now();
     } catch (error) {
-      console.error(`[QueueManager] 恢复到Redis失败:`, error);
+      logger.error(`[QueueManager] 恢复到Redis失败:`, error);
       // 恢复失败，继续使用内存模式
       await this.initializeMemoryQueue();
     } finally {
@@ -287,10 +287,10 @@ class QueueManager {
         });
       }
 
-      console.log(`[QueueManager] 已保存${allJobs.length}个Redis任务到数据库 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] 已保存${allJobs.length}个Redis任务到数据库 [Shop: ${SHOP_ID}]`);
       return allJobs;
     } catch (error) {
-      console.error(`[QueueManager] 保存Redis任务失败:`, error);
+      logger.error(`[QueueManager] 保存Redis任务失败:`, error);
       return [];
     }
   }
@@ -305,7 +305,7 @@ class QueueManager {
       try {
         await this.memoryQueue.add(job.name, job.data, job.opts || {});
       } catch (error) {
-        console.error(`[QueueManager] 迁移任务${job.id}到内存队列失败:`, error);
+        logger.error(`[QueueManager] 迁移任务${job.id}到内存队列失败:`, error);
       }
     }
   }
@@ -320,7 +320,7 @@ class QueueManager {
       try {
         await this.redisQueue.add(job.name, job.data, job.opts || {});
       } catch (error) {
-        console.error(`[QueueManager] 迁移任务${job.id}到Redis队列失败:`, error);
+        logger.error(`[QueueManager] 迁移任务${job.id}到Redis队列失败:`, error);
       }
     }
   }
@@ -342,7 +342,7 @@ class QueueManager {
 
           await this.currentQueue.add(backup.jobName, jobData, jobOpts);
         } catch (error) {
-          console.error(`[QueueManager] 恢复任务${backup.jobId}失败:`, error);
+          logger.error(`[QueueManager] 恢复任务${backup.jobId}失败:`, error);
         }
       }
 
@@ -351,9 +351,9 @@ class QueueManager {
         where: { shopId: SHOP_ID }
       });
 
-      console.log(`[QueueManager] 已从数据库恢复${backupJobs.length}个任务 [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] 已从数据库恢复${backupJobs.length}个任务 [Shop: ${SHOP_ID}]`);
     } catch (error) {
-      console.error(`[QueueManager] 从数据库恢复任务失败:`, error);
+      logger.error(`[QueueManager] 从数据库恢复任务失败:`, error);
     }
   }
 
@@ -398,7 +398,7 @@ class QueueManager {
         await this.checkRedisHealth();
       }
     } catch (error) {
-      console.error(`[QueueManager] 健康检查失败:`, error);
+      logger.error(`[QueueManager] 健康检查失败:`, error);
     }
   }
 
@@ -418,7 +418,7 @@ class QueueManager {
       }
     } catch (error) {
       // Redis仍未恢复，继续使用内存模式
-      console.debug(`[QueueManager] Redis仍未恢复: ${error.message} [Shop: ${SHOP_ID}]`);
+      logger.debug(`[QueueManager] Redis仍未恢复: ${error.message} [Shop: ${SHOP_ID}]`);
     }
   }
 
@@ -434,12 +434,12 @@ class QueueManager {
 
         // 如果有太多活跃任务卡住，可能有问题
         if (active.length > 10) {
-          console.warn(`[QueueManager] 检测到${active.length}个活跃任务，可能存在性能问题 [Shop: ${SHOP_ID}]`);
+          logger.warn(`[QueueManager] 检测到${active.length}个活跃任务，可能存在性能问题 [Shop: ${SHOP_ID}]`);
         }
       }
     } catch (error) {
       this.metrics.redisErrors++;
-      console.warn(`[QueueManager] Redis健康检查失败:`, error);
+      logger.warn(`[QueueManager] Redis健康检查失败:`, error);
 
       if (this.metrics.redisErrors >= this.healthConfig.errorThreshold) {
         await this.fallbackToMemory('健康检查失败');
@@ -468,7 +468,7 @@ class QueueManager {
         }
       });
     } catch (collectErr) {
-      console.warn(`[QueueManager] 错误收集失败:`, collectErr);
+      logger.warn(`[QueueManager] 错误收集失败:`, collectErr);
     }
   }
 
@@ -502,7 +502,7 @@ class QueueManager {
       try {
         await this.redisQueue.close();
       } catch (error) {
-        console.warn(`[QueueManager] 关闭Redis队列失败:`, error);
+        logger.warn(`[QueueManager] 关闭Redis队列失败:`, error);
       }
     }
 

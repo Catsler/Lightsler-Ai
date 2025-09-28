@@ -4,6 +4,7 @@ import {
   fetchMetafieldsForProduct,
   RESOURCE_TYPES
 } from "./shopify-graphql.server.js";
+import { logger } from "../utils/logger.server.js";
 
 function isValidShopifyGid(value) {
   return typeof value === "string" && value.startsWith("gid://shopify/");
@@ -20,7 +21,7 @@ function parseContentFields(contentFields) {
     try {
       return JSON.parse(contentFields);
     } catch (error) {
-      console.warn("无法解析contentFields JSON", { error: error.message });
+      logger.warn("无法解析contentFields JSON", { error: error.message });
       return {};
     }
   }
@@ -321,7 +322,7 @@ export async function ensureValidResourceGid(admin, resource) {
           data: { gid: resolution.gid }
         });
       } catch (error) {
-        console.warn("更新资源gid失败", {
+        logger.warn("更新资源gid失败", {
           resourceId: resource.id,
           error: error.message
         });

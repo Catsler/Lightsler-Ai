@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { invalidateCoverageCache } from "./language-coverage.server.js";
+import { logger } from "../utils/logger.server.js";
 
 const prisma = new PrismaClient();
 
@@ -196,7 +197,7 @@ export async function getResourceStats(shopId, language = null) {
  */
 export async function saveTranslation(resourceId, shopId, language, translations) {
   // 记录语言参数，帮助调试
-  console.log(`[saveTranslation] 保存翻译 - 资源ID: ${resourceId}, 语言: ${language}, 店铺: ${shopId}`);
+  logger.info('[saveTranslation] 保存翻译', { resourceId, language, shopId });
 
   // 防御性检查：处理可能的嵌套结构
   // 兼容两种调用方式：
@@ -235,7 +236,7 @@ export async function saveTranslation(resourceId, shopId, language, translations
       }
     });
     
-    console.log(`[saveTranslation] 成功保存 ${language} 翻译，记录ID: ${result.id}`);
+    logger.info('[saveTranslation] 成功保存翻译', { language, translationId: result.id });
     invalidateCoverageCache(shopId, {
       language,
       scope: 'resource',
@@ -244,7 +245,7 @@ export async function saveTranslation(resourceId, shopId, language, translations
     return result;
     
   } catch (error) {
-    console.error(`[saveTranslation] 保存翻译失败:`, error);
+    logger.error(`[saveTranslation] 保存翻译失败:`, error);
     
     // 记录到错误数据库
     if (typeof collectError !== 'undefined') {
@@ -449,7 +450,7 @@ export async function getResourceWithTranslations(resourceId, shopId) {
 
     return resource;
   } catch (error) {
-    console.error('[getResourceWithTranslations] 获取资源失败:', error);
+    logger.error('[getResourceWithTranslations] 获取资源失败:', error);
     throw error;
   }
 }

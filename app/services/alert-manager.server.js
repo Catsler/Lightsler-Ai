@@ -6,6 +6,7 @@
 import { prisma } from '../db.server.js';
 import { collectError } from './error-collector.server.js';
 import { persistentLogger } from './log-persistence.server.js';
+import { logger } from '../utils/logger.server.js';
 
 // 告警级别
 export const ALERT_LEVELS = {
@@ -493,13 +494,13 @@ export class AlertManager {
   // 发送邮件通知（示例）
   async sendEmailNotification(alert) {
     // TODO: 实现邮件发送逻辑
-    console.log('发送邮件告警:', alert.message);
+    logger.info('发送邮件告警', { message: alert.message, alertId: alert.id });
   }
   
   // 发送Webhook通知（示例）
   async sendWebhookNotification(alert) {
     // TODO: 实现Webhook通知（如Slack、钉钉等）
-    console.log('发送Webhook告警:', alert.message);
+    logger.info('发送Webhook告警', { message: alert.message, alertId: alert.id });
   }
   
   // 发送仪表板通知

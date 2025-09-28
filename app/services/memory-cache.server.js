@@ -254,7 +254,7 @@ export function clearShopCache(shopId = SHOP_ID) {
     }
   }
 
-  console.log(`[Cache] 已清空店铺 ${shopId} 的所有缓存`);
+  logger.info('[Cache] 清空缓存', { shopId });
 }
 
 export default getMemoryCache;

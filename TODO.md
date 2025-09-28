@@ -2,6 +2,37 @@
 
 ## 🚧 进行中
 
+### 翻译核心模块重构计划 (2025-09-30) - 🚧 进行中
+**目标**: 按 KISS 原则拆解翻译主链路，建立提示词、验证、分块、后处理与 API 调度的清晰边界，并保持现有行为稳定。
+**范围**: 模块化拆分 translation.server.js、统一验证与日志体系、建立度量与回归基线；保持对外接口兼容，逐步迁移调用方。
+**非目标**: 本周期内不新增外部依赖、不过度优化性能、不重写 Sequential Thinking、不修改数据库模型。
+
+#### 阶段规划
+- [x] Week 1：基线建立与模板抽离
+  - [x] 编写并落地 20 个核心场景的 smoke tests，生成行为快照并接入 CI
+  - [x] 提取 prompts.server.js，集中维护提示词模板与语言常量
+  - [x] 替换 translation.server.js 及相关模块中的 console.log 为统一 logger，补充 requestId 贯穿
+- [ ] Week 1 非目标：不改业务逻辑、不引入新依赖、不做性能优化、不处理非阻塞缺陷
+- [ ] Week 2：验证与 API 调度重构
+  - [x] 等价迁移 legacy 验证器为纯函数，搭建统一验证管线并引入 feature flags 控制
+  - [x] 实现 api-client.server.js orchestrator，封装重试、降级、幂等缓存与请求去重（新增内存缓存、RequestDeduplicator 与策略降级管线，统一记录调用度量）
+  - [x] 建立 RollingWindow/t-digest 度量采集，记录 strategyPath、重试次数、耗时等指标（新增 1m/5m/15m 窗口与分位统计）
+- [ ] Week 2 非目标：不启用 Redis 缓存、不新增功能、不改变既有 API 响应结构
+- [ ] Week 3：分块、后处理与核心收敛
+  - [x] 提取 chunking.server.js 与 HTML 保护纯函数，并为 post-processors 管线重组 link-converter 等处理器（拆分 chunking/post-processors 模块，统一长文本管线与链接转换入口）
+  - [x] 重写 core.server.js 薄编排层与 index.server.js 聚合导出，translation.server.js 仅保留兼容 facade（迁移核心实现至 translation/core.server.js，并保留 facade re-export）
+  - [x] 编写迁移文档与监控指南，统计旧接口调用量以规划下线窗口（详见 docs/translation-core-refactor.md 与 docs/translation-monitoring-guide.md）
+- [ ] Week 3 非目标：不做大规模性能调优、不重写 Sequential Thinking、不更改数据模型
+
+#### 度量与风险控制
+- [x] 追踪失败率 (<0.1%)、P95 延迟（相较基线增加 <5%）、降级率、日志量（debug 关闭后下降 ≥80%）（已通过 RollingWindow 指标暴露，并在 docs/translation-monitoring-guide.md 设定阈值）
+- [x] 为验证器行为差异设置回归监控（阈值 10% 提醒，30% 升级高风险），仅告警不阻断 CI（日志与监控指南已附查询方案及阈值配置）
+- [x] 完成 RequestDeduplicator 泄漏防护与缓存 TTL 策略评估（`getTranslationOrchestratorStatus()` 提供实时 in-flight 与缓存命中统计）
+
+#### 验证与交付
+- [ ] Week 3 结束后运行 Playwright 端到端脚本，自检核心页面并确认改动符合 KISS 原则
+- [ ] 汇总 TranslationResult 字段字典、feature flags 清单、行为回归报告，提交至 docs/
+
 ### 🔗 链接转换功能激活与日志系统改造 (2025-01-11) - ✅ 完成
 **背景**: 翻译过程中店铺站内链接需要根据目标语言转换为对应的二级域名
 **发现**: 链接转换代码已存在但功能被关闭，需要激活并完善日志埋点

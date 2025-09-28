@@ -251,7 +251,7 @@ async function translateUntranslatedParts(text, untranslatedParts, targetLang) {
           };
         }
       } catch (error) {
-        console.error(`翻译失败 [${part.type}]:`, error.message);
+        logger.error(`翻译失败 [${part.type}]`, { error: error.message, targetLang });
       }
       
       return null;
@@ -443,7 +443,7 @@ async function performAggressiveTranslation(text, targetLang, remainingParts) {
       const result = await translateText(content, targetLang);
       return { marker, translated: result };
     } catch (error) {
-      console.error(`强力翻译失败: ${content.substring(0, 30)}...`);
+      logger.error('强力翻译失败', { preview: content.substring(0, 30), targetLang });
       return { marker, translated: content };
     }
   });

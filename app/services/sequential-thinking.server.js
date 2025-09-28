@@ -5,13 +5,14 @@
 
 import prisma from '../db.server.js';
 import crypto from 'crypto';
+import { logger as baseLogger } from '../utils/logger.server.js';
 
 // 创建日志记录器
-const logger = {
-  info: (message, ...args) => console.log(`[sequential-thinking] ${message}`, ...args),
-  error: (message, ...args) => console.error(`[sequential-thinking] ERROR: ${message}`, ...args),
-  warn: (message, ...args) => console.warn(`[sequential-thinking] WARN: ${message}`, ...args),
-  debug: (message, ...args) => console.log(`[sequential-thinking] DEBUG: ${message}`, ...args)
+const stLogger = {
+  info: (message, meta = {}) => baseLogger.info(message, { service: 'sequential-thinking', ...meta }),
+  error: (message, meta = {}) => baseLogger.error(message, { service: 'sequential-thinking', ...meta }),
+  warn: (message, meta = {}) => baseLogger.warn(message, { service: 'sequential-thinking', ...meta }),
+  debug: (message, meta = {}) => baseLogger.debug(message, { service: 'sequential-thinking', ...meta })
 };
 
 /**
@@ -49,10 +50,10 @@ export async function createTranslationSession(shopId, options = {}) {
       }
     });
     
-    logger.info(`创建翻译会话: ${session.id} - ${name}`);
+    stLogger.info(`创建翻译会话: ${session.id} - ${name}`);
     return session;
   } catch (error) {
-    logger.error('创建翻译会话失败:', error);
+    stLogger.error('创建翻译会话失败:', error);
     throw error;
   }
 }
@@ -74,7 +75,7 @@ export async function startTranslationSession(sessionId) {
     }
     
     if (session.status === 'RUNNING') {
-      logger.warn(`会话已在运行中: ${sessionId}`);
+      stLogger.warn(`会话已在运行中: ${sessionId}`);
       return session;
     }
     
@@ -91,10 +92,10 @@ export async function startTranslationSession(sessionId) {
       }
     });
     
-    logger.info(`启动翻译会话: ${sessionId}, 资源总数: ${resourceCount}`);
+    stLogger.info(`启动翻译会话: ${sessionId}, 资源总数: ${resourceCount}`);
     return updatedSession;
   } catch (error) {
-    logger.error('启动翻译会话失败:', error);
+    stLogger.error('启动翻译会话失败:', error);
     throw error;
   }
 }
@@ -114,10 +115,10 @@ export async function pauseTranslationSession(sessionId) {
       }
     });
     
-    logger.info(`暂停翻译会话: ${sessionId}`);
+    stLogger.info(`暂停翻译会话: ${sessionId}`);
     return session;
   } catch (error) {
-    logger.error('暂停翻译会话失败:', error);
+    stLogger.error('暂停翻译会话失败:', error);
     throw error;
   }
 }
@@ -137,10 +138,10 @@ export async function resumeTranslationSession(sessionId) {
       }
     });
     
-    logger.info(`恢复翻译会话: ${sessionId}`);
+    stLogger.info(`恢复翻译会话: ${sessionId}`);
     return session;
   } catch (error) {
-    logger.error('恢复翻译会话失败:', error);
+    stLogger.error('恢复翻译会话失败:', error);
     throw error;
   }
 }
@@ -193,7 +194,7 @@ export async function detectContentChanges(resourceId, newContent) {
       version: resource.contentVersion + 1
     };
   } catch (error) {
-    logger.error('检测内容变更失败:', error);
+    stLogger.error('检测内容变更失败:', error);
     throw error;
   }
 }
@@ -286,7 +287,7 @@ export async function makeSkipDecision(resourceId, context = {}) {
       recommendation: shouldSkip ? '建议跳过' : '建议翻译'
     };
   } catch (error) {
-    logger.error('智能跳过决策失败:', error);
+    stLogger.error('智能跳过决策失败:', error);
     throw error;
   }
 }
@@ -362,7 +363,7 @@ export async function analyzeErrorPrevention(resourceId) {
       recommendation: measures.length > 0 ? '建议执行预防措施' : '风险较低'
     };
   } catch (error) {
-    logger.error('错误预防分析失败:', error);
+    stLogger.error('错误预防分析失败:', error);
     throw error;
   }
 }
@@ -443,7 +444,7 @@ export async function assessTranslationQuality(translationId) {
       recommendation: qualityScore < 60 ? '建议重新翻译' : '质量合格'
     };
   } catch (error) {
-    logger.error('翻译质量评估失败:', error);
+    stLogger.error('翻译质量评估失败:', error);
     throw error;
   }
 }
@@ -534,7 +535,7 @@ export async function getRecoveryRecommendations(sessionId) {
       autoRecoverable: recommendations.some(r => r.confidence > 0.7)
     };
   } catch (error) {
-    logger.error('获取恢复建议失败:', error);
+    stLogger.error('获取恢复建议失败:', error);
     throw error;
   }
 }

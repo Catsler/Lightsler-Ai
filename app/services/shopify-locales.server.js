@@ -6,13 +6,14 @@
 
 import { authenticate } from '../shopify.server.js';
 import prisma from '../db.server.js';
+import { logger as baseLogger } from '../utils/logger.server.js';
 
 // 创建日志记录器
-const logger = {
-  info: (message, ...args) => console.log(`[shopify-locales] ${message}`, ...args),
-  error: (message, ...args) => console.error(`[shopify-locales] ERROR: ${message}`, ...args),
-  warn: (message, ...args) => console.warn(`[shopify-locales] WARN: ${message}`, ...args),
-  debug: (message, ...args) => console.log(`[shopify-locales] DEBUG: ${message}`, ...args)
+const localesLogger = {
+  info: (message, meta = {}) => baseLogger.info(message, { service: 'shopify-locales', ...meta }),
+  error: (message, meta = {}) => baseLogger.error(message, { service: 'shopify-locales', ...meta }),
+  warn: (message, meta = {}) => baseLogger.warn(message, { service: 'shopify-locales', ...meta }),
+  debug: (message, meta = {}) => baseLogger.debug(message, { service: 'shopify-locales', ...meta })
 };
 
 /**
@@ -46,7 +47,7 @@ function validateLanguageConsistency(code, name) {
   );
 
   if (!isValid) {
-    logger.error(`检测到语言配置错误: code=${code}, name=${name}, 期望name包含: ${validNames.join(', ')}`);
+    localesLogger.error(`检测到语言配置错误: code=${code}, name=${name}, 期望name包含: ${validNames.join(', ')}`);
   }
 
   return isValid;
@@ -72,14 +73,14 @@ export async function getAvailableLocales(admin) {
     const result = await response.json();
     
     if (result.errors) {
-      logger.error('获取可用语言失败:', result.errors);
+      localesLogger.error('获取可用语言失败:', result.errors);
       throw new Error('Failed to fetch available locales');
     }
 
-    logger.info(`获取到 ${result.data.availableLocales.length} 种可用语言`);
+    localesLogger.info(`获取到 ${result.data.availableLocales.length} 种可用语言`);
     return result.data.availableLocales;
   } catch (error) {
-    logger.error('查询可用语言时出错:', error);
+    localesLogger.error('查询可用语言时出错:', error);
     throw error;
   }
 }
@@ -106,14 +107,14 @@ export async function getShopLocales(admin) {
     const result = await response.json();
     
     if (result.errors) {
-      logger.error('获取店铺语言失败:', result.errors);
+      localesLogger.error('获取店铺语言失败:', result.errors);
       throw new Error('Failed to fetch shop locales');
     }
 
-    logger.info(`店铺已启用 ${result.data.shopLocales.length} 种语言`);
+    localesLogger.info(`店铺已启用 ${result.data.shopLocales.length} 种语言`);
     return result.data.shopLocales;
   } catch (error) {
-    logger.error('查询店铺语言时出错:', error);
+    localesLogger.error('查询店铺语言时出错:', error);
     throw error;
   }
 }
@@ -149,7 +150,7 @@ export async function enableLocale(admin, locale) {
     const result = await response.json();
     
     if (result.errors) {
-      logger.error('启用语言失败:', result.errors);
+      localesLogger.error('启用语言失败:', result.errors);
       throw new Error('Failed to enable locale');
     }
 
@@ -157,14 +158,14 @@ export async function enableLocale(admin, locale) {
     
     if (userErrors && userErrors.length > 0) {
       const errorMessages = userErrors.map(e => e.message).join(', ');
-      logger.error(`启用语言 ${locale} 失败:`, errorMessages);
+      localesLogger.error(`启用语言 ${locale} 失败:`, errorMessages);
       throw new Error(errorMessages);
     }
 
-    logger.info(`成功启用语言: ${shopLocale.locale} (${shopLocale.name})`);
+    localesLogger.info(`成功启用语言: ${shopLocale.locale} (${shopLocale.name})`);
     return shopLocale;
   } catch (error) {
-    logger.error(`启用语言 ${locale} 时出错:`, error);
+    localesLogger.error(`启用语言 ${locale} 时出错:`, error);
     throw error;
   }
 }
@@ -195,7 +196,7 @@ export async function disableLocale(admin, locale) {
     const result = await response.json();
     
     if (result.errors) {
-      logger.error('禁用语言失败:', result.errors);
+      localesLogger.error('禁用语言失败:', result.errors);
       throw new Error('Failed to disable locale');
     }
 
@@ -203,14 +204,14 @@ export async function disableLocale(admin, locale) {
     
     if (userErrors && userErrors.length > 0) {
       const errorMessages = userErrors.map(e => e.message).join(', ');
-      logger.error(`禁用语言 ${locale} 失败:`, errorMessages);
+      localesLogger.error(`禁用语言 ${locale} 失败:`, errorMessages);
       throw new Error(errorMessages);
     }
 
-    logger.info(`成功禁用语言: ${disabledLocale}`);
+    localesLogger.info(`成功禁用语言: ${disabledLocale}`);
     return { locale: disabledLocale };
   } catch (error) {
-    logger.error(`禁用语言 ${locale} 时出错:`, error);
+    localesLogger.error(`禁用语言 ${locale} 时出错:`, error);
     throw error;
   }
 }
@@ -250,7 +251,7 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
     for (const locale of toAdd) {
       // 验证语言配置一致性
       if (!validateLanguageConsistency(locale.locale, locale.name)) {
-        logger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
+        localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
       }
 
       operations.push(
@@ -269,7 +270,7 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
     for (const locale of toUpdate) {
       // 验证语言配置一致性
       if (!validateLanguageConsistency(locale.locale, locale.name)) {
-        logger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
+        localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
       }
 
       operations.push(
@@ -308,9 +309,9 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
     // 执行所有操作
     if (operations.length > 0) {
       await prisma.$transaction(operations);
-      logger.info(`同步完成: 添加 ${toAdd.length} 个, 更新 ${toUpdate.length} 个, 禁用 ${toDisable.length} 个语言`);
+      localesLogger.info(`同步完成: 添加 ${toAdd.length} 个, 更新 ${toUpdate.length} 个, 禁用 ${toDisable.length} 个语言`);
     } else {
-      logger.info('语言已同步，无需更新');
+      localesLogger.info('语言已同步，无需更新');
     }
     
     // 返回更新后的语言列表
@@ -319,7 +320,7 @@ export async function syncShopLocalesToDatabase(shopId, admin) {
       orderBy: { name: 'asc' }
     });
   } catch (error) {
-    logger.error('同步语言到数据库失败:', error);
+    localesLogger.error('同步语言到数据库失败:', error);
     throw error;
   }
 }
@@ -350,7 +351,7 @@ export async function checkLocaleLimit(admin, shopLocalesOverride) {
       remainingSlots: remainingAlternateSlots
     };
   } catch (error) {
-    logger.error('检查语言限制失败:', error);
+    localesLogger.error('检查语言限制失败:', error);
     throw error;
   }
 }

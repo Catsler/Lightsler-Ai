@@ -7,13 +7,13 @@ import prisma from '../db.server.js';
 import { updateResourceTranslationBatch } from './shopify-graphql.server.js';
 import { invalidateCoverageCache } from './language-coverage.server.js';
 import { startPipeline, endPipeline, runStep, PIPELINE_PHASE } from '../utils/pipeline.server.js';
+import { logger as baseLogger } from '../utils/logger.server.js';
 
-// 创建简单的日志记录器
-const logger = {
-  info: (message, ...args) => console.log(`[sync-to-shopify] ${message}`, ...args),
-  error: (message, ...args) => console.error(`[sync-to-shopify] ERROR: ${message}`, ...args),
-  warn: (message, ...args) => console.warn(`[sync-to-shopify] WARN: ${message}`, ...args),
-  debug: (message, ...args) => console.log(`[sync-to-shopify] DEBUG: ${message}`, ...args)
+const syncLogger = {
+  info: (message, meta = {}) => baseLogger.info(message, { service: 'sync-to-shopify', ...meta }),
+  error: (message, meta = {}) => baseLogger.error(message, { service: 'sync-to-shopify', ...meta }),
+  warn: (message, meta = {}) => baseLogger.warn(message, { service: 'sync-to-shopify', ...meta }),
+  debug: (message, meta = {}) => baseLogger.debug(message, { service: 'sync-to-shopify', ...meta })
 };
 
 /**
@@ -195,7 +195,7 @@ async function syncResourceTranslations(admin, resourceData, batchIndex = 0) {
     failed: []
   };
   
-  logger.info(`开始同步资源 ${resource.gid} 的 ${translations.length} 个翻译`);
+  syncLogger.info(`开始同步资源 ${resource.gid} 的 ${translations.length} 个翻译`);
   
   // 按语言分组
   const byLanguage = {};
@@ -229,7 +229,7 @@ async function syncResourceTranslations(admin, resourceData, batchIndex = 0) {
         // 更新状态为synced
         await batchUpdateSyncStatus(translationIds, 'synced', { syncBatch: batchIndex });
         results.success.push(...translationIds);
-        logger.info(`资源 ${resource.gid} 的 ${language} 翻译同步成功`);
+        syncLogger.info(`资源 ${resource.gid} 的 ${language} 翻译同步成功`);
       } else {
         throw new Error(result.error || '同步失败');
       }
@@ -241,7 +241,7 @@ async function syncResourceTranslations(admin, resourceData, batchIndex = 0) {
         syncBatch: batchIndex
       });
       results.failed.push(...translationIds);
-      logger.error(`资源 ${resource.gid} 的 ${language} 翻译同步失败:`, error);
+      syncLogger.error(`资源 ${resource.gid} 的 ${language} 翻译同步失败:`, error);
     }
   }
   
@@ -281,16 +281,16 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
     const pendingTranslations = stepGetQueue.data;
     
     if (pendingTranslations.length === 0) {
-      logger.info('没有待同步的翻译');
+      syncLogger.info('没有待同步的翻译');
       return results;
     }
     
-    logger.info(`找到 ${pendingTranslations.length} 个待同步的翻译`);
+    syncLogger.info(`找到 ${pendingTranslations.length} 个待同步的翻译`);
     results.totalProcessed = pendingTranslations.length;
     
     // 按资源分组
     const groupedTranslations = groupTranslationsByResource(pendingTranslations);
-    logger.info(`分组为 ${groupedTranslations.size} 个资源`);
+    syncLogger.info(`分组为 ${groupedTranslations.size} 个资源`);
     
     // 逐个资源同步
     let batchIndex = 0;
@@ -326,10 +326,10 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
     }
     
     const duration = Date.now() - startTime;
-    logger.info(`同步完成，耗时 ${duration}ms，成功 ${results.successCount}，失败 ${results.failedCount}`);
+    syncLogger.info(`同步完成，耗时 ${duration}ms，成功 ${results.successCount}，失败 ${results.failedCount}`);
     
   } catch (error) {
-    logger.error('同步过程中发生错误:', error);
+    syncLogger.error('同步过程中发生错误:', error);
     results.errors.push({
       general: error.message
     });
@@ -346,7 +346,7 @@ export async function syncTranslationsToShopify(admin, shopId, options = {}) {
  * @returns {Promise<Object>} 同步结果
  */
 export async function retryFailedSync(admin, shopId) {
-  logger.info('开始重试失败的同步');
+  syncLogger.info('开始重试失败的同步');
   
   // 将失败状态重置为pending
   await prisma.translation.updateMany({
@@ -393,7 +393,7 @@ export async function clearSyncErrors(shopId) {
 export async function syncCategoryResources(admin, shopId, options = {}) {
   const { categoryKey, subcategoryKey, language = 'zh-CN', resourceIds } = options;
   
-  logger.info(`开始按分类同步资源，分类: ${categoryKey}, 子分类: ${subcategoryKey || '全部'}, 语言: ${language}`);
+  syncLogger.info(`开始按分类同步资源，分类: ${categoryKey}, 子分类: ${subcategoryKey || '全部'}, 语言: ${language}`);
   
   const results = {
     successCount: 0,
@@ -428,7 +428,7 @@ export async function syncCategoryResources(admin, shopId, options = {}) {
       throw new Error(`未找到分类 ${categoryKey} 的资源类型配置`);
     }
     
-    logger.info(`分类 ${categoryKey} 包含资源类型: ${resourceTypes.join(', ')}`);
+    syncLogger.info(`分类 ${categoryKey} 包含资源类型: ${resourceTypes.join(', ')}`);
     
     // 构建查询条件
     const where = {
@@ -461,7 +461,7 @@ export async function syncCategoryResources(admin, shopId, options = {}) {
       }
     });
     
-    logger.info(`找到 ${translations.length} 个待同步的翻译`);
+    syncLogger.info(`找到 ${translations.length} 个待同步的翻译`);
     
     if (translations.length === 0) {
       return results;
@@ -480,7 +480,7 @@ export async function syncCategoryResources(admin, shopId, options = {}) {
     for (const [resourceKey, resourceTranslations] of Object.entries(groupedTranslations)) {
       const [resourceType, resourceId] = resourceKey.split(':');
       
-      logger.info(`同步资源: ${resourceType} - ${resourceId}, 包含 ${resourceTranslations.length} 个翻译`);
+      syncLogger.info(`同步资源: ${resourceType} - ${resourceId}, 包含 ${resourceTranslations.length} 个翻译`);
       
       try {
         const result = await syncResourceTranslations(
@@ -518,7 +518,7 @@ export async function syncCategoryResources(admin, shopId, options = {}) {
           );
         }
       } catch (error) {
-        logger.error(`同步资源 ${resourceType}:${resourceId} 失败:`, error);
+        syncLogger.error(`同步资源 ${resourceType}:${resourceId} 失败:`, error);
         results.failedCount += resourceTranslations.length;
         results.errors.push({
           resource: `${resourceType}:${resourceId}`,
@@ -534,10 +534,10 @@ export async function syncCategoryResources(admin, shopId, options = {}) {
       }
     }
     
-    logger.info(`分类同步完成，成功 ${results.successCount}，失败 ${results.failedCount}`);
+    syncLogger.info(`分类同步完成，成功 ${results.successCount}，失败 ${results.failedCount}`);
     
   } catch (error) {
-    logger.error('分类同步过程中发生错误:', error);
+    syncLogger.error('分类同步过程中发生错误:', error);
     results.errors.push({
       general: error.message
     });

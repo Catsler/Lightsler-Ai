@@ -10,6 +10,8 @@
  * @param {any} fallback - 回退值（可选）
  * @returns {{value: string, skipped: boolean, reason?: string}} 清洗结果
  */
+import { logger } from '../utils/logger.server.js';
+
 function sanitizeTranslationValue(value, fallback = null) {
   // 处理字符串类型
   if (typeof value === 'string') {
@@ -341,7 +343,7 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
 
     while (retryCount < maxRetries && !success) {
       try {
-        console.log(`获取产品数据 - 游标: ${cursor || 'null'}, 尝试: ${retryCount + 1}/${maxRetries}`);
+        logger.debug('获取产品数据', { cursor: cursor || 'null', attempt: retryCount + 1, maxRetries });
         
         // 设置超时控制
         const timeoutPromise = new Promise((_, reject) => 
@@ -358,11 +360,11 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
         
       } catch (error) {
         retryCount++;
-        console.error(`GraphQL请求失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
+        logger.error('GraphQL请求失败', { attempt: retryCount, maxRetries, error: error.message });
         
         if (retryCount < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数退避，最大5秒
-          console.log(`${delay}ms后重试...`);
+          logger.debug(`${delay}ms后重试...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           throw new Error(`GraphQL请求失败，已达最大重试次数: ${error.message}`);
@@ -379,7 +381,7 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
     }
 
     const productEdges = data.data.products.edges;
-    console.log(`成功获取 ${productEdges.length} 个产品`);
+    logger.debug('成功获取产品', { count: productEdges.length });
     
     for (const edge of productEdges) {
       const product = edge.node;
@@ -402,7 +404,7 @@ export async function fetchAllProducts(admin, maxRetries = 3) {
     cursor = data.data.products.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${products.length} 个产品`);
+  logger.debug('获取产品完成', { count: products.length });
   return products;
 }
 
@@ -424,7 +426,7 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
 
     while (retryCount < maxRetries && !success) {
       try {
-        console.log(`获取集合数据 - 游标: ${cursor || 'null'}, 尝试: ${retryCount + 1}/${maxRetries}`);
+        logger.debug('获取集合数据', { cursor: cursor || 'null', attempt: retryCount + 1, maxRetries });
         
         // 设置超时控制
         const timeoutPromise = new Promise((_, reject) => 
@@ -441,11 +443,11 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
         
       } catch (error) {
         retryCount++;
-        console.error(`GraphQL请求失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
+        logger.error('GraphQL请求失败', { attempt: retryCount, maxRetries, error: error.message });
         
         if (retryCount < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数退避，最大5秒
-          console.log(`${delay}ms后重试...`);
+          logger.debug(`${delay}ms后重试...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           throw new Error(`GraphQL请求失败，已达最大重试次数: ${error.message}`);
@@ -462,7 +464,7 @@ export async function fetchAllCollections(admin, maxRetries = 3) {
     }
 
     const collectionEdges = data.data.collections.edges;
-    console.log(`成功获取 ${collectionEdges.length} 个集合`);
+    logger.debug('成功获取集合', { count: collectionEdges.length });
     
     for (const edge of collectionEdges) {
       const collection = edge.node;
@@ -526,7 +528,7 @@ export async function executeGraphQLWithRetry(admin, query, variables = {}, maxR
 
   while (retryCount < maxRetries && !success) {
     try {
-      console.log(`执行GraphQL查询 - 尝试: ${retryCount + 1}/${maxRetries}`);
+      logger.debug('执行GraphQL查询', { attempt: retryCount + 1, maxRetries });
       
       // 设置超时控制
       const timeoutPromise = new Promise((_, reject) => 
@@ -540,11 +542,11 @@ export async function executeGraphQLWithRetry(admin, query, variables = {}, maxR
       
     } catch (error) {
       retryCount++;
-      console.error(`GraphQL请求失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
+      logger.error('GraphQL请求失败', { attempt: retryCount, maxRetries, error: error.message });
       
       if (retryCount < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数退避，最大5秒
-        console.log(`${delay}ms后重试...`);
+        logger.debug(`${delay}ms后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
         throw new Error(`GraphQL请求失败，已达最大重试次数: ${error.message}`);
@@ -603,7 +605,7 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
   let cursor = null;
   let hasNextPage = true;
 
-  console.log(`开始获取${resourceType}类型的可翻译资源`);
+  logger.debug('开始获取可翻译资源', { resourceType });
 
   while (hasNextPage) {
     const data = await executeGraphQLWithRetry(
@@ -622,7 +624,7 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
     }
 
     const edges = data.data.translatableResources.edges;
-    console.log(`成功获取 ${edges.length} 个${resourceType}资源`);
+    logger.debug('成功获取资源', { resourceType, count: edges.length });
     
     for (const edge of edges) {
       const resource = edge.node;
@@ -639,8 +641,8 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
       
       // 为PAGE资源添加调试日志
       if (resourceType === RESOURCE_TYPES.PAGE) {
-        console.log(`[PAGE调试] 资源 ${resourceId} 的可翻译字段:`, Object.keys(content));
-        console.log(`[PAGE调试] body_html字段内容:`, content.body_html ? `${content.body_html.substring(0, 100)}...` : '空');
+        logger.debug(`[PAGE调试] 资源 ${resourceId} 的可翻译字段:`, Object.keys(content));
+        logger.debug(`[PAGE调试] body_html字段内容:`, content.body_html ? `${content.body_html.substring(0, 100)}...` : '空');
       }
       
       // 根据资源类型构建特定字段
@@ -685,7 +687,7 @@ export async function fetchResourcesByType(admin, resourceType, maxRetries = 3) 
     cursor = data.data.translatableResources.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  logger.debug(`总共获取 ${resources.length} 个${resourceType}资源`);
   return resources;
 }
 
@@ -717,7 +719,7 @@ export async function fetchOptionsForProduct(admin, productGid, maxRetries = 3) 
 // 翻译单个metafield
 export async function updateMetafieldTranslation(admin, metafieldGid, translatedValue, targetLocale, maxRetries = 3) {
   try {
-    console.log(`🔧 开始翻译metafield: ${metafieldGid} -> ${targetLocale}`);
+    logger.debug(`🔧 开始翻译metafield: ${metafieldGid} -> ${targetLocale}`);
 
     // 第一步：获取metafield的可翻译内容digest
     const data = await executeGraphQLWithRetry(
@@ -728,10 +730,10 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
     );
 
     const translatableContent = data.data.translatableResource?.translatableContent || [];
-    console.log(`📋 获取到 ${translatableContent.length} 个可翻译字段`);
+    logger.debug(`📋 获取到 ${translatableContent.length} 个可翻译字段`);
 
     if (translatableContent.length === 0) {
-      console.log('⚠️ 未找到可翻译内容，可能是metafield不支持翻译');
+      logger.debug('⚠️ 未找到可翻译内容，可能是metafield不支持翻译');
       return {
         success: false,
         message: 'Metafield不支持翻译或未找到可翻译内容'
@@ -741,7 +743,7 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
     // 对于metafield，通常使用'value'作为可翻译字段的key
     const valueContent = translatableContent.find(item => item.key === 'value');
     if (!valueContent) {
-      console.log('❌ 未找到value字段的可翻译内容');
+      logger.debug('❌ 未找到value字段的可翻译内容');
       return {
         success: false,
         message: '未找到metafield的value字段可翻译内容'
@@ -756,7 +758,7 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
       translatableContentDigest: valueContent.digest
     };
 
-    console.log('📤 准备翻译注册:', JSON.stringify(translationInput, null, 2));
+    logger.debug('📤 准备翻译注册:', JSON.stringify(translationInput, null, 2));
 
     // 第三步：注册翻译
     const registerData = await executeGraphQLWithRetry(
@@ -769,10 +771,10 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
       maxRetries
     );
 
-    console.log('📊 翻译注册响应:', JSON.stringify(registerData, null, 2));
+    logger.debug('📊 翻译注册响应:', JSON.stringify(registerData, null, 2));
 
     if (registerData.data.translationsRegister.userErrors.length > 0) {
-      console.error('❌ 翻译注册失败:', registerData.data.translationsRegister.userErrors);
+      logger.error('❌ 翻译注册失败:', registerData.data.translationsRegister.userErrors);
       return {
         success: false,
         message: `翻译注册失败: ${registerData.data.translationsRegister.userErrors.map(e => e.message).join(', ')}`,
@@ -781,7 +783,7 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
     }
 
     const registeredTranslations = registerData.data.translationsRegister.translations || [];
-    console.log(`✅ Metafield翻译注册成功，注册了 ${registeredTranslations.length} 个翻译`);
+    logger.debug(`✅ Metafield翻译注册成功，注册了 ${registeredTranslations.length} 个翻译`);
 
     return {
       success: true,
@@ -790,7 +792,7 @@ export async function updateMetafieldTranslation(admin, metafieldGid, translated
     };
 
   } catch (error) {
-    console.error('❌ updateMetafieldTranslation错误:', error);
+    logger.error('❌ updateMetafieldTranslation错误:', error);
     return {
       success: false,
       message: `翻译metafield失败: ${error.message}`,
@@ -836,7 +838,7 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
   let cursor = null;
   let hasNextPage = true;
 
-  console.log(`开始获取Theme类型 ${resourceType} 的可翻译资源`);
+  logger.debug(`开始获取Theme类型 ${resourceType} 的可翻译资源`);
 
   while (hasNextPage) {
     const data = await executeGraphQLWithRetry(
@@ -855,7 +857,7 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
     }
 
     const edges = data.data.translatableResources.edges;
-    console.log(`成功获取 ${edges.length} 个${resourceType}资源`);
+    logger.debug('成功获取资源', { resourceType, count: edges.length });
     
     for (const edge of edges) {
       const resource = edge.node;
@@ -1056,7 +1058,7 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
     cursor = data.data.translatableResources.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  logger.debug(`总共获取 ${resources.length} 个${resourceType}资源`);
   return resources;
 }
 
@@ -1066,7 +1068,7 @@ export async function fetchProductOptions(admin, maxRetries = 3) {
   let cursor = null;
   let hasNextPage = true;
 
-  console.log('开始获取产品选项资源');
+  logger.debug('开始获取产品选项资源');
 
   while (hasNextPage) {
     const data = await executeGraphQLWithRetry(
@@ -1113,7 +1115,7 @@ export async function fetchProductOptions(admin, maxRetries = 3) {
     cursor = data.data.translatableResources.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${resources.length} 个产品选项`);
+  logger.debug(`总共获取 ${resources.length} 个产品选项`);
   return resources;
 }
 
@@ -1123,7 +1125,7 @@ export async function fetchSellingPlans(admin, maxRetries = 3) {
   let cursor = null;
   let hasNextPage = true;
 
-  console.log('开始获取销售计划资源');
+  logger.debug('开始获取销售计划资源');
 
   while (hasNextPage) {
     const data = await executeGraphQLWithRetry(
@@ -1170,7 +1172,7 @@ export async function fetchSellingPlans(admin, maxRetries = 3) {
     cursor = data.data.translatableResources.pageInfo.endCursor;
   }
 
-  console.log(`总共获取 ${resources.length} 个销售计划`);
+  logger.debug(`总共获取 ${resources.length} 个销售计划`);
   return resources;
 }
 
@@ -1178,7 +1180,7 @@ export async function fetchSellingPlans(admin, maxRetries = 3) {
 export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
   const resources = [];
   
-  console.log(`开始获取店铺资源: ${resourceType}`);
+  logger.debug(`开始获取店铺资源: ${resourceType}`);
 
   const data = await executeGraphQLWithRetry(
     admin, 
@@ -1230,7 +1232,7 @@ export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
     resources.push(resourceData);
   }
 
-  console.log(`总共获取 ${resources.length} 个${resourceType}资源`);
+  logger.debug(`总共获取 ${resources.length} 个${resourceType}资源`);
   return resources;
 }
 
@@ -1254,12 +1256,12 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       
     // 检查是否为动态字段资源（Theme相关）
     if (fieldMapping && fieldMapping.dynamic) {
-      console.log(`🎨 检测到动态字段资源类型: ${resourceType}`);
+      logger.debug(`🎨 检测到动态字段资源类型: ${resourceType}`);
       // 对于动态字段资源，从translationFields构建映射
       if (translations.translationFields && typeof translations.translationFields === 'object') {
         const translationFieldsKeys = Object.keys(translations.translationFields);
         if (translationFieldsKeys.length === 0) {
-          console.warn('⚠️ Theme资源translationFields为空，可能是contentFields数据缺失');
+          logger.warn('⚠️ Theme资源translationFields为空，可能是contentFields数据缺失');
           return { 
             success: false, 
             message: 'Theme资源翻译字段为空，请确认资源已正确扫描并包含contentFields数据' 
@@ -1270,9 +1272,9 @@ export async function updateResourceTranslation(admin, resourceGid, translations
         for (const [key, value] of Object.entries(translations.translationFields)) {
           fieldMapping[key] = key; // 动态字段直接使用相同的key
         }
-        console.log('🔧 动态构建的字段映射:', fieldMapping);
+        logger.debug('🔧 动态构建的字段映射:', fieldMapping);
       } else {
-        console.log('⚠️ 动态字段资源缺少translationFields');
+        logger.debug('⚠️ 动态字段资源缺少translationFields');
         return { 
           success: false, 
           message: '动态字段资源缺少翻译内容，请重新扫描Theme资源' 
@@ -1288,7 +1290,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       fieldMapping = {};
     }
     
-    console.log('🚀 开始注册资源翻译:', {
+    logger.debug('🚀 开始注册资源翻译:', {
       resourceGid,
       targetLocale,
       resourceType,
@@ -1296,7 +1298,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     });
 
     // 第一步：获取可翻译内容和digest
-    console.log('📋 第一步：查询可翻译资源...');
+    logger.debug('📋 第一步：查询可翻译资源...');
     const data = await executeGraphQLWithRetry(
       admin, 
       TRANSLATABLE_RESOURCE_QUERY, 
@@ -1304,19 +1306,19 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     );
 
     const translatableContent = data.data.translatableResource?.translatableContent || [];
-    console.log(`✅ 获取到可翻译内容: ${translatableContent.length} 个字段`);
+    logger.debug(`✅ 获取到可翻译内容: ${translatableContent.length} 个字段`);
     
     // 详细输出可翻译内容
-    console.log('📝 可翻译内容详情:');
+    logger.debug('📝 可翻译内容详情:');
     translatableContent.forEach((item, index) => {
-      console.log(`  ${index + 1}. Key: "${item.key}"`);
-      console.log(`     Value: "${item.value?.substring(0, 100)}..."`);
-      console.log(`     Digest: ${item.digest}`);
-      console.log(`     Locale: ${item.locale}`);
+      logger.debug(`  ${index + 1}. Key: "${item.key}"`);
+      logger.debug(`     Value: "${item.value?.substring(0, 100)}..."`);
+      logger.debug(`     Digest: ${item.digest}`);
+      logger.debug(`     Locale: ${item.locale}`);
     });
 
     // 第二步：准备翻译输入
-    console.log('🔧 第二步：准备翻译输入...');
+    logger.debug('🔧 第二步：准备翻译输入...');
     const translationInputs = [];
 
     // 数据清洗统计
@@ -1327,14 +1329,14 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     };
 
     // 使用字段映射配置来处理翻译
-    console.log('🗺️ 字段映射配置:', fieldMapping);
-    console.log('📥 收到的翻译数据:', Object.keys(translations).filter(key => translations[key]));
+    logger.debug('🗺️ 字段映射配置:', fieldMapping);
+    logger.debug('📥 收到的翻译数据:', Object.keys(translations).filter(key => translations[key]));
     
     // 处理标准字段翻译
     for (const [translationKey, contentKey] of Object.entries(fieldMapping)) {
       // 先检查标准字段
       if (translations[translationKey]) {
-        console.log(`🔍 处理字段映射: ${translationKey} -> ${contentKey}`);
+        logger.debug(`🔍 处理字段映射: ${translationKey} -> ${contentKey}`);
         const content = translatableContent.find(item => item.key === contentKey);
         if (content) {
           // 应用数据清洗
@@ -1344,7 +1346,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
           if (sanitizedValue.shouldSkip) {
             sanitizationStats.skipped++;
             sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
-            console.log(`⏭️ 跳过标准字段 "${contentKey}": ${sanitizedValue.reason}`);
+            logger.debug(`⏭️ 跳过标准字段 "${contentKey}": ${sanitizedValue.reason}`);
             continue;
           }
 
@@ -1355,29 +1357,29 @@ export async function updateResourceTranslation(admin, resourceGid, translations
             translatableContentDigest: content.digest
           };
           translationInputs.push(translationInput);
-          console.log(`✅ 成功添加翻译输入:`, {
+          logger.debug(`✅ 成功添加翻译输入:`, {
             key: contentKey,
             valueLength: sanitizedValue.value.length,
             valuePreview: sanitizedValue.value.substring(0, 50) + '...'
           });
         } else {
-          console.log(`❌ 警告：未找到对应的可翻译内容，字段key: "${contentKey}"`);
-          console.log(`   可用的字段keys: [${translatableContent.map(item => `"${item.key}"`).join(', ')}]`);
+          logger.debug(`❌ 警告：未找到对应的可翻译内容，字段key: "${contentKey}"`);
+          logger.debug(`   可用的字段keys: [${translatableContent.map(item => `"${item.key}"`).join(', ')}]`);
         }
       }
     }
     
     // 特别处理translationFields中的动态字段
     if (translations.translationFields) {
-      console.log('🎯 处理动态字段翻译...');
+      logger.debug('🎯 处理动态字段翻译...');
       
       // 检查是否是Theme资源的嵌套结构（包含dynamicFields）
       if (translations.translationFields.dynamicFields) {
-        console.log('📦 检测到Theme资源的dynamicFields结构');
+        logger.debug('📦 检测到Theme资源的dynamicFields结构');
         
         // 处理Theme资源的dynamicFields
         for (const [fieldKey, fieldData] of Object.entries(translations.translationFields.dynamicFields)) {
-          console.log(`🔍 处理Theme动态字段: ${fieldKey}`);
+          logger.debug(`🔍 处理Theme动态字段: ${fieldKey}`);
           const content = translatableContent.find(item => item.key === fieldKey);
           
           if (content && fieldData) {
@@ -1394,7 +1396,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
             if (sanitizedValue.shouldSkip) {
               sanitizationStats.skipped++;
               sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
-              console.log(`⏭️ 跳过Theme动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
+              logger.debug(`⏭️ 跳过Theme动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
               continue;
             }
 
@@ -1405,7 +1407,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
               translatableContentDigest: fieldData.digest || content.digest
             };
             translationInputs.push(translationInput);
-            console.log(`✅ 成功添加Theme动态字段翻译:`, {
+            logger.debug(`✅ 成功添加Theme动态字段翻译:`, {
               key: fieldKey,
               valueType: typeof sanitizedValue.value,
               hasDigest: !!(fieldData.digest || content.digest),
@@ -1413,14 +1415,14 @@ export async function updateResourceTranslation(admin, resourceGid, translations
               originalValueType: typeof fieldValue
             });
           } else {
-            console.log(`⚠️ Theme动态字段未找到可翻译内容: "${fieldKey}"`);
+            logger.debug(`⚠️ Theme动态字段未找到可翻译内容: "${fieldKey}"`);
           }
         }
       }
       
       // 处理Theme资源的translatableFields（如果存在）
       if (translations.translationFields.translatableFields && Array.isArray(translations.translationFields.translatableFields)) {
-        console.log('📦 检测到Theme资源的translatableFields数组');
+        logger.debug('📦 检测到Theme资源的translatableFields数组');
         
         for (const field of translations.translationFields.translatableFields) {
           if (field.key && field.value) {
@@ -1434,7 +1436,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
               if (sanitizedValue.shouldSkip) {
                 sanitizationStats.skipped++;
                 sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
-                console.log(`⏭️ 跳过Theme translatable字段 "${field.key}": ${sanitizedValue.reason}`);
+                logger.debug(`⏭️ 跳过Theme translatable字段 "${field.key}": ${sanitizedValue.reason}`);
                 continue;
               }
 
@@ -1445,7 +1447,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
                 translatableContentDigest: field.digest || content.digest
               };
               translationInputs.push(translationInput);
-              console.log(`✅ 成功添加Theme translatable字段:`, {
+              logger.debug(`✅ 成功添加Theme translatable字段:`, {
                 key: field.key,
                 valuePreview: sanitizedValue.value.substring(0, 50) + '...'
               });
@@ -1457,9 +1459,9 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       // 处理普通的translationFields（非Theme资源）
       const isThemeResource = translations.translationFields.dynamicFields || translations.translationFields.translatableFields;
       if (!isThemeResource) {
-        console.log('📝 处理标准translationFields结构');
+        logger.debug('📝 处理标准translationFields结构');
         for (const [fieldKey, fieldValue] of Object.entries(translations.translationFields)) {
-          console.log(`🔍 处理标准动态字段: ${fieldKey}`);
+          logger.debug(`🔍 处理标准动态字段: ${fieldKey}`);
           const content = translatableContent.find(item => item.key === fieldKey);
           if (content) {
             // 标准化字段值
@@ -1472,7 +1474,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
             if (sanitizedValue.shouldSkip) {
               sanitizationStats.skipped++;
               sanitizationStats.reasons[sanitizedValue.reason] = (sanitizationStats.reasons[sanitizedValue.reason] || 0) + 1;
-              console.log(`⏭️ 跳过标准动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
+              logger.debug(`⏭️ 跳过标准动态字段 "${fieldKey}": ${sanitizedValue.reason}`);
               continue;
             }
 
@@ -1483,20 +1485,20 @@ export async function updateResourceTranslation(admin, resourceGid, translations
               translatableContentDigest: content.digest
             };
             translationInputs.push(translationInput);
-            console.log(`✅ 成功添加标准动态字段翻译:`, {
+            logger.debug(`✅ 成功添加标准动态字段翻译:`, {
               key: fieldKey,
               valueType: typeof fieldValue,
               valuePreview: sanitizedValue.value.substring(0, 50) + '...'
             });
           } else {
-            console.log(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
+            logger.debug(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
           }
         }
       }
     }
 
     if (translationInputs.length === 0) {
-      console.log('⚠️ 警告：没有找到可翻译的内容，跳过翻译注册');
+      logger.debug('⚠️ 警告：没有找到可翻译的内容，跳过翻译注册');
       return { 
         success: true, 
         message: '没有可翻译的内容',
@@ -1530,7 +1532,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     const translationInputsFinal = Array.from(dedupedMap.values());
 
     // 输出数据清洗统计报告
-    console.log('🧹 数据清洗统计报告:', {
+    logger.debug('🧹 数据清洗统计报告:', {
       总处理字段数: sanitizationStats.total,
       跳过字段数: sanitizationStats.skipped,
       有效字段数: sanitizationStats.total - sanitizationStats.skipped,
@@ -1542,11 +1544,11 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       去重移除条数: removedCount
     });
 
-    console.log(`🎯 准备注册 ${translationInputsFinal.length} 个翻译`);
-    console.log('📤 翻译输入详情:', JSON.stringify(translationInputsFinal, null, 2));
+    logger.debug(`🎯 准备注册 ${translationInputsFinal.length} 个翻译`);
+    logger.debug('📤 翻译输入详情:', JSON.stringify(translationInputsFinal, null, 2));
 
     // 第三步：注册翻译（分批处理）
-    console.log('💾 第三步：注册翻译到Shopify...');
+    logger.debug('💾 第三步：注册翻译到Shopify...');
     
     // 分批处理大量翻译字段
     const BATCH_SIZE = 80; // 每批最多80个字段，留有安全余量
@@ -1559,12 +1561,12 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       chunks.push(translationInputsFinal.slice(i, i + BATCH_SIZE));
     }
     
-    console.log(`📦 将 ${translationInputs.length} 个翻译分成 ${chunks.length} 批处理，每批最多 ${BATCH_SIZE} 个`);
+    logger.debug(`📦 将 ${translationInputs.length} 个翻译分成 ${chunks.length} 批处理，每批最多 ${BATCH_SIZE} 个`);
     
     // 逐批提交
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      console.log(`🚀 处理第 ${i + 1}/${chunks.length} 批，包含 ${chunk.length} 个翻译`);
+      logger.debug(`🚀 处理第 ${i + 1}/${chunks.length} 批，包含 ${chunk.length} 个翻译`);
       
       try {
         const registerData = await executeGraphQLWithRetry(
@@ -1576,20 +1578,20 @@ export async function updateResourceTranslation(admin, resourceGid, translations
           }
         );
         
-        console.log(`📊 第 ${i + 1} 批翻译注册响应:`, JSON.stringify(registerData, null, 2));
+        logger.debug(`📊 第 ${i + 1} 批翻译注册响应:`, JSON.stringify(registerData, null, 2));
         
         if (registerData.data.translationsRegister.userErrors.length > 0) {
-          console.error(`❌ 第 ${i + 1} 批翻译注册用户错误:`, registerData.data.translationsRegister.userErrors);
+          logger.error(`❌ 第 ${i + 1} 批翻译注册用户错误:`, registerData.data.translationsRegister.userErrors);
           errors.push({
             batch: i + 1,
             errors: registerData.data.translationsRegister.userErrors
           });
         } else {
           allTranslations.push(...(registerData.data.translationsRegister.translations || []));
-          console.log(`✅ 第 ${i + 1} 批翻译注册成功，已注册 ${registerData.data.translationsRegister.translations?.length || 0} 个翻译`);
+          logger.debug(`✅ 第 ${i + 1} 批翻译注册成功，已注册 ${registerData.data.translationsRegister.translations?.length || 0} 个翻译`);
         }
       } catch (error) {
-        console.error(`❌ 第 ${i + 1} 批翻译注册失败:`, error);
+        logger.error(`❌ 第 ${i + 1} 批翻译注册失败:`, error);
         errors.push({
           batch: i + 1,
           error: error.message
@@ -1600,16 +1602,16 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     
     // 检查是否有错误
     if (errors.length > 0) {
-      console.error('❌ 部分批次翻译注册失败:', errors);
+      logger.error('❌ 部分批次翻译注册失败:', errors);
       // 如果所有批次都失败，抛出错误
       if (errors.length === chunks.length) {
         throw new Error(`所有批次翻译注册失败: ${JSON.stringify(errors)}`);
       }
       // 部分成功，返回成功的结果
-      console.warn(`⚠️ ${errors.length}/${chunks.length} 批次失败，但 ${allTranslations.length} 个翻译成功注册`);
+      logger.warn(`⚠️ ${errors.length}/${chunks.length} 批次失败，但 ${allTranslations.length} 个翻译成功注册`);
     }
     
-    console.log('🎉 资源翻译注册完成:', {
+    logger.debug('🎉 资源翻译注册完成:', {
       resourceId: resourceGid,
       locale: targetLocale,
       totalBatches: chunks.length,
@@ -1633,8 +1635,8 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     };
 
   } catch (error) {
-    console.error('💥 资源翻译注册过程中发生错误:', error);
-    console.error('错误堆栈:', error.stack);
+    logger.error('💥 资源翻译注册过程中发生错误:', error);
+    logger.error('错误堆栈:', error.stack);
     throw error;
   }
 }

@@ -73,20 +73,22 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
+  const {
+    getMarketConfigWithCache,
+    getLanguageUrlsForDisplay,
+    getUrlConversionSettings
+  } = await import("../services/market-urls.server");
+  const { getShopLocales } = await import("../services/shopify-locales.server");
+  const { logger } = await import("../utils/logger.server");
+
   try {
-    const { authenticate } = await import("../shopify.server");
-    const { getMarketConfigWithCache, getLanguageUrlsForDisplay, getUrlConversionSettings } = await import("../services/market-urls.server");
-    const { getShopLocales } = await import("../services/shopify-locales.server");
-    const { logger } = await import("../utils/logger.server");
-    
     const { admin, session } = await authenticate.admin(request);
-    
+
     logger.info('加载语言域名页面', { shop: session.shop });
-    
-    // 优先使用缓存的配置，必要时同步新配置
+
     const marketsConfig = await getMarketConfigWithCache(session.shop, admin);
-    
-    // 并行获取其他数据
+
     const [shopLocales, languageUrls, urlSettings] = await Promise.all([
       getShopLocales(admin).catch(err => {
         logger.error('获取店铺语言失败', err);
@@ -95,10 +97,9 @@ export const loader = async ({ request }) => {
       getLanguageUrlsForDisplay(admin),
       getUrlConversionSettings(session.shop)
     ]);
-    
-    // 数据融合函数：合并 marketConfig 和 shopLocale 信息
-    const mergeLocaleMeta = (localeKey, marketConfig, shopLocales) => {
-      const shopLocale = shopLocales.find(l => l.locale === localeKey);
+
+    const mergeLocaleMeta = (localeKey, marketConfig, locales) => {
+      const shopLocale = locales.find(l => l.locale === localeKey);
       return {
         locale: localeKey,
         name: shopLocale?.name || marketConfig.marketName || localeKey,
@@ -112,36 +113,31 @@ export const loader = async ({ request }) => {
       };
     };
 
-    // 构建增强的语言数据
     let enhancedLanguageData = [];
-    
+
     if (marketsConfig?.mappings) {
-      // 以 mappings 为主数据源，显示所有市场-语言组合
       enhancedLanguageData = Object.entries(marketsConfig.mappings)
-        .map(([locale, config]) => mergeLocaleMeta(locale, config, shopLocales));
-    } else if (shopLocales.length > 0) {
-      // 降级到原有逻辑（无 Markets 配置时）
-      enhancedLanguageData = shopLocales.map(locale => ({
-        locale: locale.locale,
-        name: locale.name,
-        primary: locale.primary,
-        published: locale.published,
-        marketName: '-',
-        type: 'unknown',
-        url: marketsConfig?.primaryUrl || '#',
-        path: null,
-        hasMarketConfig: false
-      }));
+        .flatMap(([marketName, marketData]) => {
+          const { locales = [], ...rest } = marketData;
+          return locales.map(localeKey => {
+            const localeInfo = mergeLocaleMeta(localeKey, { ...rest, marketName }, shopLocales);
+            const urlInfo = languageUrls.find(item => item.locale === localeKey) || {};
+            return {
+              ...localeInfo,
+              ...urlInfo,
+              marketName,
+              localeKey
+            };
+          });
+        })
+        .sort((a, b) => {
+          if (a.primary) return -1;
+          if (b.primary) return 1;
+          return a.locale.localeCompare(b.locale);
+        });
     }
-    
-    // 按主要语言优先，然后按locale排序
-    enhancedLanguageData.sort((a, b) => {
-      if (a.primary) return -1;
-      if (b.primary) return 1;
-      return a.locale.localeCompare(b.locale);
-    });
-    
-    return json({ 
+
+    return json({
       languages: enhancedLanguageData,
       marketsConfig,
       shopName: marketsConfig?.shopName || session.shop,

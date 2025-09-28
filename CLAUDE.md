@@ -194,6 +194,11 @@ npm run test:e2e:headed          # 运行端到端测试（有头模式）
 # API测试
 npm run test:api-contracts       # 运行API合约测试
 
+# 代码质量检查
+npm run check                    # 运行lint和build检查
+npm run check:lint               # 只运行lint检查
+npm run check:build              # 只运行build检查
+
 # 核心功能测试
 node test-resource-types.js      # 资源类型测试
 node test-sequential-thinking.js # AI系统测试
@@ -263,11 +268,12 @@ npm run dev                      # 启动开发服务器（自动集成）
 
 ## 开发检查清单
 
-- ✅ `npm run lint` 无错误
+- ✅ `npm run check` 代码质量检查通过
 - ✅ `npm run build` 构建成功
 - ✅ 数据模型变更后运行 `npx prisma migrate dev`
 - ✅ 新增Shopify权限后运行 `npm run deploy`
 - ✅ 测试关键功能流程（扫描→翻译→同步）
+- ✅ 使用 `npm run test:e2e` 运行端到端测试
 
 ## 重要文件位置
 
