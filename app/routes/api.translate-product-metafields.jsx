@@ -1,11 +1,8 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server.js";
-import { withErrorHandling, successResponse, validationErrorResponse, validateRequiredParams } from "../utils/api-response.server.js";
+import { createApiRoute } from "../utils/base-route.server.js";
 import { translateText } from "../services/translation.server.js";
 import { shouldTranslateMetafield, analyzeMetafields } from "../utils/metafields.js";
 
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+async function handleTranslateProductMetafields({ request, admin, session }) {
   const formData = await request.formData();
 
   // 参数验证
@@ -15,9 +12,8 @@ export const action = withErrorHandling(async ({ request }) => {
     analyzeOnly: formData.get("analyzeOnly") === "true"  // 支持 dry-run 模式
   };
 
-  const validationErrors = validateRequiredParams(params, ['productGid', 'targetLanguage']);
-  if (validationErrors.length > 0) {
-    return validationErrorResponse(validationErrors);
+  if (!params.productGid || !params.targetLanguage) {
+    throw new Error('productGid 和 targetLanguage 参数是必需的');
   }
 
   const { productGid, targetLanguage, analyzeOnly } = params;
@@ -47,7 +43,7 @@ export const action = withErrorHandling(async ({ request }) => {
     const translatableMetafields = analysis.results.filter(result => result.decision.translate);
 
     if (translatableMetafields.length === 0) {
-      return successResponse({
+      return {
         message: '没有找到需要翻译的metafields',
         mode: analyzeOnly ? 'analyze' : 'translate',
         stats: {
@@ -70,13 +66,13 @@ export const action = withErrorHandling(async ({ request }) => {
           success: null
         })),
         summary: analysis.summary
-      });
+      };
     }
 
     // 如果只是分析模式，直接返回分析结果
     if (analyzeOnly) {
       console.log('📊 仅分析模式，返回决策结果');
-      return successResponse({
+      return {
         message: `分析完成：${analysis.stats.translatable}个可翻译，${analysis.stats.skipped}个跳过`,
         mode: 'analyze',
         stats: {
@@ -99,7 +95,7 @@ export const action = withErrorHandling(async ({ request }) => {
           success: null
         })),
         summary: analysis.summary
-      });
+      };
     }
 
     // 第三步：执行翻译
@@ -204,7 +200,7 @@ export const action = withErrorHandling(async ({ request }) => {
     console.log(`🎯 翻译完成，统计信息:`, stats);
     console.log(`📊 决策原因分布:`, Object.entries(analysis.stats.byReason));
 
-    return successResponse({
+    return {
       message: `Metafields翻译完成：成功 ${successCount} 个，跳过 ${analysis.stats.skipped} 个，失败 ${failedCount} 个`,
       mode: 'translate',
       stats,
@@ -228,14 +224,15 @@ export const action = withErrorHandling(async ({ request }) => {
         ruleVersion: 'v1.0.0',
         supportedTypes: ['single_line_text_field', 'multi_line_text_field']
       }
-    });
+    };
 
   } catch (error) {
     console.error('❌ translate-product-metafields API错误:', error);
-    return json({
-      success: false,
-      message: `翻译产品metafields失败: ${error.message}`,
-      error: error.message
-    }, { status: 500 });
+    throw new Error(`翻译产品metafields失败: ${error.message}`);
   }
-}, "translate product metafields");
+}
+
+export const action = createApiRoute(handleTranslateProductMetafields, {
+  requireAuth: true,
+  operationName: '翻译产品metafields'
+});

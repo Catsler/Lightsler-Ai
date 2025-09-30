@@ -3,9 +3,6 @@
  * 提供思考链查询、决策分析和优化建议接口
  */
 
-import { json } from '@remix-run/node';
-import { authenticate } from '../shopify.server';
-import { withErrorHandling } from '../utils/api-response.server';
 import {
   translateBatchWithIntelligence,
   getTranslationScheduleSuggestions,
@@ -13,82 +10,57 @@ import {
   optimizeTranslationSession
 } from '../services/translation-intelligence.server';
 import { prisma } from '../db.server';
+import { createApiRoute } from '../utils/base-route.server.js';
 
 /**
  * GET请求处理器
  * 获取思考链信息和优化建议
  */
-export const loader = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const shopId = session.shop;
+async function handleThinkingChainQuery({ request, session, searchParams }) {
+  const shopId = session.shop;
+  const operation = searchParams.get('operation');
 
-    const url = new URL(request.url);
-    const operation = url.searchParams.get('operation');
+  switch (operation) {
+    case 'getSessionThinking':
+      return await getSessionThinkingChain(searchParams.get('sessionId'));
 
-    switch (operation) {
-      case 'getSessionThinking':
-        return await getSessionThinkingChain(url.searchParams.get('sessionId'));
+    case 'getOptimizationStatus':
+      return await getOptimizationStatus(shopId);
 
-      case 'getOptimizationStatus':
-        return await getOptimizationStatus(shopId);
+    case 'getScheduleSuggestions':
+      return await getScheduleSuggestionsForShop(shopId);
 
-      case 'getScheduleSuggestions':
-        return await getScheduleSuggestionsForShop(shopId);
-
-      default:
-        return json({
-          success: false,
-          error: '无效的操作',
-          supportedOperations: [
-            'getSessionThinking',
-            'getOptimizationStatus',
-            'getScheduleSuggestions'
-          ]
-        }, { status: 400 });
-    }
-  }, '获取思考链信息');
-};
+    default:
+      throw new Error(`无效的操作: ${operation}. 支持的操作: getSessionThinking, getOptimizationStatus, getScheduleSuggestions`);
+  }
+}
 
 /**
  * POST请求处理器
  * 执行决策分析和优化操作
  */
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const shopId = session.shop;
-    const data = await request.json();
+async function handleThinkingChainAction({ request, session }) {
+  const shopId = session.shop;
+  const data = await request.json();
+  const { operation } = data;
 
-    const { operation } = data;
+  switch (operation) {
+    case 'analyzeDecision':
+      return await handleAnalyzeDecision(data, shopId);
 
-    switch (operation) {
-      case 'analyzeDecision':
-        return await handleAnalyzeDecision(data, shopId);
+    case 'optimizeSession':
+      return await handleOptimizeSession(data, shopId);
 
-      case 'optimizeSession':
-        return await handleOptimizeSession(data, shopId);
+    case 'intelligentTranslate':
+      return await handleIntelligentTranslate(data, shopId);
 
-      case 'intelligentTranslate':
-        return await handleIntelligentTranslate(data, shopId);
+    case 'getSchedule':
+      return await handleGetSchedule(data, shopId);
 
-      case 'getSchedule':
-        return await handleGetSchedule(data, shopId);
-
-      default:
-        return json({
-          success: false,
-          error: '无效的操作',
-          supportedOperations: [
-            'analyzeDecision',
-            'optimizeSession',
-            'intelligentTranslate',
-            'getSchedule'
-          ]
-        }, { status: 400 });
-    }
-  }, '执行思考链操作');
-};
+    default:
+      throw new Error(`无效的操作: ${operation}. 支持的操作: analyzeDecision, optimizeSession, intelligentTranslate, getSchedule`);
+  }
+}
 
 /**
  * 分析单个资源的翻译决策
@@ -97,10 +69,7 @@ async function handleAnalyzeDecision(data, shopId) {
   const { resourceId, resourceType, content, targetLanguage } = data;
   
   if (!resourceId || !resourceType) {
-    return json({
-      success: false,
-      error: '缺少必要参数: resourceId, resourceType'
-    }, { status: 400 });
+    throw new Error('缺少必要参数: resourceId, resourceType');
   }
   
   // 获取资源信息
@@ -109,12 +78,9 @@ async function handleAnalyzeDecision(data, shopId) {
   });
   
   if (!resource) {
-    return json({
-      success: false,
-      error: '资源不存在'
-    }, { status: 404 });
+    throw new Error('资源不存在');
   }
-  
+
   // 分析决策
   const analysis = await analyzeTranslationDecision(resource, {
     targetLanguage,
@@ -122,9 +88,8 @@ async function handleAnalyzeDecision(data, shopId) {
     priority: data.priority || 'normal',
     userRequested: data.userRequested || false
   });
-  
-  return json({
-    success: true,
+
+  return {
     message: '决策分析完成',
     data: {
       resourceId,
@@ -137,7 +102,7 @@ async function handleAnalyzeDecision(data, shopId) {
       },
       recommendations: analysis.recommendations
     }
-  });
+  };
 }
 
 /**
@@ -147,41 +112,30 @@ async function handleOptimizeSession(data, shopId) {
   const { sessionId } = data;
   
   if (!sessionId) {
-    return json({
-      success: false,
-      error: '缺少会话ID'
-    }, { status: 400 });
+    throw new Error('缺少会话ID');
   }
-  
-  try {
-    const optimization = await optimizeTranslationSession(sessionId);
-    
-    // 保存优化建议到数据库
-    await prisma.translationSession.update({
-      where: { id: sessionId },
-      data: {
-        optimizationSuggestions: optimization.suggestions,
-        performanceMetrics: optimization.metrics
-      }
-    });
-    
-    return json({
-      success: true,
-      message: '会话优化分析完成',
-      data: {
-        sessionId,
-        metrics: optimization.metrics,
-        suggestions: optimization.suggestions,
-        bottlenecks: optimization.bottlenecks,
-        optimizationPlan: optimization.optimizationPlan
-      }
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: `优化失败: ${error.message}`
-    }, { status: 500 });
-  }
+
+  const optimization = await optimizeTranslationSession(sessionId);
+
+  // 保存优化建议到数据库
+  await prisma.translationSession.update({
+    where: { id: sessionId },
+    data: {
+      optimizationSuggestions: optimization.suggestions,
+      performanceMetrics: optimization.metrics
+    }
+  });
+
+  return {
+    message: '会话优化分析完成',
+    data: {
+      sessionId,
+      metrics: optimization.metrics,
+      suggestions: optimization.suggestions,
+      bottlenecks: optimization.bottlenecks,
+      optimizationPlan: optimization.optimizationPlan
+    }
+  };
 }
 
 /**
@@ -191,17 +145,11 @@ async function handleIntelligentTranslate(data, shopId) {
   const { resourceIds, targetLanguage, options = {} } = data;
   
   if (!resourceIds || !Array.isArray(resourceIds) || resourceIds.length === 0) {
-    return json({
-      success: false,
-      error: '请提供要翻译的资源ID数组'
-    }, { status: 400 });
+    throw new Error('请提供要翻译的资源ID数组');
   }
-  
+
   if (!targetLanguage) {
-    return json({
-      success: false,
-      error: '请指定目标语言'
-    }, { status: 400 });
+    throw new Error('请指定目标语言');
   }
   
   // 获取资源
@@ -213,68 +161,57 @@ async function handleIntelligentTranslate(data, shopId) {
   });
   
   if (resources.length === 0) {
-    return json({
-      success: false,
-      error: '未找到指定的资源'
-    }, { status: 404 });
+    throw new Error('未找到指定的资源');
   }
   
-  try {
-    // 执行智能翻译
-    const result = await translateBatchWithIntelligence(
-      resources,
-      targetLanguage,
-      {
-        ...options,
-        shopId
-      }
-    );
-    
-    // 保存翻译结果到数据库
-    for (const item of result.successful) {
-      await prisma.translation.upsert({
-        where: {
-          resourceId_targetLang: {
-            resourceId: item.resource.id,
-            targetLang: targetLanguage
-          }
-        },
-        update: {
-          ...item.translation,
-          status: 'completed',
-          updatedAt: new Date()
-        },
-        create: {
-          resourceId: item.resource.id,
-          targetLang: targetLanguage,
-          ...item.translation,
-          status: 'completed'
-        }
-      });
+  // 执行智能翻译
+  const result = await translateBatchWithIntelligence(
+    resources,
+    targetLanguage,
+    {
+      ...options,
+      shopId
     }
-    
-    return json({
-      success: true,
-      message: '智能翻译完成',
-      data: {
-        stats: result.stats,
-        schedule: result.schedule,
-        analysis: result.analysis,
-        suggestions: result.suggestions,
-        thinkingChain: result.thinkingChain,
-        results: {
-          successful: result.successful.length,
-          failed: result.failed.length,
-          skipped: result.skipped.length
+  );
+
+  // 保存翻译结果到数据库
+  for (const item of result.successful) {
+    await prisma.translation.upsert({
+      where: {
+        resourceId_targetLang: {
+          resourceId: item.resource.id,
+          targetLang: targetLanguage
         }
+      },
+      update: {
+        ...item.translation,
+        status: 'completed',
+        updatedAt: new Date()
+      },
+      create: {
+        resourceId: item.resource.id,
+        targetLang: targetLanguage,
+        ...item.translation,
+        status: 'completed'
       }
     });
-  } catch (error) {
-    return json({
-      success: false,
-      error: `翻译失败: ${error.message}`
-    }, { status: 500 });
   }
+
+  return {
+    message: '智能翻译完成',
+    data: {
+      stats: result.stats,
+      schedule: result.schedule,
+      analysis: result.analysis,
+      suggestions: result.suggestions,
+      thinkingChain: result.thinkingChain,
+      results: {
+        successful: result.successful.length,
+        failed: result.failed.length,
+        skipped: result.skipped.length
+      }
+    }
+  };
 }
 
 /**
@@ -284,10 +221,7 @@ async function handleGetSchedule(data, shopId) {
   const { resourceIds, systemStatus = {} } = data;
   
   if (!resourceIds || !Array.isArray(resourceIds)) {
-    return json({
-      success: false,
-      error: '请提供资源ID数组'
-    }, { status: 400 });
+    throw new Error('请提供资源ID数组');
   }
   
   // 获取资源
@@ -321,15 +255,14 @@ async function handleGetSchedule(data, shopId) {
     currentSystemStatus
   );
   
-  return json({
-    success: true,
+  return {
     message: '调度建议生成完成',
     data: {
       resourceCount: resources.length,
       systemStatus: currentSystemStatus,
       ...suggestions
     }
-  });
+  };
 }
 
 /**
@@ -337,10 +270,7 @@ async function handleGetSchedule(data, shopId) {
  */
 async function getSessionThinkingChain(sessionId) {
   if (!sessionId) {
-    return json({
-      success: false,
-      error: '缺少会话ID'
-    }, { status: 400 });
+    throw new Error('缺少会话ID');
   }
   
   const session = await prisma.translationSession.findUnique({
@@ -358,14 +288,10 @@ async function getSessionThinkingChain(sessionId) {
   });
   
   if (!session) {
-    return json({
-      success: false,
-      error: '会话不存在'
-    }, { status: 404 });
+    throw new Error('会话不存在');
   }
-  
-  return json({
-    success: true,
+
+  return {
     data: {
       sessionId,
       status: session.status,
@@ -375,7 +301,7 @@ async function getSessionThinkingChain(sessionId) {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
     }
-  });
+  };
 }
 
 /**
@@ -424,8 +350,7 @@ async function getOptimizationStatus(shopId) {
     .map(s => JSON.parse(s))
     .slice(0, 5);
   
-  return json({
-    success: true,
+  return {
     data: {
       shopId,
       stats,
@@ -439,7 +364,7 @@ async function getOptimizationStatus(shopId) {
       topSuggestions: uniqueSuggestions,
       optimizationScore: calculateOptimizationScore(stats)
     }
-  });
+  };
 }
 
 /**
@@ -458,13 +383,12 @@ async function getScheduleSuggestionsForShop(shopId) {
   });
   
   if (pendingResources.length === 0) {
-    return json({
-      success: true,
+    return {
       data: {
         message: '没有待翻译的资源',
         resourceCount: 0
       }
-    });
+    };
   }
   
   // 获取系统状态
@@ -485,15 +409,14 @@ async function getScheduleSuggestionsForShop(shopId) {
     systemStatus
   );
   
-  return json({
-    success: true,
+  return {
     data: {
       shopId,
       pendingCount: pendingResources.length,
       systemStatus,
       ...suggestions
     }
-  });
+  };
 }
 
 /**
@@ -501,16 +424,26 @@ async function getScheduleSuggestionsForShop(shopId) {
  */
 function calculateOptimizationScore(stats) {
   let score = 50; // 基础分数
-  
+
   // 根据错误率调整
   if (stats.avgErrorRate < 0.05) score += 20;
   else if (stats.avgErrorRate < 0.1) score += 10;
   else if (stats.avgErrorRate > 0.2) score -= 20;
-  
+
   // 根据完成率调整
   if (stats.avgCompletionRate > 0.9) score += 20;
   else if (stats.avgCompletionRate > 0.8) score += 10;
   else if (stats.avgCompletionRate < 0.5) score -= 20;
-  
+
   return Math.max(0, Math.min(100, score));
 }
+
+export const loader = createApiRoute(handleThinkingChainQuery, {
+  requireAuth: true,
+  operationName: '获取思考链信息'
+});
+
+export const action = createApiRoute(handleThinkingChainAction, {
+  requireAuth: true,
+  operationName: '执行思考链操作'
+});

@@ -2,50 +2,51 @@
  * 缓存统计API端点
  */
 
-import { json } from "@remix-run/node";
 import { getMemoryCache } from "../services/memory-cache.server.js";
+import { createApiRoute } from "../utils/base-route.server.js";
+import { json } from "@remix-run/node";
 
-export const loader = async ({ request }) => {
-  try {
-    const cache = getMemoryCache();
-    const stats = cache.getStats();
-    
-    return json({
-      success: true,
-      stats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message
-    }, { status: 500 });
-  }
-};
+/**
+ * GET请求处理函数：获取缓存统计
+ */
+async function handleGetCacheStats() {
+  const cache = getMemoryCache();
+  const stats = cache.getStats();
 
-export const action = async ({ request }) => {
+  return {
+    stats,
+    timestamp: new Date().toISOString()
+  };
+}
+
+/**
+ * POST/DELETE请求处理函数：缓存操作
+ */
+async function handleCacheAction({ request }) {
   const method = request.method;
-  
+
   if (method === "DELETE") {
     // 清空缓存
-    try {
-      const cache = getMemoryCache();
-      cache.clear();
-      
-      return json({
-        success: true,
-        message: "缓存已清空"
-      });
-    } catch (error) {
-      return json({
-        success: false,
-        error: error.message
-      }, { status: 500 });
-    }
+    const cache = getMemoryCache();
+    cache.clear();
+
+    return {
+      message: "缓存已清空"
+    };
   }
-  
+
   return json({
     success: false,
     error: "Method not allowed"
   }, { status: 405 });
-};
+}
+
+export const loader = createApiRoute(handleGetCacheStats, {
+  requireAuth: false,
+  operationName: '获取缓存统计'
+});
+
+export const action = createApiRoute(handleCacheAction, {
+  requireAuth: false,
+  operationName: '缓存操作'
+});

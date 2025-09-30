@@ -1,14 +1,12 @@
-import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, getAllResources } from "../services/database.server.js";
 import { addBatchTranslationJob, addTranslationJob } from "../services/queue.server.js";
-import { successResponse, withErrorHandling, validateRequiredParams, validationErrorResponse } from "../utils/api-response.server.js";
+import { createApiRoute } from "../utils/base-route.server.js";
+import { validateRequiredParams } from "../utils/api-response.server.js";
 
 /**
  * 使用队列的异步翻译API
  */
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
+async function handleTranslateQueue({ request, admin, session }) {
     const formData = await request.formData();
     
     // 参数验证
@@ -22,7 +20,7 @@ export const action = async ({ request }) => {
     
     const validationErrors = validateRequiredParams(params, ['language']);
     if (validationErrors.length > 0) {
-      return validationErrorResponse(validationErrors);
+      throw new Error(`参数验证失败: ${validationErrors.map(e => e.message).join(', ')}`);
     }
     
     const targetLanguage = params.language;
@@ -36,10 +34,7 @@ export const action = async ({ request }) => {
       try {
         resourceIds = JSON.parse(params.resourceIds);
       } catch (error) {
-        return validationErrorResponse([{
-          field: 'resourceIds',
-          message: 'resourceIds 必须是有效的JSON格式'
-        }]);
+        throw new Error('resourceIds 必须是有效的JSON格式');
       }
     }
     const mode = params.mode;
@@ -48,12 +43,7 @@ export const action = async ({ request }) => {
     const shopDomain = session?.shop || headerShopDomain;
 
     if (!shopDomain) {
-      return validationErrorResponse([
-        {
-          field: 'shop',
-          message: '缺少店铺上下文，无法创建翻译任务'
-        }
-      ]);
+      throw new Error('缺少店铺上下文，无法创建翻译任务');
     }
 
     // 获取店铺记录
@@ -69,10 +59,11 @@ export const action = async ({ request }) => {
       : allResources.filter(r => r.status === 'pending');
     
     if (resourcesToTranslate.length === 0) {
-      return successResponse({
+      return {
         jobs: [],
-        stats: { total: 0, queued: 0 }
-      }, "没有找到需要翻译的资源");
+        stats: { total: 0, queued: 0 },
+        message: "没有找到需要翻译的资源"
+      };
     }
     
     const resourceIdsToTranslate = resourcesToTranslate.map(r => r.id);
@@ -83,12 +74,13 @@ export const action = async ({ request }) => {
       // 批量翻译模式
       jobResult = await addBatchTranslationJob(resourceIdsToTranslate, shop.id, targetLanguage, shopDomain);
       
-      return successResponse({
+      return {
         jobId: jobResult.jobId,
         mode: 'batch',
         resourceCount: jobResult.resourceCount,
-        status: jobResult.status
-      }, `已创建批量翻译任务，包含 ${jobResult.resourceCount} 个资源`);
+        status: jobResult.status,
+        message: `已创建批量翻译任务，包含 ${jobResult.resourceCount} 个资源`
+      };
       
     } else {
       // 单独任务模式
@@ -101,15 +93,19 @@ export const action = async ({ request }) => {
         jobs.push(jobInfo);
       }
       
-      return successResponse({
+      return {
         jobs: jobs,
         mode: 'individual',
         stats: {
           total: jobs.length,
           queued: jobs.length
-        }
-      }, `已创建 ${jobs.length} 个翻译任务`);
+        },
+        message: `已创建 ${jobs.length} 个翻译任务`
+      };
     }
-    
-  }, "队列翻译", request.headers.get("shopify-shop-domain") || 'unknown');
-};
+}
+
+export const action = createApiRoute(handleTranslateQueue, {
+  requireAuth: true,
+  operationName: '队列翻译'
+});

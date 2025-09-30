@@ -1,43 +1,14 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server.js";
 import { collectError, ERROR_TYPES } from "../services/error-collector.server.js";
 import prisma from "../db.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { ensureValidResourceGid } from "../services/resource-gid-resolver.server.js";
-
-// 本地工具函数
-function successResponse(data) {
-  return json({ success: true, ...data });
-}
-
-function validationErrorResponse(errors) {
-  return json({
-    success: false,
-    error: "参数验证失败",
-    errors
-  }, { status: 400 });
-}
-
-function withErrorHandling(handler) {
-  return async (...args) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      console.error('API Error:', error);
-      return json({
-        success: false,
-        error: error.message || '服务器内部错误'
-      }, { status: 500 });
-    }
-  };
-}
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
  * 发布API - 将pending状态的翻译同步到Shopify
  * 支持单个翻译发布和批量发布
  */
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+async function handlePublish({ request, admin }) {
   const formData = await request.formData();
 
     // 参数验证
@@ -103,18 +74,15 @@ export const action = withErrorHandling(async ({ request }) => {
       });
 
     } else {
-      return validationErrorResponse([{
-        field: 'translationIds',
-        message: '请指定要发布的翻译ID、语言、资源ID或选择发布全部'
-      }]);
+      throw new Error('请指定要发布的翻译ID、语言、资源ID或选择发布全部');
     }
 
     if (translationsToPublish.length === 0) {
-      return successResponse({
+      return {
         message: '没有找到待发布的翻译',
         published: 0,
         errors: []
-      });
+      };
     }
 
     console.log(`🚀 准备发布 ${translationsToPublish.length} 个翻译`);
@@ -263,12 +231,16 @@ export const action = withErrorHandling(async ({ request }) => {
     const message = `发布完成: ${results.published}/${translationsToPublish.length} 成功`;
     console.log(`🎯 ${message}`);
 
-    return successResponse({
+    return {
       message,
       published: results.published,
       total: translationsToPublish.length,
       errors: results.errors,
       details: results.details
-    });
+    };
+}
 
+export const action = createApiRoute(handlePublish, {
+  requireAuth: true,
+  operationName: '发布翻译'
 });

@@ -67,5 +67,12 @@ module.exports = {
         page: "readonly",
       },
     },
+    // 服务端代码禁用 console.* 直接调用
+    {
+      files: ["**/*.server.js", "**/*.server.ts"],
+      rules: {
+        "no-console": "error"
+      }
+    },
   ],
 };

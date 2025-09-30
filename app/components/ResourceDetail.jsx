@@ -433,7 +433,11 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
     try {
       const res = await fetch(`/api/product-metafields?gid=${encodeURIComponent(productGid)}&lang=${encodeURIComponent(currentLanguage)}`);
       const json = await res.json();
-      setMetafieldsState({ loading: false, data: json?.data?.metafields || [] });
+      const payload = json?.data || {};
+      setMetafieldsState({
+        loading: false,
+        data: Array.isArray(payload?.metafields) ? payload.metafields : []
+      });
     } catch {
       setMetafieldsState({ loading: false, data: [] });
     }

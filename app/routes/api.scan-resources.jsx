@@ -1,113 +1,104 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server.js";
 import { getOrCreateShop, saveResources } from "../services/database.server.js";
-import { withErrorHandling as withApiError } from "../utils/api-response.server.js";
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
  * 通用资源扫描API
  * 支持多种资源类型：PRODUCT, COLLECTION, ARTICLE, BLOG, PAGE, MENU, FILTER
  */
-export const action = async ({ request }) => {
-  return withApiError(async () => {
-    // 将服务端导入移到action函数内部，避免Vite构建错误
-    const { 
-      fetchResourcesByType,
-      fetchThemeResources,
-      fetchProductOptions,
-      fetchSellingPlans,
-      fetchShopInfo,
-      RESOURCE_TYPES 
-    } = await import("../services/shopify-graphql.server.js");
-    
-    // 验证Shopify应用认证
-    const { admin, session } = await authenticate.admin(request);
-    const shopDomain = session.shop;
+async function handleScanResources({ request, admin, session }) {
+  // 将服务端导入移到action函数内部，避免Vite构建错误
+  const {
+    fetchResourcesByType,
+    fetchThemeResources,
+    fetchProductOptions,
+    fetchSellingPlans,
+    fetchShopInfo,
+    RESOURCE_TYPES
+  } = await import("../services/shopify-graphql.server.js");
 
-    // 解析请求体
-    const body = await request.json();
-    const { resourceType } = body;
+  const shopDomain = session.shop;
 
-    // 验证资源类型
-    if (!resourceType || !Object.values(RESOURCE_TYPES).includes(resourceType.toUpperCase())) {
-      return json({
-        success: false,
-        error: `不支持的资源类型: ${resourceType}。支持的类型: ${Object.values(RESOURCE_TYPES).join(', ')}`
-      }, { status: 400 });
-    }
+  // 解析请求体
+  const body = await request.json();
+  const { resourceType } = body;
 
-    const normalizedResourceType = resourceType.toUpperCase();
-    
-    console.log(`开始扫描${normalizedResourceType}资源 - 店铺: ${shopDomain}`);
+  // 验证资源类型
+  if (!resourceType || !Object.values(RESOURCE_TYPES).includes(resourceType.toUpperCase())) {
+    throw new Error(`不支持的资源类型: ${resourceType}。支持的类型: ${Object.values(RESOURCE_TYPES).join(', ')}`);
+  }
 
-    // 确保店铺记录存在
-    const shop = await getOrCreateShop(shopDomain, session.accessToken);
+  const normalizedResourceType = resourceType.toUpperCase();
 
-    // 根据资源类型使用相应的获取函数
-    let resources = [];
-    
-    // Theme相关资源
-    if (normalizedResourceType.startsWith('ONLINE_STORE_THEME')) {
-      resources = await fetchThemeResources(admin, normalizedResourceType);
-    } 
-    // 产品选项和选项值
-    else if (normalizedResourceType === 'PRODUCT_OPTION' || normalizedResourceType === 'PRODUCT_OPTION_VALUE') {
-      resources = await fetchProductOptions(admin);
-    }
-    // 销售计划
-    else if (normalizedResourceType === 'SELLING_PLAN' || normalizedResourceType === 'SELLING_PLAN_GROUP') {
-      resources = await fetchSellingPlans(admin);
-    }
-    // 店铺信息和政策
-    else if (normalizedResourceType === 'SHOP' || normalizedResourceType === 'SHOP_POLICY') {
-      resources = await fetchShopInfo(admin, normalizedResourceType);
-    }
-    // 其他现有资源类型
-    else {
-      resources = await fetchResourcesByType(admin, normalizedResourceType);
-    }
-    
-    if (resources.length === 0) {
-      return json({
-        success: true,
-        message: `未找到任何${normalizedResourceType}资源`,
-        resources: [],
-        count: 0
-      });
-    }
+  console.log(`开始扫描${normalizedResourceType}资源 - 店铺: ${shopDomain}`);
 
-    // 保存资源到数据库
-    console.log(`开始保存${resources.length}个${normalizedResourceType}资源到数据库`);
-    const savedResources = await saveResources(shop.id, resources);
-    
-    // 同步Markets配置到数据库（异步执行，不阻塞响应）
-    import("../services/market-urls.server.js").then(({ syncMarketConfig }) => {
-      syncMarketConfig(shop.id, admin).catch(err => {
-        console.error('同步Markets配置失败:', err);
-      });
+  // 确保店铺记录存在
+  const shop = await getOrCreateShop(shopDomain, session.accessToken);
+
+  // 根据资源类型使用相应的获取函数
+  let resources = [];
+
+  // Theme相关资源
+  if (normalizedResourceType.startsWith('ONLINE_STORE_THEME')) {
+    resources = await fetchThemeResources(admin, normalizedResourceType);
+  }
+  // 产品选项和选项值
+  else if (normalizedResourceType === 'PRODUCT_OPTION' || normalizedResourceType === 'PRODUCT_OPTION_VALUE') {
+    resources = await fetchProductOptions(admin);
+  }
+  // 销售计划
+  else if (normalizedResourceType === 'SELLING_PLAN' || normalizedResourceType === 'SELLING_PLAN_GROUP') {
+    resources = await fetchSellingPlans(admin);
+  }
+  // 店铺信息和政策
+  else if (normalizedResourceType === 'SHOP' || normalizedResourceType === 'SHOP_POLICY') {
+    resources = await fetchShopInfo(admin, normalizedResourceType);
+  }
+  // 其他现有资源类型
+  else {
+    resources = await fetchResourcesByType(admin, normalizedResourceType);
+  }
+
+  if (resources.length === 0) {
+    return {
+      message: `未找到任何${normalizedResourceType}资源`,
+      resources: [],
+      count: 0
+    };
+  }
+
+  // 保存资源到数据库
+  console.log(`开始保存${resources.length}个${normalizedResourceType}资源到数据库`);
+  const savedResources = await saveResources(shop.id, resources);
+
+  // 同步Markets配置到数据库（异步执行，不阻塞响应）
+  import("../services/market-urls.server.js").then(({ syncMarketConfig }) => {
+    syncMarketConfig(shop.id, admin).catch(err => {
+      console.error('同步Markets配置失败:', err);
     });
+  });
 
-    console.log(`${normalizedResourceType}资源扫描完成:`, {
-      shopDomain,
-      resourceType: normalizedResourceType,
-      totalFound: resources.length,
-      totalSaved: savedResources.length
-    });
+  console.log(`${normalizedResourceType}资源扫描完成:`, {
+    shopDomain,
+    resourceType: normalizedResourceType,
+    totalFound: resources.length,
+    totalSaved: savedResources.length
+  });
 
-    return json({
-      success: true,
-      message: `成功扫描${savedResources.length}个${normalizedResourceType}资源`,
-      resources: savedResources,
-      count: savedResources.length,
-      resourceType: normalizedResourceType
-    });
-  }, `扫描${request.json ? '资源' : '资源'}`, request.headers.get("shopify-shop-domain") || "");
-};
+  return {
+    message: `成功扫描${savedResources.length}个${normalizedResourceType}资源`,
+    resources: savedResources,
+    count: savedResources.length,
+    resourceType: normalizedResourceType
+  };
+}
 
-// 资源类型配置信息
-export const loader = async ({ request }) => {
+/**
+ * GET请求处理函数 - 获取资源类型配置信息
+ */
+async function handleGetResourceTypes({ request }) {
   const { RESOURCE_TYPES } = await import("../services/shopify-graphql.server.js");
-  
-  return json({
+
+  return {
     supportedResourceTypes: Object.values(RESOURCE_TYPES),
     resourceTypeDescriptions: {
       PRODUCT: '产品',
@@ -119,5 +110,15 @@ export const loader = async ({ request }) => {
       LINK: '链接',
       FILTER: '过滤器'
     }
-  });
-};
+  };
+}
+
+export const action = createApiRoute(handleScanResources, {
+  requireAuth: true,
+  operationName: '扫描资源'
+});
+
+export const loader = createApiRoute(handleGetResourceTypes, {
+  requireAuth: true,
+  operationName: '获取资源类型配置'
+});

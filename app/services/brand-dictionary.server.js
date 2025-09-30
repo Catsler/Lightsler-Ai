@@ -1,0 +1,224 @@
+/**
+ * 品牌词典服务 - KISS版本
+ * 动态从店铺数据中获取品牌信息，用于翻译跳过决策
+ */
+
+import { logger } from '../utils/logger.server.js';
+import { prisma } from '../db.server.js';
+
+/**
+ * 简单的内存缓存实现
+ */
+class BrandCache {
+  constructor() {
+    this.cache = new Map();
+    this.ttl = 24 * 60 * 60 * 1000; // 24小时TTL
+  }
+  
+  set(key, value) {
+    this.cache.set(key, {
+      value,
+      expires: Date.now() + this.ttl
+    });
+  }
+  
+  get(key) {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() > item.expires) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return item.value;
+  }
+  
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// 全局缓存实例
+const brandCache = new BrandCache();
+
+/**
+ * 获取品牌词典
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} shopDomain - 店铺域名
+ * @returns {Set<string>} 品牌词集合
+ */
+export async function getBrandDictionary(admin, shopDomain) {
+  const cacheKey = `brand_dict:${shopDomain}`;
+  
+  // 尝试从缓存获取
+  const cached = brandCache.get(cacheKey);
+  if (cached) {
+    logger.debug('使用缓存的品牌词典', { 
+      shopDomain, 
+      brandCount: cached.size 
+    });
+    return cached;
+  }
+  
+  try {
+    const brandSet = new Set();
+    
+    // 1. 从店铺域名提取品牌
+    const shopName = extractBrandFromDomain(shopDomain);
+    if (shopName) {
+      brandSet.add(shopName.toLowerCase());
+      logger.debug('从域名提取品牌', { shopName });
+    }
+    
+    // 2. 从产品Vendor字段收集（限制数量避免性能问题）
+    const vendors = await getVendorsFromProducts(1000);
+    vendors.forEach(vendor => {
+      if (vendor && vendor.length > 1) {
+        brandSet.add(vendor.toLowerCase());
+      }
+    });
+    
+    logger.info('品牌词典构建完成', {
+      shopDomain,
+      totalBrands: brandSet.size,
+      fromDomain: shopName ? 1 : 0,
+      fromVendors: vendors.size
+    });
+    
+    // 缓存结果
+    brandCache.set(cacheKey, brandSet);
+    
+    return brandSet;
+    
+  } catch (error) {
+    logger.error('构建品牌词典失败', {
+      error: error.message,
+      shopDomain
+    });
+    
+    // 返回空的Set，避免阻塞翻译
+    return new Set();
+  }
+}
+
+/**
+ * 从域名提取品牌名
+ * @param {string} domain - 店铺域名
+ * @returns {string|null} 品牌名
+ */
+function extractBrandFromDomain(domain) {
+  try {
+    // lightsler-ai.myshopify.com -> lightsler-ai -> Lightsler Ai
+    const shopName = domain.split('.')[0];
+    
+    if (!shopName || shopName.length < 2) {
+      return null;
+    }
+    
+    // 处理连字符，转为空格并首字母大写
+    const brandName = shopName
+      .replace(/-/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    
+    return brandName;
+    
+  } catch (error) {
+    logger.warn('域名解析失败', { domain, error: error.message });
+    return null;
+  }
+}
+
+/**
+ * 从产品中获取Vendor列表
+ * @param {number} limit - 限制数量
+ * @returns {Set<string>} Vendor集合
+ */
+async function getVendorsFromProducts(limit = 1000) {
+  try {
+    const products = await prisma.resource.findMany({
+      where: { resourceType: 'PRODUCT' },
+      select: { contentFields: true },
+      take: limit
+    });
+    
+    const vendors = new Set();
+    let processedCount = 0;
+    
+    for (const product of products) {
+      const vendor = product.contentFields?.vendor;
+      if (vendor && typeof vendor === 'string') {
+        const cleanVendor = vendor.trim();
+        if (cleanVendor.length > 1) {
+          vendors.add(cleanVendor);
+          processedCount++;
+        }
+      }
+    }
+    
+    logger.debug('Vendor提取完成', {
+      totalProducts: products.length,
+      processedCount,
+      uniqueVendors: vendors.size
+    });
+    
+    return vendors;
+    
+  } catch (error) {
+    logger.error('获取Vendor失败', { error: error.message, limit });
+    return new Set();
+  }
+}
+
+/**
+ * 检查文本是否匹配品牌词
+ * @param {string} text - 待检查文本
+ * @param {Set<string>} brandSet - 品牌词集合
+ * @returns {boolean} 是否匹配
+ */
+export function isBrandMatch(text, brandSet) {
+  if (!text || !brandSet || brandSet.size === 0) {
+    return false;
+  }
+  
+  const normalized = text.trim().toLowerCase();
+  
+  // 精确匹配
+  if (brandSet.has(normalized)) {
+    return true;
+  }
+  
+  // 包含匹配（仅对短文本，避免误判）
+  if (text.length < 50) {
+    for (const brand of brandSet) {
+      if (normalized.includes(brand)) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * 清理品牌词典缓存
+ * @param {string} shopDomain - 可选，指定店铺域名
+ */
+export function clearBrandCache(shopDomain = null) {
+  if (shopDomain) {
+    const cacheKey = `brand_dict:${shopDomain}`;
+    brandCache.cache.delete(cacheKey);
+    logger.info('已清理指定店铺品牌缓存', { shopDomain });
+  } else {
+    brandCache.clear();
+    logger.info('已清理所有品牌缓存');
+  }
+}
+
+export default {
+  getBrandDictionary,
+  isBrandMatch,
+  clearBrandCache
+};

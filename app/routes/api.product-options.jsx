@@ -1,18 +1,13 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
 import prisma from "../db.server.js";
-import { withErrorHandling } from "../utils/api-response.server";
+import { createApiRoute } from "../utils/base-route.server.js";
 
-export const loader = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const url = new URL(request.url);
-    const gid = url.searchParams.get("gid");
-    const resourceId = url.searchParams.get("resourceId");
-    const targetLanguage = url.searchParams.get("lang") || "zh-CN";
+async function handleProductOptionsLoader({ request, admin, session, searchParams }) {
+    const gid = searchParams.get("gid");
+    const resourceId = searchParams.get("resourceId");
+    const targetLanguage = searchParams.get("lang") || "zh-CN";
 
     if (!gid && !resourceId) {
-      return json({ error: "Missing gid or resourceId" }, { status: 400 });
+      throw new Error("Missing gid or resourceId");
     }
 
     const productGid = gid || `gid://shopify/Product/${resourceId}`;
@@ -119,7 +114,7 @@ export const loader = async ({ request }) => {
     }
 
     if (localOptions.length > 0) {
-      return json({ success: true, data: { options: localOptions, source: "database" } });
+      return { success: true, data: { options: localOptions, source: "database" } };
     }
 
     // 回退到Shopify实时数据
@@ -135,6 +130,10 @@ export const loader = async ({ request }) => {
       source: "shopify"
     }));
 
-    return json({ success: true, data: { options: formattedShopifyOptions, source: "shopify" } });
-  }, "fetch product options", request.headers.get("shopify-shop-domain") || "");
-};
+    return { success: true, data: { options: formattedShopifyOptions, source: "shopify" } };
+}
+
+export const loader = createApiRoute(handleProductOptionsLoader, {
+  requireAuth: true,
+  operationName: '获取产品选项'
+});

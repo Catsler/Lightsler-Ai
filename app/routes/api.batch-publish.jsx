@@ -1,35 +1,14 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server.js";
 import { collectError, ERROR_TYPES } from "../services/error-collector.server.js";
 import prisma from "../db.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { ensureValidResourceGid } from "../services/resource-gid-resolver.server.js";
-
-// 本地工具函数
-function successResponse(data) {
-  return json({ success: true, ...data });
-}
-
-function withErrorHandling(handler) {
-  return async (...args) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      console.error('API Error:', error);
-      return json({
-        success: false,
-        error: error.message || '服务器内部错误'
-      }, { status: 500 });
-    }
-  };
-}
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
- * 批量发布API - 支持更高级的批量发布功能
+ * 批量发布API处理函数 - 支持更高级的批量发布功能
  * 包含进度跟踪、部分失败处理等高级功能
  */
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+async function handleBatchPublish({ request, admin }) {
   const formData = await request.formData();
 
     const batchSize = parseInt(formData.get("batchSize")) || 10; // 每批处理数量
@@ -57,13 +36,13 @@ export const action = withErrorHandling(async ({ request }) => {
     });
 
     if (allTranslations.length === 0) {
-      return successResponse({
+      return {
         message: '没有找到符合条件的待发布翻译',
         total: 0,
         processed: 0,
         published: 0,
         errors: []
-      });
+      };
     }
 
     console.log(`📋 找到 ${allTranslations.length} 个待发布翻译`);
@@ -259,11 +238,15 @@ export const action = withErrorHandling(async ({ request }) => {
 
     console.log(`🎯 ${message}`);
 
-    return successResponse({
+    return {
       message,
       ...results,
       successRate: `${successRate}%`,
       processingTime: new Date() - (results.batches[0]?.startTime || new Date())
-    });
+    };
+}
 
+export const action = createApiRoute(handleBatchPublish, {
+  requireAuth: true,
+  operationName: '批量发布翻译'
 });

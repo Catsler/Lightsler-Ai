@@ -3,7 +3,6 @@
  * 提供错误查询、统计、更新等API接口
  */
 
-import { json } from "@remix-run/node";
 import { prisma } from "../db.server";
 import { 
   getErrorStats, 
@@ -16,111 +15,101 @@ import {
   generateErrorReport,
   predictErrorTrends 
 } from "../services/error-analyzer.server";
-import { authenticate } from "../shopify.server";
-import { withErrorHandling, successResponse, errorResponse } from "../utils/api-response.server";
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
- * 处理GET请求 - 获取错误列表或详情
+ * GET请求处理函数 - 获取错误列表或详情
  */
-export async function loader({ request }) {
-  try {
-    const { admin, session } = await authenticate.admin(request);
-    const url = new URL(request.url);
-    const action = url.searchParams.get("action") || "list"; // 默认为list
-    
-    return withErrorHandling(async () => {
-      const shopId = session?.shop;
+async function handleErrorsQuery({ request, session, searchParams }) {
+  const action = searchParams.get("action") || "list"; // 默认为list
+  const shopId = session?.shop;
+  
+  switch (action) {
+    case "list":
+      return await getErrorList(searchParams, shopId);
       
-      switch (action) {
-        case "list":
-          return await getErrorList(url, shopId);
-          
-        case "detail":
-          return await getErrorDetail(url);
-          
-        case "stats":
-          return await getErrorStatistics(url, shopId);
-          
-        case "trends":
-          return await getErrorTrends(url, shopId);
-          
-        case "related":
-          return await getRelatedErrors(url);
-          
-        case "report":
-          return await getErrorReport(url, shopId);
-          
-        case "predict":
-          return await getPrediction(url, shopId);
-          
-        default:
-          // 对于未知的action，返回默认列表
-          return await getErrorList(url, shopId);
-      }
-    }, `错误管理API - ${action}`, session?.shop);
-  } catch (error) {
-    // 确保始终返回JSON响应
-    console.error("API错误:", error);
-    return json({
-      success: false,
-      data: null,
-      error: error.message || "服务器内部错误"
-    }, { status: 500 });
+    case "detail":
+      return await getErrorDetail(searchParams);
+      
+    case "stats":
+      return await getErrorStatistics(searchParams, shopId);
+      
+    case "trends":
+      return await getErrorTrends(searchParams, shopId);
+      
+    case "related":
+      return await getRelatedErrors(searchParams);
+      
+    case "report":
+      return await getErrorReport(searchParams, shopId);
+      
+    case "predict":
+      return await getPrediction(searchParams, shopId);
+      
+    default:
+      // 对于未知的action，返回默认列表
+      return await getErrorList(searchParams, shopId);
   }
 }
 
+export const loader = createApiRoute(handleErrorsQuery, {
+  requireAuth: true,
+  operationName: '错误管理查询'
+});
+
 /**
- * 处理POST请求 - 更新错误状态或收集新错误
+ * POST请求处理函数 - 更新错误状态或收集新错误
  */
-export async function action({ request }) {
-  const { admin, session } = await authenticate.admin(request);
+async function handleErrorsAction({ request, session }) {
   const formData = await request.formData();
   const action = formData.get("action");
+  const shopId = session?.shop;
   
-  return withErrorHandling(async () => {
-    const shopId = session?.shop;
-    
-    switch (action) {
-      case "collect":
-        return await collectNewError(formData, shopId);
-        
-      case "update":
-        return await updateErrorStatus(formData);
-        
-      case "acknowledge":
-        return await acknowledgeError(formData);
-        
-      case "resolve":
-        return await resolveError(formData);
-        
-      case "ignore":
-        return await ignoreError(formData);
-        
-      case "batch-update":
-        return await batchUpdateErrors(formData);
-        
-      case "add-note":
-        return await addErrorNote(formData);
-        
-      default:
-        return errorResponse("无效的操作", null, 400);
-    }
-  }, `错误管理操作 - ${action}`, session?.shop);
+  switch (action) {
+    case "collect":
+      return await collectNewError(formData, shopId);
+      
+    case "update":
+      return await updateErrorStatus(formData);
+      
+    case "acknowledge":
+      return await acknowledgeError(formData);
+      
+    case "resolve":
+      return await resolveError(formData);
+      
+    case "ignore":
+      return await ignoreError(formData);
+      
+    case "batch-update":
+      return await batchUpdateErrors(formData);
+      
+    case "add-note":
+      return await addErrorNote(formData);
+      
+    default:
+      throw new Error("无效的操作");
+  }
 }
+
+export const action = createApiRoute(handleErrorsAction, {
+  requireAuth: true,
+  operationName: '错误管理操作'
+});
 
 /**
  * 获取错误列表
  */
-async function getErrorList(url, shopId) {
-  const page = parseInt(url.searchParams.get("page") || "1");
-  const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
-  const status = url.searchParams.get("status");
-  const errorType = url.searchParams.get("errorType");
-  const severity = url.searchParams.get("severity");
-  const search = url.searchParams.get("search");
-  const sortBy = url.searchParams.get("sortBy") || "createdAt";
-  const sortOrder = url.searchParams.get("sortOrder") || "desc";
-  const timeRange = url.searchParams.get("timeRange") || "24h";
+async function getErrorList(searchParams, shopId) {
+  const page = parseInt(searchParams.get("page") || "1");
+  const pageSize = parseInt(searchParams.get("pageSize") || "20");
+  const status = searchParams.get("status");
+  const errorType = searchParams.get("errorType");
+  const severity = searchParams.get("severity");
+  const search = searchParams.get("search");
+  const sortBy = searchParams.get("sortBy") || "createdAt";
+  const sortOrder = searchParams.get("sortOrder") || "desc";
+  const timeRange = searchParams.get("timeRange") || "24h";
   
   // 构建查询条件
   const where = {
@@ -173,7 +162,7 @@ async function getErrorList(url, shopId) {
     })
   ]);
   
-  return successResponse({
+  return {
     errors,
     pagination: {
       page,
@@ -181,17 +170,17 @@ async function getErrorList(url, shopId) {
       total,
       totalPages: Math.ceil(total / pageSize)
     }
-  });
+  };
 }
 
 /**
  * 获取错误详情
  */
-async function getErrorDetail(url) {
-  const id = url.searchParams.get("id");
+async function getErrorDetail(searchParams) {
+  const id = searchParams.get("id");
   
   if (!id) {
-    return errorResponse("错误ID必需", null, 400);
+    throw new Error("错误ID必需");
   }
   
   const error = await prisma.errorLog.findUnique({
@@ -199,23 +188,23 @@ async function getErrorDetail(url) {
   });
   
   if (!error) {
-    return errorResponse("错误记录不存在", null, 404);
+    throw new Error("错误记录不存在");
   }
   
   // 获取相关错误
   const related = await findRelatedErrors(id);
   
-  return successResponse({
+  return {
     error,
     related
-  });
+  };
 }
 
 /**
  * 获取错误统计
  */
-async function getErrorStatistics(url, shopId) {
-  const timeRange = url.searchParams.get("timeRange") || "24h";
+async function getErrorStatistics(searchParams, shopId) {
+  const timeRange = searchParams.get("timeRange") || "24h";
   
   const stats = await getErrorStats(shopId, timeRange);
   
@@ -251,22 +240,22 @@ async function getErrorStatistics(url, shopId) {
     }).then(r => r.length)
   ]);
   
-  return successResponse({
+  return {
     ...stats,
     critical: criticalCount,
     unresolved: unresolvedCount,
     today: todayCount,
     unique: uniqueCount,
     timeRange
-  });
+  };
 }
 
 /**
  * 获取错误趋势
  */
-async function getErrorTrends(url, shopId) {
-  const timeRange = url.searchParams.get("timeRange") || "7d";
-  const groupBy = url.searchParams.get("groupBy") || "hour";
+async function getErrorTrends(searchParams, shopId) {
+  const timeRange = searchParams.get("timeRange") || "7d";
+  const groupBy = searchParams.get("groupBy") || "hour";
   
   const trends = await analyzeTrends({
     shopId,
@@ -274,30 +263,30 @@ async function getErrorTrends(url, shopId) {
     groupBy
   });
   
-  return successResponse(trends);
+  return trends;
 }
 
 /**
  * 获取相关错误
  */
-async function getRelatedErrors(url) {
-  const id = url.searchParams.get("id");
+async function getRelatedErrors(searchParams) {
+  const id = searchParams.get("id");
   
   if (!id) {
-    return errorResponse("错误ID必需", null, 400);
+    throw new Error("错误ID必需");
   }
   
   const related = await findRelatedErrors(id);
   
-  return successResponse(related);
+  return related;
 }
 
 /**
  * 获取错误报告
  */
-async function getErrorReport(url, shopId) {
-  const timeRange = url.searchParams.get("timeRange") || "7d";
-  const includeDetails = url.searchParams.get("includeDetails") === "true";
+async function getErrorReport(searchParams, shopId) {
+  const timeRange = searchParams.get("timeRange") || "7d";
+  const includeDetails = searchParams.get("includeDetails") === "true";
   
   const report = await generateErrorReport({
     shopId,
@@ -305,15 +294,15 @@ async function getErrorReport(url, shopId) {
     includeDetails
   });
   
-  return successResponse(report);
+  return report;
 }
 
 /**
  * 获取错误预测
  */
-async function getPrediction(url, shopId) {
-  const lookbackDays = parseInt(url.searchParams.get("lookbackDays") || "7");
-  const predictDays = parseInt(url.searchParams.get("predictDays") || "3");
+async function getPrediction(searchParams, shopId) {
+  const lookbackDays = parseInt(searchParams.get("lookbackDays") || "7");
+  const predictDays = parseInt(searchParams.get("predictDays") || "3");
   
   const prediction = await predictErrorTrends({
     shopId,
@@ -321,7 +310,7 @@ async function getPrediction(url, shopId) {
     predictDays
   });
   
-  return successResponse(prediction);
+  return prediction;
 }
 
 /**
@@ -337,7 +326,7 @@ async function collectNewError(formData, shopId) {
   
   const result = await collectError(errorData, context);
   
-  return successResponse(result, "错误已收集");
+  return { ...result, message: "错误已收集" };
 }
 
 /**
@@ -351,7 +340,7 @@ async function updateErrorStatus(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!id || !status) {
-    return errorResponse("ID和状态必需", null, 400);
+    throw new Error("ID和状态必需");
   }
   
   const updateData = {
@@ -372,7 +361,7 @@ async function updateErrorStatus(formData) {
     data: updateData
   });
   
-  return successResponse(updated, "错误状态已更新");
+  return { ...updated, message: "错误状态已更新" };
 }
 
 /**
@@ -383,7 +372,7 @@ async function acknowledgeError(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!id) {
-    return errorResponse("错误ID必需", null, 400);
+    throw new Error("错误ID必需");
   }
   
   const updated = await prisma.errorLog.update({
@@ -395,7 +384,7 @@ async function acknowledgeError(formData) {
     }
   });
   
-  return successResponse(updated, "错误已确认");
+  return { ...updated, message: "错误已确认" };
 }
 
 /**
@@ -407,7 +396,7 @@ async function resolveError(formData) {
   const fixVersion = formData.get("fixVersion");
   
   if (!id || !resolution) {
-    return errorResponse("ID和解决方案必需", null, 400);
+    throw new Error("ID和解决方案必需");
   }
   
   const updated = await prisma.errorLog.update({
@@ -420,7 +409,7 @@ async function resolveError(formData) {
     }
   });
   
-  return successResponse(updated, "错误已解决");
+  return { ...updated, message: "错误已解决" };
 }
 
 /**
@@ -431,7 +420,7 @@ async function ignoreError(formData) {
   const reason = formData.get("reason");
   
   if (!id) {
-    return errorResponse("错误ID必需", null, 400);
+    throw new Error("错误ID必需");
   }
   
   const updated = await prisma.errorLog.update({
@@ -442,7 +431,7 @@ async function ignoreError(formData) {
     }
   });
   
-  return successResponse(updated, "错误已忽略");
+  return { ...updated, message: "错误已忽略" };
 }
 
 /**
@@ -454,7 +443,7 @@ async function batchUpdateErrors(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!ids.length || !status) {
-    return errorResponse("ID列表和状态必需", null, 400);
+    throw new Error("ID列表和状态必需");
   }
   
   const updateData = {
@@ -472,7 +461,7 @@ async function batchUpdateErrors(formData) {
     data: updateData
   });
   
-  return successResponse(result, `${result.count}个错误已更新`);
+  return { ...result, message: `${result.count}个错误已更新` };
 }
 
 /**
@@ -483,7 +472,7 @@ async function addErrorNote(formData) {
   const note = formData.get("note");
   
   if (!id || !note) {
-    return errorResponse("ID和备注必需", null, 400);
+    throw new Error("ID和备注必需");
   }
   
   const error = await prisma.errorLog.findUnique({
@@ -492,14 +481,15 @@ async function addErrorNote(formData) {
   });
   
   if (!error) {
-    return errorResponse("错误记录不存在", null, 404);
+    throw new Error("错误记录不存在");
   }
   
   const existingNotes = error.notes || "";
   const timestamp = new Date().toISOString();
   const newNote = `[${timestamp}] ${note}`;
   const updatedNotes = existingNotes 
-    ? `${existingNotes}\n${newNote}`
+    ? `${existingNotes}
+${newNote}`
     : newNote;
   
   const updated = await prisma.errorLog.update({
@@ -507,7 +497,7 @@ async function addErrorNote(formData) {
     data: { notes: updatedNotes }
   });
   
-  return successResponse(updated, "备注已添加");
+  return { ...updated, message: "备注已添加" };
 }
 
 /**

@@ -5,13 +5,12 @@
 import { config } from '../../utils/config.server.js';
 import { collectError, ERROR_TYPES } from '../error-collector.server.js';
 
-// 导入Translation Hooks
-import { 
-  translationHooksManager,
+// 导入Translation Hooks v1
+import {
   shouldTranslate,
   schedule,
   validate
-} from '../translation-hooks-manager.server.js';
+} from '../hooks-manager.server.js';
 
 // 导入新的工具函数
 import {
@@ -937,6 +936,42 @@ export async function translateText(text, targetLang, options = {}) {
     optionPayload = { retryCount };
   }
 
+  // 品牌词保护检测
+  const normalizedText = typeof text === 'string' ? text : '';
+  const brandWordResult = checkBrandWords(normalizedText, optionPayload);
+  if (brandWordResult.shouldSkip) {
+    logger.info('[TRANSLATION] 品牌词保护跳过翻译', {
+      text: normalizedText.slice(0, 50),
+      reason: brandWordResult.reason,
+      targetLang
+    });
+    return {
+      text: normalizedText,
+      skipped: true,
+      skipReason: brandWordResult.reason
+    };
+  }
+
+  // HTML长文本检测和路由
+  if (normalizedText && isLikelyHtml(normalizedText) && normalizedText.length > 1500) {
+    logger.info('[TRANSLATION] 路由到长文本HTML处理', {
+      length: normalizedText.length,
+      resourceType: optionPayload.resourceType,
+      charsOverThreshold: normalizedText.length - 1500
+    });
+
+    try {
+      const longTextResult = await translateLongTextEnhanced(normalizedText, targetLang, optionPayload);
+      return longTextResult;
+    } catch (error) {
+      logger.warn('[TRANSLATION] 长文本HTML处理失败，降级到标准处理', {
+        error: error.message,
+        textLength: normalizedText.length
+      });
+      // 降级到标准处理流程
+    }
+  }
+
   const result = await translateTextWithFallback(text, targetLang, optionPayload);
 
   if (!result.success) {
@@ -956,20 +991,133 @@ export async function translateText(text, targetLang, options = {}) {
   const normalizedTranslated = (result.text || '').trim().toLowerCase();
 
   if ((result.isOriginal || normalizedOriginal === normalizedTranslated) && normalizedOriginal) {
-    throw new TranslationError('翻译未生效，返回原文', {
-      code: 'TRANSLATION_NOT_EFFECTIVE',
-      category: 'TRANSLATION',
-      retryable: true,
-      context: {
-        targetLang,
-        retryCount,
-        originalSample: (text || '').trim().slice(0, 200),
-        translatedSample: (result.text || '').trim().slice(0, 200)
-      }
+    // 分析skip原因
+    const skipReason = analyzeIdenticalResult(text, targetLang);
+    
+    logger.info('[TRANSLATION] 译文与原文相同', {
+      targetLang,
+      skipReason,
+      originalSample: (text || '').trim().slice(0, 50)
     });
+    
+    // 返回特殊标记而非抛出错误
+    return {
+      text: result.text,
+      skipped: true,
+      skipReason
+    };
   }
 
   return result.text;
+}
+
+/**
+ * 分析译文与原文相同的原因
+ */
+function analyzeIdenticalResult(text, targetLang) {
+  const trimmedText = text.trim();
+  
+  // 产品代码/SKU模式
+  if (/^[A-Z]{2,}-\d+/.test(trimmedText)) {
+    return 'product_code';
+  }
+  
+  // 技术术语
+  if (/^(API|URL|HTML|CSS|JS|JSON|XML|SQL)$/i.test(trimmedText)) {
+    return 'technical_term';
+  }
+  
+  // 品牌词检测（简单版）
+  if (trimmedText.length < 50 && /^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/.test(trimmedText)) {
+    return 'possible_brand';
+  }
+  
+  // 默认返回
+  return 'identical_result';
+}
+
+/**
+ * 检查品牌词保护（最小版本）
+ */
+function checkBrandWords(text, options = {}) {
+  if (!text || typeof text !== 'string') {
+    return { shouldSkip: false };
+  }
+
+  const trimmedText = text.trim();
+
+  // 只对短文本生效（<50字符），降低误判
+  if (trimmedText.length >= 50) {
+    return { shouldSkip: false };
+  }
+
+  // 1. 产品Vendor字段保护
+  if (options.fieldName === 'vendor' && trimmedText.length > 0) {
+    return {
+      shouldSkip: true,
+      reason: 'vendor_field_protection'
+    };
+  }
+
+  // 2. 常见品牌词模式
+  // 单个大写字母开头的词（如品牌名）
+  if (/^[A-Z][a-z]+$/.test(trimmedText) && trimmedText.length >= 3) {
+    return {
+      shouldSkip: true,
+      reason: 'brand_word_pattern'
+    };
+  }
+
+  // 3. 产品代码/SKU模式
+  if (/^[A-Z]{2,}[-_]?\d+/.test(trimmedText)) {
+    return {
+      shouldSkip: true,
+      reason: 'product_code_pattern'
+    };
+  }
+
+  // 4. 技术术语（全大写）
+  if (/^[A-Z]{2,}$/.test(trimmedText)) {
+    return {
+      shouldSkip: true,
+      reason: 'technical_acronym'
+    };
+  }
+
+  return { shouldSkip: false };
+}
+
+// 包装translateText以处理skip逻辑
+async function translateTextWithSkip(text, targetLang, context = {}) {
+  if (!text || text.trim() === '') {
+    return null;
+  }
+  
+  try {
+    const result = await translateText(text, targetLang);
+    
+    // 检查是否返回skip标记
+    if (result && typeof result === 'object' && result.skipped) {
+      translationLogger.warn('[TRANSLATION] 翻译被跳过', {
+        reason: result.skipReason,
+        original: text.slice(0, 100),
+        targetLang,
+        ...context
+      });
+      return null; // 返回null表示跳过
+    }
+    
+    return result;
+  } catch (error) {
+    // 如果是skip情况，不应该抛出错误
+    translationLogger.error('[TRANSLATION] 翻译失败', {
+      error: error.message,
+      original: text.slice(0, 100),
+      targetLang,
+      ...context
+    });
+    throw error;
+  }
 }
 
 /**
@@ -1741,9 +1889,10 @@ export async function translateResource(resource, targetLang, options = {}) {
   // 1. shouldTranslate Hook - 检查是否需要翻译此资源
   const shouldTranslateResult = await shouldTranslate(translationContext);
   if (!shouldTranslateResult) {
-    translationLogger.info('资源翻译被hooks跳过', { 
+    translationLogger.warn('资源翻译被hooks跳过', {
       resourceId: resource.id,
-      resourceType: resource.resourceType 
+      resourceType: resource.resourceType,
+      reason: 'hook_should_translate'
     });
     return {
       skipped: true,
@@ -1754,11 +1903,12 @@ export async function translateResource(resource, targetLang, options = {}) {
 
   // 检查是否为Theme资源，如果是则使用独立的Theme翻译逻辑
   if (resource.resourceType && resource.resourceType.includes('THEME')) {
-    translationLogger.info('检测到Theme资源，使用专用翻译逻辑', { 
-      resourceType: resource.resourceType 
+    translationLogger.info('检测到Theme资源，使用专用翻译逻辑', {
+      resourceType: resource.resourceType
     });
-    
+
     try {
+      const { translateThemeResource } = await import('../theme-translation.server.js');
       const themeResult = await translateThemeResource(resource, targetLang);
       return {
         ...themeResult,
@@ -1814,9 +1964,9 @@ export async function translateResource(resource, targetLang, options = {}) {
         targetLang, 
         descriptionToTranslate
       );
-      translationLogger.info('描述翻译完成', { 
-        length: descriptionToTranslate.length 
-      });
+        translationLogger.info('描述翻译完成', {
+          length: descriptionToTranslate.length
+        });
     }
 
     // URL handle 不再翻译（SEO最佳实践）
@@ -1869,7 +2019,7 @@ export async function translateResource(resource, targetLang, options = {}) {
         targetLang, 
         resource.seoDescription
       );
-      translationLogger.info('SEO描述翻译完成');
+        translationLogger.info('SEO描述翻译完成');
     }
 
     // 处理动态字段（产品选项、元字段等）
@@ -2003,10 +2153,13 @@ async function translateLongTextEnhanced(text, targetLang, options = {}) {
     const chunks = chunkText(workingText, maxChunkSize, { isHtml: htmlDetected });
     const chunkCount = chunks.length || 1;
 
-    logger.debug('长文本分块结果', {
+    logger.info('[TRANSLATION] 长文本分块结果', {
+      originalLength: text.length,
       chunkCount,
       maxChunkSize,
-      htmlDetected
+      htmlDetected,
+      avgChunkSize: Math.round(text.length / chunkCount),
+      resourceType: options.resourceType
     });
 
     const translatedChunks = [];
@@ -2058,6 +2211,16 @@ async function translateLongTextEnhanced(text, targetLang, options = {}) {
     combined = await applyPostProcessors(combined, finalContext);
 
     const isTranslated = await validateTranslation(text, combined, targetLang);
+
+    logger.info('[TRANSLATION] 长文本翻译完成', {
+      originalLength: text.length,
+      translatedLength: combined.length,
+      chunkCount,
+      htmlDetected,
+      isTranslated,
+      lengthRatio: (combined.length / text.length).toFixed(2),
+      resourceType: options.resourceType
+    });
 
     return {
       success: true,

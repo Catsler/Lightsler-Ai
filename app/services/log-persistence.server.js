@@ -4,7 +4,6 @@
  */
 
 import { prisma } from '../db.server.js';
-import { config } from '../utils/config.server.js';
 import { createTranslationLogger, TranslationLogger, LOG_LEVELS } from '../utils/base-logger.server.js';
 import { collectError } from './error-collector.server.js';
 
@@ -261,11 +260,11 @@ function chunk(items, size) {
   return result;
 }
 
-const persistenceEnabled = config.logging?.enablePersistentLogger !== false;
-const persistenceLevel = parsePersistenceLevel(config.logging?.persistenceLevel);
-const retentionConfig = parseRetentionConfig(config.logging?.retentionDays);
-const bufferSize = Math.max(Number(config.logging?.batchSize ?? 50), 1);
-const flushInterval = Math.max(Number(config.logging?.flushInterval ?? 5000), 1000);
+const persistenceEnabled = process.env.LOGGING_ENABLE_PERSISTENT_LOGGER !== 'false';
+const persistenceLevel = parsePersistenceLevel(process.env.LOGGING_PERSISTENCE_LEVEL);
+const retentionConfig = parseRetentionConfig(process.env.LOGGING_RETENTION_DAYS);
+const bufferSize = Math.max(Number(process.env.LOGGING_BATCH_SIZE || 50), 1);
+const flushInterval = Math.max(Number(process.env.LOGGING_FLUSH_INTERVAL || 5000), 1000);
 const memoryLimit = Math.max(bufferSize * 10, 200);
 
 class InMemoryLogStore {

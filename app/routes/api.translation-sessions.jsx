@@ -3,8 +3,7 @@
  * 提供Sequential Thinking智能翻译会话的创建、管理和控制
  */
 
-import { json } from "@remix-run/node";
-import { withErrorHandling } from "../utils/api-response.server.js";
+import { createApiRoute } from "../utils/base-route.server.js";
 import {
   createTranslationSession,
   startTranslationSession,
@@ -16,13 +15,9 @@ import {
 /**
  * GET请求：获取会话列表或单个会话详情
  */
-export async function loader({ request }) {
-  return withErrorHandling(async () => {
-    const { authenticate } = await import("../shopify.server.js");
-    const { admin, session } = await authenticate.admin(request);
+async function handleTranslationSessionsLoader({ request, admin, session, searchParams }) {
     
-    const url = new URL(request.url);
-    const sessionId = url.searchParams.get("sessionId");
+    const sessionId = searchParams.get("sessionId");
     const shopId = session.shop;
     
     if (sessionId) {
@@ -39,20 +34,17 @@ export async function loader({ request }) {
       });
       
       if (!translationSession) {
-        return json(
-          { success: false, error: "会话不存在" },
-          { status: 404 }
-        );
+        throw new Error("会话不存在");
       }
       
       // 获取恢复建议
       const recovery = await getRecoveryRecommendations(sessionId);
       
-      return json({
+      return {
         success: true,
         session: translationSession,
         recovery
-      });
+      };
     } else {
       // 获取会话列表
       const { default: prisma } = await import("../db.server.js");
@@ -62,22 +54,23 @@ export async function loader({ request }) {
         take: 20
       });
       
-      return json({
+      return {
         success: true,
         sessions,
         total: sessions.length
-      });
+      };
     }
-  });
 }
+
+export const loader = createApiRoute(handleTranslationSessionsLoader, {
+  requireAuth: true,
+  operationName: '获取翻译会话信息'
+});
 
 /**
  * POST请求：创建或控制会话
  */
-export async function action({ request }) {
-  return withErrorHandling(async () => {
-    const { authenticate } = await import("../shopify.server.js");
-    const { admin, session } = await authenticate.admin(request);
+async function handleTranslationSessionsAction({ request, admin, session }) {
     
     const formData = await request.formData();
     const action = formData.get("action");
@@ -111,11 +104,11 @@ export async function action({ request }) {
         
         const translationSession = await createTranslationSession(shopId, options);
         
-        return json({
+        return {
           success: true,
           message: `会话创建成功: ${name}`,
           session: translationSession
-        });
+        };
       }
       
       case "start": {
@@ -123,19 +116,16 @@ export async function action({ request }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          return json(
-            { success: false, error: "会话ID不能为空" },
-            { status: 400 }
-          );
+          throw new Error("会话ID不能为空");
         }
         
         const translationSession = await startTranslationSession(sessionId);
         
-        return json({
+        return {
           success: true,
           message: "会话已启动",
           session: translationSession
-        });
+        };
       }
       
       case "pause": {
@@ -143,19 +133,16 @@ export async function action({ request }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          return json(
-            { success: false, error: "会话ID不能为空" },
-            { status: 400 }
-          );
+          throw new Error("会话ID不能为空");
         }
         
         const translationSession = await pauseTranslationSession(sessionId);
         
-        return json({
+        return {
           success: true,
           message: "会话已暂停",
           session: translationSession
-        });
+        };
       }
       
       case "resume": {
@@ -163,19 +150,16 @@ export async function action({ request }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          return json(
-            { success: false, error: "会话ID不能为空" },
-            { status: 400 }
-          );
+          throw new Error("会话ID不能为空");
         }
         
         const translationSession = await resumeTranslationSession(sessionId);
         
-        return json({
+        return {
           success: true,
           message: "会话已恢复",
           session: translationSession
-        });
+        };
       }
       
       case "complete": {
@@ -183,10 +167,7 @@ export async function action({ request }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          return json(
-            { success: false, error: "会话ID不能为空" },
-            { status: 400 }
-          );
+          throw new Error("会话ID不能为空");
         }
         
         const { default: prisma } = await import("../db.server.js");
@@ -199,11 +180,11 @@ export async function action({ request }) {
           }
         });
         
-        return json({
+        return {
           success: true,
           message: "会话已完成",
           session: translationSession
-        });
+        };
       }
       
       case "delete": {
@@ -211,10 +192,7 @@ export async function action({ request }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          return json(
-            { success: false, error: "会话ID不能为空" },
-            { status: 400 }
-          );
+          throw new Error("会话ID不能为空");
         }
         
         const { default: prisma } = await import("../db.server.js");
@@ -222,17 +200,18 @@ export async function action({ request }) {
           where: { id: sessionId }
         });
         
-        return json({
+        return {
           success: true,
           message: "会话已删除"
-        });
+        };
       }
       
       default:
-        return json(
-          { success: false, error: `未知操作: ${action}` },
-          { status: 400 }
-        );
+        throw new Error(`未知操作: ${action}`);
     }
-  });
 }
+
+export const action = createApiRoute(handleTranslationSessionsAction, {
+  requireAuth: true,
+  operationName: '翻译会话管理'
+});

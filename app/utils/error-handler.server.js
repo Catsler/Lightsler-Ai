@@ -6,6 +6,7 @@
 
 import { config } from './config.server.js';
 import { collectError, ERROR_TYPES } from '../services/error-collector.server.js';
+import { logger } from './logger.server.js';
 
 /**
  * 翻译服务自定义错误类
@@ -288,7 +289,11 @@ export function createRetryHandler(options = {}) {
           : baseDelay;
         
         // 记录重试信息
-        console.log(`函数执行失败，${delay}ms后进行第${attempt + 2}次尝试... (${translationError.message})`);
+        logger.info(`函数执行失败，${delay}ms后进行第${attempt + 2}次尝试`, {
+          error: translationError.message,
+          attempt: attempt + 2,
+          delay
+        });
         
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -472,7 +477,7 @@ export function collectErrorToDatabase(error, context = {}) {
       
     } catch (collectError) {
       // 收集错误本身失败，只记录日志，不影响主流程
-      console.error('错误收集失败:', collectError);
+      logger.error('错误收集失败', { collectError });
     }
   });
 }

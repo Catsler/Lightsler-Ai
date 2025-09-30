@@ -4,6 +4,7 @@
 
 // 加载环境变量文件
 import dotenv from 'dotenv';
+import { logger } from './logger.server.js';
 dotenv.config();
 
 /**
@@ -99,6 +100,20 @@ export const config = {
     enablePersistentLogger: getEnvVar('ENABLE_PERSISTENT_LOGGER', true, 'boolean'),
   },
 
+  // API 监控配置
+  apiMonitoring: {
+    enabled: getEnvVar('API_MONITORING_ENABLED', 'true', 'boolean'),
+    operations: (getEnvVar('API_MONITORING_OPERATIONS', '', 'string') || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+    failureWarn: getEnvVar('API_MONITOR_FAILURE_WARN', 0.001, 'number'),
+    failureError: getEnvVar('API_MONITOR_FAILURE_ERROR', 0.005, 'number'),
+    minSample: getEnvVar('API_MONITOR_MIN_SAMPLE', 20, 'number'),
+    p95WarnRatio: getEnvVar('API_MONITOR_P95_WARN_RATIO', 1.05, 'number'),
+    p95ErrorRatio: getEnvVar('API_MONITOR_P95_ERROR_RATIO', 1.1, 'number')
+  },
+
   // Translation Hooks 灰度配置
   translationHooks: {
     enabled: getEnvVar('TRANSLATION_HOOKS_ENABLED', 'false', 'boolean'),
@@ -160,28 +175,30 @@ export function initializeConfig() {
   const recommended = validateRecommendedEnvVars();
   
   if (missing.length > 0) {
-    console.error('❌ 缺失必需的环境变量:', missing);
-    console.error('请参考 .env.example 文件配置环境变量');
+    logger.error('❌ 缺失必需的环境变量', { missing });
+    logger.error('请参考 .env.example 文件配置环境变量');
     if (config.nodeEnv === 'production') {
       process.exit(1);
     }
   }
-  
+
   if (recommended.length > 0) {
-    console.warn('⚠️  缺失推荐的环境变量:', recommended);
-    console.warn('这些配置缺失可能影响某些功能的正常使用');
+    logger.warn('⚠️  缺失推荐的环境变量', { recommended });
+    logger.warn('这些配置缺失可能影响某些功能的正常使用');
   }
-  
+
   // 显示配置摘要
-  console.log('📋 应用配置摘要:');
-  console.log(`- 环境: ${config.nodeEnv}`);
-  console.log(`- 端口: ${config.port}`);
-  console.log(`- 数据库: ${config.database.url}`);
-  console.log(`- Redis: ${config.redis.enabled ? '已启用' : '已禁用'}`);
-  console.log(`- 翻译API: ${config.translation.apiUrl}`);
-  console.log(`- 翻译模型: ${config.translation.model}`);
-  console.log(`- API密钥: ${config.translation.apiKey ? '已配置' : '未配置'}`);
-  console.log(`- 队列并发数: ${config.queue.concurrency}`);
+  logger.info('📋 应用配置摘要');
+  logger.info('配置详情', {
+    environment: config.nodeEnv,
+    port: config.port,
+    database: config.database.url,
+    redis: config.redis.enabled ? '已启用' : '已禁用',
+    translationApi: config.translation.apiUrl,
+    translationModel: config.translation.model,
+    apiKeyConfigured: config.translation.apiKey ? '已配置' : '未配置',
+    queueConcurrency: config.queue.concurrency
+  });
   
   return {
     valid: missing.length === 0,

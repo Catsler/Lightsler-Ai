@@ -1,28 +1,17 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
 import { getWebhookEventStats } from "../services/webhook-cleanup.server";
-import { withErrorHandling } from "../utils/error-handler.server";
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
- * 获取webhook事件统计信息
+ * 获取webhook事件统计信息的处理函数
  */
-export const loader = withErrorHandling(async ({ request }) => {
-  // 认证
-  const { admin } = await authenticate.admin(request);
+async function handleGetWebhookStats() {
+  // 获取统计信息
+  const stats = await getWebhookEventStats();
   
-  try {
-    // 获取统计信息
-    const stats = await getWebhookEventStats();
-    
-    return json({
-      success: true,
-      data: stats
-    });
-    
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message
-    }, { status: 500 });
-  }
+  return stats;
+}
+
+export const loader = createApiRoute(handleGetWebhookStats, {
+  requireAuth: true,
+  operationName: '获取Webhook统计'
 });

@@ -3,148 +3,149 @@
  * 提供高级日志查询功能
  */
 
-import { json } from '@remix-run/node';
-import { authenticate } from '../shopify.server';
 import { prisma } from '../db.server';
-import { withErrorHandling } from '../utils/error-handler.server';
-import { successResponse, errorResponse } from '../utils/api-response.server';
+import { createApiRoute } from '../utils/base-route.server.js';
 
-// GET /api/logs-search - 搜索和过滤日志
-export const loader = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const shop = session.shop;
+/**
+ * GET请求处理函数 - 搜索和过滤日志
+ */
+async function handleLogsSearch({ request, session, searchParams }) {
+  const shop = session.shop;
+  
+  // 解析查询参数
+  const params = {
+    // 基本过滤
+    type: searchParams.get('type') || null, // 日志类型
+    level: searchParams.get('level') || null, // 日志级别
+    category: searchParams.get('category') || null, // 日志分类
+    resourceType: searchParams.get('resourceType') || null,
+    resourceId: searchParams.get('resourceId') || null,
     
-    const url = new URL(request.url);
+    // 时间范围
+    startDate: searchParams.get('startDate') 
+      ? new Date(searchParams.get('startDate'))
+      : new Date(Date.now() - 24 * 60 * 60 * 1000), // 默认24小时
+    endDate: searchParams.get('endDate')
+      ? new Date(searchParams.get('endDate'))
+      : new Date(),
     
-    // 解析查询参数
-    const params = {
-      // 基本过滤
-      type: url.searchParams.get('type') || null, // 日志类型
-      level: url.searchParams.get('level') || null, // 日志级别
-      category: url.searchParams.get('category') || null, // 日志分类
-      resourceType: url.searchParams.get('resourceType') || null,
-      resourceId: url.searchParams.get('resourceId') || null,
-      
-      // 时间范围
-      startDate: url.searchParams.get('startDate') 
-        ? new Date(url.searchParams.get('startDate'))
-        : new Date(Date.now() - 24 * 60 * 60 * 1000), // 默认24小时
-      endDate: url.searchParams.get('endDate')
-        ? new Date(url.searchParams.get('endDate'))
-        : new Date(),
-      
-      // 搜索关键词
-      search: url.searchParams.get('search') || null,
-      
-      // 分页
-      page: parseInt(url.searchParams.get('page') || '1'),
-      pageSize: parseInt(url.searchParams.get('pageSize') || '50'),
-      
-      // 排序
-      sortBy: url.searchParams.get('sortBy') || 'createdAt',
-      sortOrder: url.searchParams.get('sortOrder') || 'desc',
-      
-      // 聚合选项
-      aggregate: url.searchParams.get('aggregate') === 'true',
-      groupBy: url.searchParams.get('groupBy') || null
-    };
+    // 搜索关键词
+    search: searchParams.get('search') || null,
     
-    // 验证参数
-    if (params.pageSize > 200) {
-      return errorResponse('每页最多200条记录', 400);
-    }
+    // 分页
+    page: parseInt(searchParams.get('page') || '1'),
+    pageSize: parseInt(searchParams.get('pageSize') || '50'),
     
-    // 构建查询条件
-    const where = buildWhereClause(params, shop);
+    // 排序
+    sortBy: searchParams.get('sortBy') || 'createdAt',
+    sortOrder: searchParams.get('sortOrder') || 'desc',
     
-    // 如果需要聚合
-    if (params.aggregate && params.groupBy) {
-      const aggregatedData = await getAggregatedLogs(where, params.groupBy);
-      return successResponse({
-        type: 'aggregated',
-        groupBy: params.groupBy,
-        data: aggregatedData,
-        params
-      });
-    }
-    
-    // 执行查询
-    const [logs, total] = await Promise.all([
-      prisma.errorLog.findMany({
-        where,
-        orderBy: { [params.sortBy]: params.sortOrder },
-        skip: (params.page - 1) * params.pageSize,
-        take: params.pageSize,
-        select: {
-          id: true,
-          errorType: true,
-          errorCategory: true,
-          errorCode: true,
-          message: true,
-          resourceType: true,
-          resourceId: true,
-          severity: true,
-          status: true,
-          occurrences: true,
-          createdAt: true,
-          lastSeenAt: true,
-          context: true,
-          suggestedFix: true,
-          rootCause: true
-        }
-      }),
-      prisma.errorLog.count({ where })
-    ]);
-    
-    // 处理和格式化日志
-    const formattedLogs = logs.map(log => ({
-      ...log,
-      level: mapSeverityToLevel(log.severity),
-      tags: extractTags(log),
-      summary: generateLogSummary(log)
-    }));
-    
-    // 生成统计信息
-    const stats = await generateLogStats(where);
-    
-    return successResponse({
-      type: 'paginated',
-      logs: formattedLogs,
-      pagination: {
-        page: params.page,
-        pageSize: params.pageSize,
-        total,
-        totalPages: Math.ceil(total / params.pageSize)
-      },
-      stats,
+    // 聚合选项
+    aggregate: searchParams.get('aggregate') === 'true',
+    groupBy: searchParams.get('groupBy') || null
+  };
+  
+  // 验证参数
+  if (params.pageSize > 200) {
+    throw new Error('每页最多200条记录');
+  }
+  
+  // 构建查询条件
+  const where = buildWhereClause(params, shop);
+  
+  // 如果需要聚合
+  if (params.aggregate && params.groupBy) {
+    const aggregatedData = await getAggregatedLogs(where, params.groupBy);
+    return {
+      type: 'aggregated',
+      groupBy: params.groupBy,
+      data: aggregatedData,
       params
-    });
-    
-  }, '搜索日志');
-};
+    };
+  }
+  
+  // 执行查询
+  const [logs, total] = await Promise.all([
+    prisma.errorLog.findMany({
+      where,
+      orderBy: { [params.sortBy]: params.sortOrder },
+      skip: (params.page - 1) * params.pageSize,
+      take: params.pageSize,
+      select: {
+        id: true,
+        errorType: true,
+        errorCategory: true,
+        errorCode: true,
+        message: true,
+        resourceType: true,
+        resourceId: true,
+        severity: true,
+        status: true,
+        occurrences: true,
+        createdAt: true,
+        lastSeenAt: true,
+        context: true,
+        suggestedFix: true,
+        rootCause: true
+      }
+    }),
+    prisma.errorLog.count({ where })
+  ]);
+  
+  // 处理和格式化日志
+  const formattedLogs = logs.map(log => ({
+    ...log,
+    level: mapSeverityToLevel(log.severity),
+    tags: extractTags(log),
+    summary: generateLogSummary(log)
+  }));
+  
+  // 生成统计信息
+  const stats = await generateLogStats(where);
+  
+  return {
+    type: 'paginated',
+    logs: formattedLogs,
+    pagination: {
+      page: params.page,
+      pageSize: params.pageSize,
+      total,
+      totalPages: Math.ceil(total / params.pageSize)
+    },
+    stats,
+    params
+  };
+}
 
-// POST /api/logs-search/export - 导出日志
-export const action = async ({ request }) => {
-  return withErrorHandling(async () => {
-    const { admin, session } = await authenticate.admin(request);
-    const shop = session.shop;
-    
-    const formData = await request.formData();
-    const action = formData.get('action');
-    
-    if (action === 'export') {
-      return await exportLogs(formData, shop);
-    } else if (action === 'analyze') {
-      return await analyzeLogs(formData, shop);
-    } else if (action === 'report') {
-      return await generateReport(formData, shop);
-    }
-    
-    return errorResponse('无效的操作', 400);
-    
-  }, '日志操作');
-};
+export const loader = createApiRoute(handleLogsSearch, {
+  requireAuth: true,
+  operationName: '搜索日志'
+});
+
+/**
+ * POST请求处理函数 - 日志操作
+ */
+async function handleLogsAction({ request, session }) {
+  const shop = session.shop;
+  
+  const formData = await request.formData();
+  const action = formData.get('action');
+  
+  if (action === 'export') {
+    return await exportLogs(formData, shop);
+  } else if (action === 'analyze') {
+    return await analyzeLogs(formData, shop);
+  } else if (action === 'report') {
+    return await generateReport(formData, shop);
+  }
+  
+  throw new Error('无效的操作');
+}
+
+export const action = createApiRoute(handleLogsAction, {
+  requireAuth: true,
+  operationName: '日志操作'
+});
 
 // 构建查询条件
 function buildWhereClause(params, shop) {
@@ -321,15 +322,15 @@ async function exportLogs(formData, shop) {
       exportData = await generateSummaryReport(logs, where);
       break;
     default:
-      return errorResponse('不支持的导出格式', 400);
+      throw new Error('不支持的导出格式');
   }
   
-  return successResponse({
+  return {
     format,
     data: exportData,
     count: logs.length,
     exportedAt: new Date()
-  });
+  };
 }
 
 // 分析日志
@@ -361,15 +362,15 @@ async function analyzeLogs(formData, shop) {
       analysis = analyzeBusinessImpact(logs);
       break;
     default:
-      return errorResponse('不支持的分析类型', 400);
+      throw new Error('不支持的分析类型');
   }
   
-  return successResponse({
+  return {
     analysisType,
     analysis,
     logsAnalyzed: logs.length,
     timestamp: new Date()
-  });
+  };
 }
 
 // 生成报告
@@ -393,7 +394,7 @@ async function generateReport(formData, shop) {
       endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
       break;
     default:
-      return errorResponse('不支持的报告类型', 400);
+      throw new Error('不支持的报告类型');
   }
   
   const where = {
@@ -407,14 +408,14 @@ async function generateReport(formData, shop) {
     getTopIssues(where)
   ]);
   
-  return successResponse({
+  return {
     reportType,
     period: { start: startDate, end: endDate },
     stats,
     trends,
     topIssues,
     generatedAt: new Date()
-  });
+  };
 }
 
 // 辅助函数：映射严重度到级别

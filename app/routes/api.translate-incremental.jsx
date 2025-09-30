@@ -3,17 +3,14 @@
  * 支持只翻译未翻译或已变更的字段
  */
 
-import { json } from '@remix-run/node';
-import { authenticate } from '../shopify.server.js';
 import {
   performIncrementalTranslation,
   detectUntranslatedFields
 } from '../services/incremental-translation.server.js';
 import { getOrCreateShop, getAllResources } from '../services/database.server.js';
-import { withErrorHandling, validationErrorResponse, validateRequiredParams } from '../utils/api-response.server.js';
+import { createApiRoute } from '../utils/base-route.server.js';
 
-export const action = withErrorHandling(async ({ request }) => {
-    const { admin, session } = await authenticate.admin(request);
+async function handleIncrementalTranslationAction({ request, admin, session }) {
     const formData = await request.formData();
 
     // 参数验证
@@ -23,9 +20,8 @@ export const action = withErrorHandling(async ({ request }) => {
       analyzeOnly: formData.get("analyzeOnly") === "true" // 只分析不翻译
     };
 
-    const validationErrors = validateRequiredParams(params, ['language']);
-    if (validationErrors.length > 0) {
-      return validationErrorResponse(validationErrors);
+    if (!params.language) {
+      throw new Error('language 参数是必需的');
     }
 
     const targetLanguage = params.language;
@@ -33,10 +29,7 @@ export const action = withErrorHandling(async ({ request }) => {
     try {
       resourceIds = JSON.parse(params.resourceIds);
     } catch (error) {
-      return validationErrorResponse([{
-        field: 'resourceIds',
-        message: 'resourceIds 必须是有效的JSON格式'
-      }]);
+      throw new Error('resourceIds 必须是有效的JSON格式');
     }
 
     // 获取店铺记录
@@ -49,7 +42,7 @@ export const action = withErrorHandling(async ({ request }) => {
       // 翻译模式：执行增量翻译
       return await executeIncrementalTranslation(shop.id, targetLanguage, resourceIds);
     }
-}, '增量翻译');
+}
 
 /**
  * 分析翻译需求
@@ -92,7 +85,7 @@ async function analyzeTranslationNeeds(shopId, language, resourceIds) {
     }
   }
 
-  return json({
+  return {
     success: true,
     data: {
       analysis: analysisResults,
@@ -105,7 +98,7 @@ async function analyzeTranslationNeeds(shopId, language, resourceIds) {
       }
     },
     message: `分析完成：${analysisResults.length} 个资源需要翻译，共 ${totalUntranslatedFields} 个字段`
-  });
+  };
 }
 
 /**
@@ -118,7 +111,7 @@ async function analyzeTranslationNeeds(shopId, language, resourceIds) {
 async function executeIncrementalTranslation(shopId, language, resourceIds) {
   const result = await performIncrementalTranslation(shopId, language, resourceIds);
 
-  return json({
+  return {
     success: true,
     data: {
       translation: result,
@@ -131,14 +124,12 @@ async function executeIncrementalTranslation(shopId, language, resourceIds) {
       }
     },
     message: `增量翻译完成：处理 ${result.resourcesProcessed} 个资源，翻译 ${result.fieldsTranslated} 个字段`
-  });
+  };
 }
 
 // GET方法用于获取增量翻译状态
-export const loader = withErrorHandling(async ({ request }) => {
-    const { session } = await authenticate.admin(request);
-    const url = new URL(request.url);
-    const language = url.searchParams.get('language') || 'zh-CN';
+async function handleIncrementalTranslationLoader({ request, admin, session, searchParams }) {
+    const language = searchParams.get('language') || 'zh-CN';
 
     const shop = await getOrCreateShop(session.shop, session.accessToken);
     const allResources = await getAllResources(shop.id);
@@ -175,7 +166,7 @@ export const loader = withErrorHandling(async ({ request }) => {
       }
     }
 
-    return json({
+    return {
       success: true,
       data: {
         status: {
@@ -188,5 +179,15 @@ export const loader = withErrorHandling(async ({ request }) => {
         }
       },
       message: `翻译状态统计完成`
-    });
-}, '增量翻译状态查询');
+    };
+}
+
+export const action = createApiRoute(handleIncrementalTranslationAction, {
+  requireAuth: true,
+  operationName: '增量翻译'
+});
+
+export const loader = createApiRoute(handleIncrementalTranslationLoader, {
+  requireAuth: true,
+  operationName: '增量翻译状态查询'
+});

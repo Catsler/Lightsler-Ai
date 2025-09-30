@@ -148,6 +148,19 @@ NODE_ENV=development|production          # 环境标识
 ENABLE_PRODUCT_RELATED_TRANSLATION=true  # 产品关联翻译
 ```
 
+**API 监控**:
+```bash
+API_MONITORING_ENABLED=true                 # 默认开启监控
+API_MONITORING_OPERATIONS=""               # 为空监控所有 createApiRoute 路由
+# API_MONITORING_OPERATIONS="api.translate,api.status"  # 指定白名单
+API_MONITOR_FAILURE_WARN=0.001              # 失败率 WARN 阈值
+API_MONITOR_FAILURE_ERROR=0.005             # 失败率 ERROR 阈值
+API_MONITOR_MIN_SAMPLE=20                   # 最小样本量
+API_MONITOR_P95_WARN_RATIO=1.05             # P95 WARN 比例阈值
+API_MONITOR_P95_ERROR_RATIO=1.1             # P95 ERROR 比例阈值
+```
+> 建议在排障或巡检时将 `API_MONITORING_OPERATIONS` 置空获取全量路由指标，详情见 `docs/api-monitoring-optimization.md`。
+
 ## 日志查看
 
 ### 本地日志文件
@@ -274,6 +287,7 @@ npm run dev                      # 启动开发服务器（自动集成）
 - ✅ 新增Shopify权限后运行 `npm run deploy`
 - ✅ 测试关键功能流程（扫描→翻译→同步）
 - ✅ 使用 `npm run test:e2e` 运行端到端测试
+- ✅ 代码评审：使用 `createApiRoute` 的处理器需确认遵循 `RouteContext` 契约（优先使用 `params`，如需 `.get()` 直接引用 `searchParams`，避免重复解析 URL）
 
 ## 重要文件位置
 

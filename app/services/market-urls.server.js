@@ -31,10 +31,16 @@ export async function getMarketsWebPresences(admin) {
               }
               subfolderSuffix
               defaultLocale {
-                locale
+                locale {
+                  isoCode
+                  languageTag
+                }
               }
               alternateLocales {
-                locale
+                locale {
+                  isoCode
+                  languageTag
+                }
               }
             }
           }
@@ -86,103 +92,199 @@ export async function getMarketsWebPresences(admin) {
  * @param {Object} data - GraphQL响应数据
  * @returns {Object} 解析后的配置
  */
+/**
+ * 提取 Locale 信息，兼容不同版本的 GraphQL 返回结构
+ * @param {unknown} node
+ * @returns {{ code: string | null, tag: string | null }}
+ */
+function getLocaleInfo(node) {
+  if (!node) {
+    return { code: null, tag: null };
+  }
+
+  if (typeof node === 'string') {
+    return { code: node, tag: node };
+  }
+
+  if (typeof node !== 'object') {
+    return { code: null, tag: null };
+  }
+
+  const localeObject = /** @type {Record<string, unknown>} */ (node);
+  const localeField = /** @type {unknown} */ (localeObject.locale);
+
+  let code = null;
+  let tag = null;
+
+  if (typeof localeField === 'string') {
+    code = localeField;
+    tag = localeField;
+  } else if (localeField && typeof localeField === 'object') {
+    const localeDetails = /** @type {Record<string, unknown>} */ (localeField);
+    if (typeof localeDetails.isoCode === 'string') {
+      code = localeDetails.isoCode;
+    }
+    if (typeof localeDetails.languageTag === 'string') {
+      tag = localeDetails.languageTag;
+      if (!code) {
+        code = tag;
+      }
+    }
+  }
+
+  if (!code && typeof localeObject.isoCode === 'string') {
+    code = localeObject.isoCode;
+  }
+  if (!tag && typeof localeObject.languageTag === 'string') {
+    tag = localeObject.languageTag;
+  }
+
+  if (!code) {
+    if (typeof localeObject.localeCode === 'string') {
+      code = localeObject.localeCode;
+    } else if (typeof localeObject.tag === 'string') {
+      code = localeObject.tag;
+    }
+  }
+
+  if (!tag && code) {
+    tag = code;
+  }
+
+  return { code, tag };
+}
+
+/**
+ * 将 GraphQL 返回的 alternateLocales 统一为数组
+ * @param {unknown} raw
+ * @returns {Array<unknown>}
+ */
+function normalizeLocaleEntries(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+
+  // 支持 { nodes: [...] } 或 { edges: [{ node: ... }] }
+  if (Array.isArray(raw.nodes)) {
+    return raw.nodes;
+  }
+  if (Array.isArray(raw.edges)) {
+    return raw.edges
+      .map((edge) => edge && typeof edge === 'object' ? edge.node : null)
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 function parseMarketsConfig(data) {
   const primaryHost = data.shop.primaryDomain.host;
   const primaryUrl = data.shop.primaryDomain.url.replace(/\/$/, ''); // 移除尾部斜杠
   const shopName = data.shop.name;
-  
+
   const mappings = {};
   const marketsList = [];
-  
-  // 遍历所有市场
-  data.markets.nodes.forEach(market => {
-    if (!market.enabled) return; // 跳过未启用的市场
-    
+
+  const markets = Array.isArray(data.markets?.nodes) ? data.markets.nodes : [];
+
+  markets.forEach((market) => {
+    if (!market?.enabled) return;
+
     const marketInfo = {
       id: market.id,
       name: market.name,
       primary: market.primary,
       languages: []
     };
-    
-    // 遍历市场的Web Presences
-    market.webPresences.nodes.forEach(presence => {
-      // 处理主要语言
-      const defaultLocale = presence.defaultLocale?.locale;
-      
-      if (defaultLocale) {
-        // 构建语言映射信息
-        const localeConfig = {
-          locale: defaultLocale,
-          marketName: market.name,
-          primary: market.primary
-        };
-        
-        // 判断URL类型
-        if (presence.subfolderSuffix) {
-          // 子路径模式: example.com/fr
-          localeConfig.type = 'subfolder';
-          localeConfig.suffix = presence.subfolderSuffix;
-          localeConfig.url = `${primaryUrl}/${presence.subfolderSuffix}`;
-          localeConfig.path = `/${presence.subfolderSuffix}/`;
-        } else if (presence.domain) {
-          // 子域名或独立域名模式
-          const domainHost = presence.domain.host;
-          
-          if (domainHost !== primaryHost) {
-            // 不同的域名（可能是子域名或独立域名）
-            if (domainHost.endsWith(primaryHost.replace('www.', ''))) {
-              localeConfig.type = 'subdomain';
-            } else {
-              localeConfig.type = 'domain';
-            }
-            localeConfig.host = domainHost;
-            localeConfig.url = presence.domain?.url?.replace(/\/$/, '') || '';
-          } else {
-            // 主域名（默认语言）
-            localeConfig.type = 'primary';
-            localeConfig.host = primaryHost;
-            localeConfig.url = primaryUrl;
-          }
-        }
-        
-        // 保存映射（保留完整locale，避免冲突）
-        mappings[defaultLocale] = localeConfig;
-        marketInfo.languages.push({
-          locale: defaultLocale,
-          type: localeConfig.type,
-          url: localeConfig.url
-        });
-        
-        // 处理备用语言
-        if (presence.alternateLocales && Array.isArray(presence.alternateLocales)) {
-          presence.alternateLocales.forEach(altLocaleObj => {
-            const altLocale = altLocaleObj.locale;
-            if (altLocale && !mappings[altLocale]) {
-              // 备用语言使用相同的URL配置
-              mappings[altLocale] = {
-                ...localeConfig,
-                locale: altLocale,
-                isAlternate: true
-              };
-              
-              marketInfo.languages.push({
-                locale: altLocale,
-                type: localeConfig.type,
-                url: localeConfig.url,
-                isAlternate: true
-              });
-            }
-          });
-        }
+
+    const presences = Array.isArray(market.webPresences?.nodes) ? market.webPresences.nodes : [];
+
+    presences.forEach((presence) => {
+      const defaultLocaleInfo = getLocaleInfo(presence?.defaultLocale);
+      const defaultLocale = defaultLocaleInfo.code;
+
+      if (!defaultLocale) {
+        return;
       }
+
+      const localeConfig = {
+        locale: defaultLocale,
+        languageTag: defaultLocaleInfo.tag,
+        marketName: market.name,
+        primary: market.primary
+      };
+
+      if (presence?.subfolderSuffix) {
+        // 子路径模式: example.com/fr
+        localeConfig.type = 'subfolder';
+        localeConfig.suffix = presence.subfolderSuffix;
+        localeConfig.url = `${primaryUrl}/${presence.subfolderSuffix}`;
+        localeConfig.path = `/${presence.subfolderSuffix}/`;
+      } else if (presence?.domain) {
+        const domainHost = presence.domain.host;
+
+        if (domainHost && domainHost !== primaryHost) {
+          // 不同域名（可能是子域名或独立域名）
+          if (domainHost.endsWith(primaryHost.replace('www.', ''))) {
+            localeConfig.type = 'subdomain';
+          } else {
+            localeConfig.type = 'domain';
+          }
+          localeConfig.host = domainHost;
+          localeConfig.url = presence.domain?.url?.replace(/\/$/, '') || '';
+        } else {
+          // 主域名（默认语言）
+          localeConfig.type = 'primary';
+          localeConfig.host = primaryHost;
+          localeConfig.url = primaryUrl;
+        }
+      } else {
+        // 没有子路径也没有域名时归类为 primary
+        localeConfig.type = 'primary';
+        localeConfig.host = primaryHost;
+        localeConfig.url = primaryUrl;
+      }
+
+      mappings[defaultLocale] = localeConfig;
+      marketInfo.languages.push({
+        locale: defaultLocale,
+        languageTag: defaultLocaleInfo.tag,
+        type: localeConfig.type,
+        url: localeConfig.url
+      });
+
+      const alternateLocales = normalizeLocaleEntries(presence?.alternateLocales);
+      alternateLocales.forEach((alternateEntry) => {
+        const alternateInfo = getLocaleInfo(alternateEntry);
+        const altLocale = alternateInfo.code;
+        if (!altLocale || mappings[altLocale]) {
+          return;
+        }
+
+        const altConfig = {
+          ...localeConfig,
+          locale: altLocale,
+          languageTag: alternateInfo.tag,
+          isAlternate: true
+        };
+
+        mappings[altLocale] = altConfig;
+        marketInfo.languages.push({
+          locale: altLocale,
+          languageTag: alternateInfo.tag,
+          type: altConfig.type,
+          url: altConfig.url,
+          isAlternate: true
+        });
+      });
     });
-    
+
     if (marketInfo.languages.length > 0) {
       marketsList.push(marketInfo);
     }
   });
-  
+
   return {
     primaryHost,
     primaryUrl,

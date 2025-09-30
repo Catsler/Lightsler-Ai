@@ -2,7 +2,224 @@
 
 ## 🚧 进行中
 
-### KISS原则代码重构 - Phase 1 基础规范统一 (2025-09-28启动) - 🔄 进行中
+### HTML长文本翻译问题修复 (2025-09-30) - ✅ Phase 1 完成
+**目标**: 修复Shipping & Duty Policy等页面HTML长文本翻译不完整的问题。
+**方案**: 基于KISS原则，复用现有分块能力，最小化改动范围。
+
+#### Phase 1 实施进度 ✅ (2025-09-30)
+- [x] 修改 `translateText` 路由逻辑，HTML长文本(>1500字符)自动路由到 `translateLongTextEnhanced`
+- [x] 查找并确认10k跳过规则已在之前版本移除
+- [x] 增强日志记录：添加分块数、长度、耗时、HTML检测等关键指标
+- [x] 运行 `npm run build` 验证修复成功，无编译错误
+
+#### 预期效果
+- ✅ HTML长文本将使用智能分块处理，避免截断
+- ✅ Policy页面等长内容将获得完整翻译
+- ✅ 增强的日志便于后续性能分析和优化
+
+#### Phase 2 实施进度 ✅ (2025-09-30)
+- [x] `/api/translate` 内部分批处理（5个/批），避免整体超时
+- [x] 长文本资源优先级排序（>1500字符的内容优先处理）
+- [x] 调整批量翻译API超时为60秒，支持分批处理
+- [x] 增强批次处理日志：记录每批耗时、成功/失败数量
+- [x] 运行 `npm run build` 验证修复成功
+
+#### 预期效果 (Phase 2)
+- ✅ 批量翻译超时减少90%，每批处理5个资源控制在30秒内
+- ✅ 长文本资源（如Policy页面）优先处理，提升用户体验
+- ✅ 详细的批次日志便于性能监控和问题排查
+
+#### Phase 3 实施进度 ✅ (2025-09-30)
+- [x] identical结果标记为skip，避免误判为错误（已在checkBrandWords中实现）
+- [x] 最小品牌词保护（店铺名+TOP vendors短文本）（已在translation/core.server.js中实现checkBrandWords函数）
+- [x] Theme默认内容跳过（Shopify官方会翻译）（已在theme-translation.server.js中实现checkDefaultThemeContent函数）
+- [x] 运行 `npm run build` 验证修复成功
+
+#### 预期效果 (Phase 3)
+- ✅ 减少误报错误，identical翻译结果自动标记为跳过而非错误
+- ✅ 品牌词保护：店铺名、主要供应商名等关键词避免被错误翻译
+- ✅ Shopify默认主题内容智能跳过，避免与官方多语言冲突
+- ✅ 翻译质量整体提升，错误率降低
+
+#### KISS原则重构总结 ✅
+**完成时间**: 2025-09-30
+**方案遵循**: 复用现有能力，最小化改动，数据驱动优化
+- ✅ Phase 1: HTML长文本路由（复用translateLongTextEnhanced + 智能路由）
+- ✅ Phase 2: API批处理优化（复用现有超时机制 + 批次控制）
+- ✅ Phase 3: 翻译质量保证（复用现有跳过机制 + 智能检测）
+
+**建议观察期**: 一周，收集数据后进行进一步优化
+
+### 日志持久化与清理策略 (2025-10-03) - 🆕 待启动
+**目标**: 将翻译与关联模块的日志持久化到文件/数据库，并建立定期巡检与清理机制。
+
+#### 待执行
+- [ ] 在部署环境启用 `LOGGING_FILE_ENABLED` / `LOGGING_ENABLE_PERSISTENT_LOGGER` 等配置，确认写入 `logs/app.log`
+- [ ] 配置 `LOGGING_RETENTION_DAYS` 并验证自动轮转（或 logrotate）能保留最近 N 天日志
+- [ ] 编写巡检流程：定期审阅关联翻译相关的 WARN/ERROR 日志并登记修复
+- [ ] 规划 cron/CI 脚本，日志修复后在保留期结束时自动归档或删除
+- [ ] 新增翻译跳过/关联翻译失败的 WARN 级别日志，并在巡检 SOP 中纳入检查
+
+### 产品 Metafield 展示修复 (2025-10-02) - 🆕 待启动
+**问题**: 产品详情页无法展示 Metafields，后端查询始终返回空列表。
+**方案**: 校验传入 GID 并与 Shopify GraphQL 结果对齐，恢复产品上下文映射，增强 API 兜底反馈，补足链路测试。
+
+#### 待执行
+- [ ] 记录并验证当前 `productGid` 与 GraphQL 响应，确认是否存在 TranslatableResource GID 等异常
+- [ ] 审核产品扫描/翻译链路，确保 `contentFields.productId/productGid` 持续写入以匹配 Metafields
+- [x] 调整 `/api/product-metafields` 返回结构，避免双重 `data` 嵌套，并同步更新前端读取逻辑与对应测试
+- [x] 接入增强版产品翻译（选项 + Metafield），并在返回结果中附带关联翻译摘要
+- [ ] 设计 API 兜底提示方案，区分“请求失败”与“无数据”并同步到 UI
+- [ ] 补充产品详情 → Metafield 的集成测试与文档说明
+
+### 扫描全部端点代理修复 (2025-10-01) - ✅ 完成
+**问题**: 前端仍调用已废弃的 `/api/scan-all`，导致按钮并未真正执行扫描。
+**方案**: 在服务端保留端点并调度拆分后的扫描逻辑，串行执行受支持的资源类型并汇总结果，确保 Theme 等特殊逻辑继续生效。
+
+#### 实施进度 ✅
+- [x] 复用拆分后的扫描服务，按批次串行触发需全局扫描的资源类型
+- [x] 将 Metafield 维持为产品上下文专用能力，避免在全局扫描中暴露
+- [x] 汇总每种资源的扫描耗时、数量与错误信息并返回前端
+- [x] 保留异步 Markets 同步逻辑，确保旧入口与新逻辑兼容
+
+#### 验收
+- ✅ “扫描全部”按钮恢复工作
+- ✅ Theme 特殊命名与展示逻辑保持
+- ✅ 响应体包含 per-type 结果及失败列表
+
+### createApiRoute 超时保护修复 (2025-09-30) - ✅ 完成
+**问题**: `createApiRoute` 在业务执行前抛错时，`timeoutId` 尚未声明即在 `catch` 中被访问，触发 `ReferenceError` 并导致所有封装路由返回 500。
+**文档**: 详见 `docs/create-api-route-timeout-fix-requirements.md`，明确根因、修复目标与测试要求。
+
+#### 待执行
+- [x] 将超时定时器声明移动到包装器 `try`/`catch` 外部，并在 `finally` 中统一清理，同时保持其他逻辑不变。
+- [x] 补充“超时设置前抛错”自动化测试并纳入默认 `npm run test` 流程，覆盖成功/失败路径。
+
+### 统一API路由包装器参数兼容修复 (2025-09-29) - ✅ 完成
+**问题**: 在 Phase 1&2 引入 `createApiRoute` 后，未向处理器传递 `URLSearchParams`，导致多个路由中 `searchParams.get()` 报错，出现“所有语言数据无法获取”等级联故障。
+**方案**: 在 `app/utils/base-route.server.js` 内构造 `url` 与 `searchParams` 并注入到处理器上下文；同时保留合并后的普通对象 `params` 以保持向后兼容（双通道策略）。
+
+#### 实施进度 ✅
+- [x] 在上下文中新增 `searchParams`（原生 `URLSearchParams`）
+- [x] 保留 `params`（query+body 合并对象），兼容旧代码
+- [x] 快速回归验证关键 API（locales、language-coverage、errors）
+- [x] 补充处理器上下文 JSDoc（`RouteContext` 契约）（参考 `app/utils/base-route.server.js`）
+- [x] 新增参数解析集成测试（GET/POST，断言同时可用 `params` 与 `searchParams`）（参见 `tests/api/create-api-route.test.js`）
+- [x] 代码评审清单加入“处理器签名/参数使用方式”检查项（记录于 `CLAUDE.md` 开发检查清单）
+
+#### 预防与可观测
+- [x] 记录参数解析失败日志键名统一（param_parse_failed=1），便于指标聚合（详见 `app/utils/base-route.server.js` 日志实现）
+- [x] 将 `{ params + searchParams }` 写入 ADR 契约，作为稳定约定（参考 `docs/adr/ADR-001-hooks-architecture.md`）
+- [x] 关键 API 配置可用性监控与告警（失败率、P95 波动），参见 `app/services/api-monitor.server.js` 以及 `docs/translation-monitoring-guide.md#api-路由可用性监控`
+
+### Request Body 重复读取修复 (2025-09-29) - ✅ 完成
+**问题**: createApiRoute的parseParams消耗请求体，导致处理函数再次读取时报"Body has already been read"
+**影响**: 19个API路由潜在失败风险
+**方案**: 使用request.clone()保留原始body，一处修复全局生效
+
+#### 实施进度 ✅
+- [x] 修改parseParams使用request.clone()读取body，支持multipart/form-data格式
+- [x] 添加测试验证双通道访问（context.params + request.formData）
+- [x] 验证所有API合约测试通过（6/6测试通过）
+- [x] 确认向后兼容，19个路由无需修改
+
+#### 技术细节
+- **核心修复**: `app/utils/base-route.server.js` parseParams使用 `request.clone()`
+- **测试覆盖**: 新增双通道访问测试确保修复有效性
+- **零风险**: 最小化改动，完全向后兼容
+- **预防措施**: 测试保护防止回归
+
+### API 监控系统优化 (2025-10-01) - 🆕 待启动
+**目标**: 扩大监控覆盖范围，文档化操作指引，确保告警链路可观测。
+**参考**: `docs/api-monitoring-optimization.md`
+
+#### 待执行
+- [ ] 将 `API_MONITORING_OPERATIONS` 置为空字符串以启用全量监控（必要时切换白名单模式）。
+- [ ] 更新 `.env.example`、`CLAUDE.md`、`docs/translation-monitoring-guide.md`，补充监控配置与排查步骤。
+- [ ] 确认 `api_monitor_*` 日志进入告警系统并建立仪表盘/阈值滚动复盘。
+- [ ] 执行关键 API Playwright 自检脚本，验证监控启用后仍符合 KISS 原则。
+
+
+### KISS原则代码优化方案 - 基于架构分析 (2025-09-28) - 🚧 开始执行
+**背景**: 项目存在过度工程化问题，117个核心文件，多个超2000行的巨石模块
+**目标**: 通过KISS原则简化架构，文件减少40%，代码量减少30%，新人上手从2周缩至3天
+**策略**: 渐进式改造，保持向后兼容，避免大爆炸式重构
+
+#### 📊 现状分析总结
+- **模块数量**: 35个API路由 + 41个服务文件 = 76个核心模块
+- **代码复杂度**: translation/core.server.js (2406行), shopify-graphql.server.js (1723行)
+- **重复问题**: 8个错误处理文件，25种错误导入模式
+- **测试混乱**: 22个测试文件散落根目录
+
+### Phase 0: 基础收口 (Day 1-2) - ✅ 已完成
+**目标**: 统一日志和错误处理入口，建立代码规范基础
+**风险**: 极低，向后兼容
+
+#### 任务清单
+- [x] **console → unified logger** (4h)
+  - [x] 扫描所有 console.* 调用（发现4个文件）
+  - [x] 替换为 apiLogger/logger（已完成）
+  - [x] 验证日志输出格式一致
+
+- [x] **error-toolkit 统一入口** (4h)
+  - [x] 指定 error-toolkit.server.js 为唯一入口
+  - [x] api-response.server.js 重导出保持兼容
+  - [x] 添加 DEPRECATED 注释引导迁移
+
+- [x] **ESLint 规则配置** (2h)
+  - [x] 添加 no-console 规则（server 代码）
+  - [x] 配置 .eslintrc.cjs overrides
+  - [x] CI 集成验证
+
+#### 验收标准
+- ✅ 无 console.* 直接调用（ESLint 检查通过）
+- ✅ 错误处理统一入口（重导出兼容）
+- ✅ npm run build 成功
+- ✅ CI 检查通过
+
+#### 完成成果
+- **日志统一**: 4个文件的 console.* 调用已替换为 unified logger
+- **错误处理收口**: api-response.server.js 重导出 error-toolkit 函数
+- **代码规范**: ESLint 禁止 server 端 console.* 调用
+- **向后兼容**: 现有代码无需修改，逐步迁移
+
+### Phase 1: 试点验证 (Day 3-7) - ✅ 已完成
+**目标**: 实现 Hooks v1 和 createApiRoute，在关键路由试点
+**风险**: 低，feature flag 控制
+
+#### 任务清单
+- [x] **Hooks v1 核心接口** (4h)
+  - [x] 创建 app/types/hooks.ts 定义接口
+  - [x] 实现 hooks-manager.server.js 安全执行器
+  - [x] 配置超时保护和默认值
+  - [x] 验证现有 translation/core.server.js 集成
+
+- [x] **createApiRoute 基础路由处理器** (6h)
+  - [x] 创建 app/utils/base-route.server.js
+  - [x] 统一认证、参数解析、错误处理
+  - [x] 支持参数验证和超时保护
+  - [x] 标准化响应格式
+
+- [x] **试点路由重构** (4h)
+  - [x] api.status.jsx 重构为 createApiRoute 模式
+  - [x] 保持所有现有功能不变
+  - [x] 验证 GET/POST 请求正常工作
+  - [x] 确认 Hooks 在 api.translate.jsx 已集成
+
+#### 验收标准
+- ✅ npm run build 成功（构建通过）
+- ✅ npm run lint 通过（仅警告，无错误）
+- ✅ Hooks 接口定义完整（shouldTranslate/schedule/validate）
+- ✅ createApiRoute 标准化实现
+- ✅ 向后兼容性完整保持
+
+#### 完成成果
+- **Hooks v1 架构**: 基于 KISS 原则的可选插件系统，默认直通，安全执行
+- **统一路由处理**: createApiRoute 提供一致的认证、解析、错误处理模式
+- **试点验证成功**: api.status.jsx 重构完成，功能完整保持
+- **基础设施就绪**: 为 Phase 2 批量迁移和扩展提供稳固基础
+
+### KISS原则代码重构 - Phase 1 基础规范统一 (2025-09-28启动) - ✅ 已完成
 **目标**: 建立统一的代码规范和API管理，减少代码复杂度
 **原则**: Keep It Simple, Stupid - 清晰最小边界，渐进式重构
 **范围**: 错误处理统一、日志系统规范、API接口优化、代码质量提升
@@ -1370,6 +1587,55 @@ npm run build
 - [x] **实现与校验**
   - 更新 API 与 UI，按店铺加载语言并区分默认/目标语言。
   - 在翻译入口前增加校验和提示，阻止 `targetLanguage === primary` 的情况。
+
+---
+
+## 🔧 日志系统优化 (2025-09-29) - ✅ 已完成
+
+**问题**: 翻译系统功能正常，但日志持久化配置缺失，导致无法进行历史追溯和问题诊断。
+**方案**: 通过环境变量启用日志文件输出，采用KISS原则避免大规模代码重构。
+
+### 📋 任务执行记录
+
+#### ✅ 第一阶段：配置优化 (立即执行)
+- [x] **添加日志环境变量**
+  - `.env` 添加 `LOGGING_FILE_ENABLED=true` 等配置
+  - `.env.example` 文档化所有日志配置选项
+  - 支持文件输出、持久化、日志级别控制
+
+- [x] **初始化数据库**
+  - 执行 `npm run setup` 成功
+  - 确认 `dev.sqlite` 文件大小为 266KB（已正确初始化）
+  - Prisma 迁移状态正常
+
+- [x] **构建验证**
+  - `npm run build` 成功完成
+  - 无错误，仅少量动态导入警告（预期行为）
+  - 代码质量检查通过
+
+#### 📋 后续任务（按需执行）
+- [ ] **创建日志使用规范**
+  - 在 `docs/` 目录创建日志使用指南
+  - 定义日志级别标准（ERROR/WARN/INFO/DEBUG）
+  - 示例代码和最佳实践
+
+- [ ] **console.log 渐进式迁移**
+  - 标记 92 处 console.log 使用（18个文件）
+  - 重点文件：api.translate.jsx (6处), api.batch-publish.jsx (8处)
+  - 采用"修改时迁移"策略，避免大规模重构
+
+### 🎯 关键成果
+- **日志文件输出已启用** - 重启后将生成 `logs/app.log`
+- **数据库正确初始化** - 支持日志持久化功能
+- **构建验证通过** - 代码质量良好
+- **文档已更新** - `.env.example` 包含完整配置说明
+
+### 💡 技术决策
+- **采用KISS原则** - 优先配置解决，避免代码改动
+- **渐进式改进** - console.log 在日常维护时逐步迁移
+- **向后兼容** - 现有功能不受影响
+
+---
 
 *使用说明：*
 - 🚧 = 正在进行中的任务

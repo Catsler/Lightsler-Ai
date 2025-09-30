@@ -4,7 +4,7 @@
  * 与其他资源翻译逻辑完全独立，避免相互影响
  */
 
-import { translateTextWithFallback, postProcessTranslation } from './translation.server.js';
+import { translateTextWithFallback, postProcessTranslation } from './translation/core.server.js';
 import { logger } from '../utils/logger.server.js';
 
 // 验证必需函数是否正确导入
@@ -224,6 +224,102 @@ const THEME_TECHNICAL_PATTERNS = [
  * @param {any} value - 字段值
  * @returns {boolean} 是否需要翻译
  */
+/**
+ * 检查是否为Shopify默认主题内容
+ * @param {Object} resource - Theme资源对象
+ * @returns {Object} 检查结果 {shouldSkip: boolean, reason: string}
+ */
+function checkDefaultThemeContent(resource) {
+  // Shopify官方默认主题列表
+  const DEFAULT_THEMES = [
+    'Dawn', 'Refresh', 'Craft', 'Sense', 'Studio', 'Colorblock',
+    'Impulse', 'Minimal', 'Narrative', 'Supply', 'Venture', 'Brooklyn',
+    'Simple', 'Debut', 'Expression', 'Symmetry', 'Streamline'
+  ];
+
+  // 检查主题名称
+  const themeName = resource.title || '';
+  const isDefaultTheme = DEFAULT_THEMES.some(defaultName => 
+    themeName.toLowerCase().includes(defaultName.toLowerCase())
+  );
+
+  if (isDefaultTheme) {
+    return {
+      shouldSkip: true,
+      reason: `Shopify默认主题"${themeName}"，由官方处理多语言`
+    };
+  }
+
+  // 检查文件路径是否包含默认主题标识
+  const resourceId = resource.id || '';
+  const gid = resource.gid || '';
+  
+  const pathIndicators = [
+    'shopify/themes/dawn',
+    'shopify/themes/refresh', 
+    'shopify/themes/craft',
+    'shopify/themes/sense',
+    'shopify/themes/studio',
+    '/dawn/', '/refresh/', '/craft/', '/sense/', '/studio/'
+  ];
+
+  const hasDefaultThemePath = pathIndicators.some(indicator => 
+    resourceId.toLowerCase().includes(indicator) || 
+    gid.toLowerCase().includes(indicator)
+  );
+
+  if (hasDefaultThemePath) {
+    return {
+      shouldSkip: true,
+      reason: 'Shopify默认主题路径，由官方处理多语言'
+    };
+  }
+
+  // 检查内容特征：典型的默认主题占位符文本
+  const contentFields = resource.contentFields || {};
+  const defaultPlaceholders = [
+    'Talk about your brand',
+    'Share information about your brand',
+    'Describe a product, share announcements',
+    'Your content goes here',
+    'Add your own custom content',
+    'Use this text to share information'
+  ];
+
+  // 检查是否包含大量默认占位符文本
+  let placeholderCount = 0;
+  let totalTextFields = 0;
+
+  function countPlaceholders(obj) {
+    if (typeof obj === 'string') {
+      totalTextFields++;
+      if (defaultPlaceholders.some(placeholder => 
+        obj.toLowerCase().includes(placeholder.toLowerCase())
+      )) {
+        placeholderCount++;
+      }
+    } else if (typeof obj === 'object' && obj !== null) {
+      Object.values(obj).forEach(countPlaceholders);
+    }
+  }
+
+  countPlaceholders(contentFields);
+
+  // 如果80%以上的文本字段都是默认占位符，认为是默认主题
+  if (totalTextFields > 0 && (placeholderCount / totalTextFields) >= 0.8) {
+    return {
+      shouldSkip: true,
+      reason: `包含${placeholderCount}/${totalTextFields}个默认占位符，疑似默认主题内容`
+    };
+  }
+
+  // 不跳过
+  return {
+    shouldSkip: false,
+    reason: null
+  };
+}
+
 function shouldTranslateThemeField(key, value) {
   // 1. 跳过非字符串值
   if (typeof value !== 'string' || !value.trim()) {
@@ -422,7 +518,28 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
  */
 export async function translateThemeResource(resource, targetLang) {
   logger.debug(`[Theme翻译] 开始翻译Theme资源: ${resource.resourceType} - ${resource.id}`);
-  
+
+  // 检查是否为Shopify默认主题内容（需要跳过）
+  const defaultThemeCheck = checkDefaultThemeContent(resource);
+  if (defaultThemeCheck.shouldSkip) {
+    logger.warn('[Theme翻译] 跳过Shopify默认主题内容', {
+      resourceId: resource.id,
+      reason: defaultThemeCheck.reason,
+      title: resource.title?.slice(0, 50)
+    });
+
+    return {
+      titleTrans: resource.title,
+      descTrans: null,
+      handleTrans: null,
+      seoTitleTrans: null,
+      seoDescTrans: null,
+      translationFields: {},
+      skipped: true,
+      skipReason: defaultThemeCheck.reason
+    };
+  }
+
   const result = {
     titleTrans: resource.title, // Theme资源的标题通常是文件名，保持原样
     descTrans: null,
@@ -434,7 +551,7 @@ export async function translateThemeResource(resource, targetLang) {
 
   // 获取contentFields
   const contentFields = resource.contentFields || {};
-  
+
   // 验证contentFields是否有数据
   if (!contentFields || Object.keys(contentFields).length === 0) {
     logger.error(`[Theme翻译] 错误：Theme资源缺少contentFields数据: ${resource.id}`);
@@ -452,6 +569,22 @@ export async function translateThemeResource(resource, targetLang) {
       
       // 处理themeData字段（JSON内容）
       if (contentFields.themeData) {
+        // 检查themeData是否为空或为0
+        const hasValidThemeData = contentFields.themeData && 
+          contentFields.themeData !== 0 && 
+          contentFields.themeData !== '0' &&
+          String(contentFields.themeData).trim() !== '';
+          
+        if (!hasValidThemeData && contentFields.dynamicFields) {
+          logger.warn(`[Theme翻译] Theme资源缺少有效themeData，跳过翻译: ${resource.id}`);
+          // 直接返回跳过状态，避免报错
+          return {
+            ...result,
+            skipped: true,
+            skipReason: 'Theme资源结构不匹配(无有效themeData)'
+          };
+        }
+        
         try {
           logger.debug(`[Theme翻译] 解析并翻译themeData`);
           const themeData = typeof contentFields.themeData === 'string' 

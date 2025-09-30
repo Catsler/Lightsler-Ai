@@ -4,6 +4,8 @@
  * 支持redis://和rediss://协议
  */
 
+import { logger } from './logger.server.js';
+
 /**
  * 解析Redis连接URL
  * @param {string} url - Redis连接字符串
@@ -53,7 +55,7 @@ export function parseRedisUrl(url) {
 
     return config;
   } catch (error) {
-    console.error('解析Redis URL失败:', error.message);
+    logger.error('解析Redis URL失败', { error: error.message });
     return null;
   }
 }
@@ -173,7 +175,7 @@ export async function validateRedisConnection(url) {
 
     return true;
   } catch (error) {
-    console.error('Redis连接验证失败:', error.message);
+    logger.error('Redis连接验证失败', { error: error.message });
     return false;
   }
 }

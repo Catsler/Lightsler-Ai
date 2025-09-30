@@ -6,6 +6,7 @@
 
 import { logger } from '../../utils/logger.server.js';
 import { prisma } from '../../db.server.js';
+import { getBrandDictionary, isBrandMatch } from '../brand-dictionary.server.js';
 
 /**
  * 智能跳过Hooks实现
@@ -33,9 +34,13 @@ export const intelligentSkipHooks = {
         return false;
       }
 
-      if (textLength > 10000) {
-        logger.debug('跳过过长文本', { textLength, context });
-        return false;
+      // 记录超长文本但不跳过，让分块器处理
+      if (textLength > 50000) {
+        logger.warn('检测到超长文本，交由分块器处理', { 
+          textLength, 
+          resourceType: context.resourceType,
+          fieldName: context.fieldName 
+        });
       }
 
       // 3. 重复翻译检查 - 基于内容哈希
@@ -62,13 +67,51 @@ export const intelligentSkipHooks = {
         }
       }
 
-      // 4. 语言相同性检查
-      if (context.targetLang === 'en' && isLikelyEnglish(context.text)) {
-        logger.debug('跳过英文到英文翻译', { context });
+      // 4. Vendor字段检查
+      if (context.fieldName === 'vendor') {
+        logger.debug('跳过Vendor字段', {
+          vendor: context.text,
+          resourceType: context.resourceType
+        });
         return false;
       }
 
-      // 5. 特殊内容检查
+      // 5. 品牌词检查
+      try {
+        const brandDict = await getBrandDictionary(context.admin, context.shopDomain);
+        if (isBrandMatch(context.text, brandDict)) {
+          logger.debug('检测到品牌词，跳过翻译', {
+            text: context.text,
+            resourceType: context.resourceType,
+            fieldName: context.fieldName
+          });
+          return false;
+        }
+      } catch (error) {
+        logger.warn('品牌词检查失败，继续翻译', { error: error.message });
+      }
+
+      // 6. 技术字段检查
+      const TECH_FIELDS = ['sku', 'barcode', 'handle', 'variant_id'];
+      if (TECH_FIELDS.includes(context.fieldName)) {
+        logger.debug('跳过技术字段', {
+          fieldName: context.fieldName,
+          text: context.text.substring(0, 50)
+        });
+        return false;
+      }
+
+      // 7. HTML内容检测和放行
+      if (isLikelyHtml(context.text)) {
+        logger.debug('检测到HTML内容，允许翻译', {
+          textLength: context.text.length,
+          resourceType: context.resourceType,
+          fieldName: context.fieldName
+        });
+        return true; // HTML内容需要翻译，让protectHtmlTags处理
+      }
+
+      // 8. 特殊内容检查（非HTML的技术内容）
       if (isSpecialContent(context.text)) {
         logger.debug('跳过特殊内容', {
           text: context.text.substring(0, 100),
@@ -203,6 +246,15 @@ function isLikelyEnglish(text) {
 /**
  * 检查是否为特殊内容（不需要翻译）
  */
+/**
+ * 检查是否为HTML内容
+ */
+function isLikelyHtml(text) {
+  // 简单但有效的HTML检测：包含标签且有闭合标签
+  const htmlPattern = /<[^>]+>/;
+  return htmlPattern.test(text) && text.includes('</');
+}
+
 function isSpecialContent(text) {
   const specialPatterns = [
     /^https?:\/\//, // URL

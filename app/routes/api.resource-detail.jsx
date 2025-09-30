@@ -1,7 +1,5 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { withErrorHandling } from "../utils/error-handler.server";
+import { createApiRoute } from "../utils/base-route.server.js";
 
 /**
  * 统一资源详情API - Linus哲学实现
@@ -173,110 +171,99 @@ class ResourceDetailAdapter {
   }
 }
 
-// API路由处理器
-export const loader = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const url = new URL(request.url);
-  
-  const resourceId = url.searchParams.get('id');
-  const resourceType = url.searchParams.get('type');
+/**
+ * GET请求处理函数 - 获取资源详情
+ */
+async function handleResourceDetail({ request, session, searchParams }) {
+  const resourceId = searchParams.get('id');
+  const resourceType = searchParams.get('type');
   
   if (!resourceId) {
-    return json({ error: 'Resource ID is required' }, { status: 400 });
+    throw new Error('Resource ID is required');
   }
-  
-  try {
-    // 查询资源及其翻译 - 单次查询，优化性能
-    const resource = await prisma.resource.findUnique({
-      where: { id: resourceId },
-      include: {
-        translations: {
-          orderBy: { updatedAt: 'desc' }
-        },
-        errorLogs: {
-          take: 5,
-          orderBy: { createdAt: 'desc' }
-        }
+  // 查询资源及其翻译 - 单次查询，优化性能
+  const resource = await prisma.resource.findUnique({
+    where: { id: resourceId },
+    include: {
+      translations: {
+        orderBy: { updatedAt: 'desc' }
+      },
+      errorLogs: {
+        take: 5,
+        orderBy: { createdAt: 'desc' }
       }
-    });
-    
-    if (!resource) {
-      return json({ error: 'Resource not found' }, { status: 404 });
     }
-    
-    // 验证店铺权限
-    if (resource.shopId !== session.shop) {
-      return json({ error: 'Unauthorized' }, { status: 403 });
+  });
+
+  if (!resource) {
+    throw new Error('Resource not found');
+  }
+
+  // 验证店铺权限
+  if (resource.shopId !== session.shop) {
+    throw new Error('Unauthorized');
+  }
+
+  // 使用适配器转换为统一格式
+  const adapter = new ResourceDetailAdapter(resource);
+  const unifiedResource = adapter.transform();
+
+  // 添加性能监控数据
+  const endTime = Date.now();
+  const startTime = parseInt(searchParams.get('_start') || Date.now());
+  const responseTime = endTime - startTime;
+
+  return {
+    data: unifiedResource,
+    performance: {
+      responseTime: `${responseTime}ms`,
+      cacheHit: false, // 后续实现缓存
+      queryCount: 1
     }
-    
-    // 使用适配器转换为统一格式
+  };
+}
+
+/**
+ * POST请求处理函数 - 批量获取资源详情
+ */
+async function handleResourceDetailBatch({ request, session }) {
+  const { resourceIds } = await request.json();
+
+  if (!resourceIds || !Array.isArray(resourceIds)) {
+    throw new Error('Resource IDs array is required');
+  }
+
+  // 批量查询 - 优化数据库访问
+  const resources = await prisma.resource.findMany({
+    where: {
+      id: { in: resourceIds },
+      shopId: session.shop
+    },
+    include: {
+      translations: true
+    }
+  });
+
+  // 批量转换
+  const unifiedResources = resources.map(resource => {
     const adapter = new ResourceDetailAdapter(resource);
-    const unifiedResource = adapter.transform();
-    
-    // 添加性能监控数据
-    const endTime = Date.now();
-    const startTime = parseInt(url.searchParams.get('_start') || Date.now());
-    const responseTime = endTime - startTime;
-    
-    return json({
-      success: true,
-      data: unifiedResource,
-      performance: {
-        responseTime: `${responseTime}ms`,
-        cacheHit: false, // 后续实现缓存
-        queryCount: 1
-      }
-    });
-    
-  } catch (error) {
-    console.error('[Resource Detail API] 错误:', error);
-    return json({ 
-      error: 'Failed to fetch resource details',
-      message: error.message 
-    }, { status: 500 });
-  }
+    return adapter.transform();
+  });
+
+  return {
+    data: unifiedResources,
+    count: unifiedResources.length
+  };
+}
+
+export const loader = createApiRoute(handleResourceDetail, {
+  requireAuth: true,
+  operationName: '获取资源详情'
 });
 
-// POST请求 - 批量获取资源详情
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const { resourceIds } = await request.json();
-  
-  if (!resourceIds || !Array.isArray(resourceIds)) {
-    return json({ error: 'Resource IDs array is required' }, { status: 400 });
-  }
-  
-  try {
-    // 批量查询 - 优化数据库访问
-    const resources = await prisma.resource.findMany({
-      where: {
-        id: { in: resourceIds },
-        shopId: session.shop
-      },
-      include: {
-        translations: true
-      }
-    });
-    
-    // 批量转换
-    const unifiedResources = resources.map(resource => {
-      const adapter = new ResourceDetailAdapter(resource);
-      return adapter.transform();
-    });
-    
-    return json({
-      success: true,
-      data: unifiedResources,
-      count: unifiedResources.length
-    });
-    
-  } catch (error) {
-    console.error('[Resource Detail Batch API] 错误:', error);
-    return json({ 
-      error: 'Failed to fetch resource details',
-      message: error.message 
-    }, { status: 500 });
-  }
+export const action = createApiRoute(handleResourceDetailBatch, {
+  requireAuth: true,
+  operationName: '批量获取资源详情'
 });
 
 // 导出适配器供其他模块使用

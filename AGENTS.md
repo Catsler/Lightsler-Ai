@@ -1,35 +1,35 @@
 # Repository Guidelines
 
-本指南为项目贡献者提供快速上手的参考，在开始开发或提交变更前请先通读，并遵循仓库既定流程。
-
 ## Project Structure & Module Organization
-- Remix 源码位于 `app/`，其中路由与 API 置于 `app/routes/*.jsx`，服务逻辑集中在 `app/services/*.js`，UI 组件存放在 `app/components/`，工具与 hooks 在 `app/utils/`。
-- 数据库 schema 与迁移文件存放于 `prisma/`，静态资源和演示 HTML 位于 `public/`，自动化脚本和维护脚本集中在 `scripts/`，Shopify 扩展在 `extensions/`。
-- 测试位于 `tests/**`，必要时可与对应路由同目录；构建产物写入 `build/`，提交前务必清理；若子目录存在更具体的 `AGENTS.md`，请以其为准。
+- Core Remix source lives in `app/`, with routes and API handlers under `app/routes/*.jsx`, shared services in `app/services/*.js`, UI primitives in `app/components/`, and utilities or hooks in `app/utils/`.
+- Database schema and migrations reside in `prisma/`; regenerate Prisma Client after schema changes.
+- Static assets and demo HTML live in `public/`; Shopify extensions are kept in `extensions/`; automation scripts belong in `scripts/`.
+- Tests sit in `tests/**` or alongside the feature they cover. Clean `build/` artifacts before committing.
 
 ## Build, Test, and Development Commands
-- `npm run build`：使用 Vite 编译 Remix SSR 与客户端代码至 `build/`，确保部署前产物最新。
-- `npm run start`：基于编译产物由 `remix-serve` 启动本地服务，需确保 `.env` 与 Shopify 配置保持一致。
-- `npm run setup`：执行 `prisma generate` 与 `prisma migrate deploy`，以同步 Prisma Client 与数据库 schema。
-- `npm run lint`：运行 ESLint（启用缓存），仅在必要时携带原因使用 `// eslint-disable-next-line`。
-- `npm run test` / `vitest`：执行测试，涉及数据库时追加 `--runInBand` 以避免竞争条件。
+- `npm run build`: Compiles Remix SSR and client bundles to `build/` using Vite; run before releases.
+- `npm run start`: Serves the compiled app via `remix-serve`; requires a configured `.env` with Shopify credentials.
+- `npm run setup`: Executes `prisma generate` and `prisma migrate deploy` to sync the client and database schema.
+- `npm run lint`: Runs ESLint with caching; only use inline disables with documented justification.
+- `npm run test` or `npx vitest --runInBand`: Executes the test suite; run serially when touching database logic.
 
 ## Coding Style & Naming Conventions
-- 统一采用 2 空格缩进、Prettier 默认格式、单引号与尾随逗号，保证 import 顺序为第三方→内部别名→相对路径。
-- React 组件使用 PascalCase，例如 `CoverageCard.jsx`；服务与工具使用 camelCase 或 kebab-case，例如 `languageCoverage.server.js`、`queue-manager.js`。
-- 注释保持精炼，仅在复杂逻辑前提供背景说明，避免重复代码行为。
+- Format with Prettier defaults, 2-space indentation, single quotes, and trailing commas.
+- Import order: external packages, internal aliases, relative paths.
+- React components use PascalCase (`CoverageCard.jsx`); services and utilities favor camelCase or kebab-case (`languageCoverage.server.js`, `queue-manager.js`).
+- Keep comments concise and only to clarify non-obvious behavior.
 
 ## Testing Guidelines
-- 首选 Vitest/Jest，重点覆盖 `app/services/*.server.js` 与 `app/utils/*.js`，目标覆盖率≥80%。
-- 测试文件命名为 `*.test.js` 或 `*.spec.js`，共享测试辅助函数放入 `tests/utils/`。
-- Shopify API 调用需使用确定性 mock，数据库相关测试请串行执行（`--runInBand`），必要时重置数据状态。
+- Prefer Vitest for unit and integration coverage; target ≥80% coverage for `app/services/*.server.js` and `app/utils/*.js`.
+- Name test files `*.test.js` or `*.spec.js`; share helpers via `tests/utils/`.
+- Mock Shopify APIs deterministically and run DB-affecting tests with `--runInBand` to avoid race conditions.
 
 ## Commit & Pull Request Guidelines
-- 提交信息遵循 Conventional Commits，例如 `feat(app): add translation queue api`、`fix(services): handle webhook error`。
-- PR 描述需包含变更动机、关联 Issue、验证步骤、日志或截图，以及潜在风险与后续计划；推送前运行 `npm run lint && npm run test && npm run setup`。
-- 在创建 PR 前清理 `build/`，并确保 Prisma 生成文件符合 `.gitignore` 设定。
+- Follow Conventional Commits, e.g., `feat(app): add translation queue api` or `fix(services): handle webhook error`.
+- PR descriptions should outline motivation, linked issues, verification steps (`npm run lint && npm run test && npm run setup`), relevant logs/screenshots, risks, and follow-up work.
+- Ensure `build/` is clean and Prisma artifacts respect `.gitignore` before pushing.
 
 ## Security & Configuration Tips
-- Shopify 密钥、店铺域与隧道地址必须存放于 `.env` 或平台环境变量，提交记录中只使用占位符。
-- 新迁移完成后立即执行 `npm run setup` 同步本地 SQLite；切换环境时可使用 `prisma migrate reset` 确保 schema 一致。
-- 外部回调与 GraphQL 输入需进行校验，将错误集中记录在 `app/services/*error*.server.js` 以提升可观测性。
+- Store Shopify secrets, shop domains, and tunnel URLs in `.env` or deployment variables; never commit real credentials.
+- After new migrations, run `npm run setup` to keep local SQLite in sync; use `prisma migrate reset` when switching environments.
+- Validate external callbacks and GraphQL inputs, and log errors through `app/services/*error*.server.js` for observability.

@@ -1,8 +1,6 @@
-import { json } from '@remix-run/node';
-import { withErrorHandling } from '../utils/error-handler.server.js';
 import { versionDetectionService } from '../services/version-detection.server.js';
 import { intelligentSkipEngine } from '../services/intelligent-skip-engine.server.js';
-import { authenticate } from '../shopify.server.js';
+import { createApiRoute } from '../utils/base-route.server.js';
 
 /**
  * 内容变更检测API端点
@@ -14,11 +12,12 @@ import { authenticate } from '../shopify.server.js';
  * - 版本同步
  */
 
-export const action = withErrorHandling(async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+/**
+ * POST请求处理函数 - 内容变更检测操作
+ */
+async function handleDetectChangesAction({ request, session }) {
   const shopId = session.shop;
   const requestData = await request.json();
-
   const { operation } = requestData;
 
   switch (operation) {
@@ -41,16 +40,13 @@ export const action = withErrorHandling(async ({ request }) => {
       return await handleUpdateContentHash(requestData);
     
     default:
-      return json({
-        success: false,
-        error: '不支持的操作',
-        code: 'INVALID_OPERATION',
-        supportedOperations: [
-          'detectAll', 'detectIncremental', 'getResourceVersion',
-          'syncVersions', 'batchEvaluateSkip', 'updateContentHash'
-        ]
-      }, { status: 400 });
+      throw new Error(`不支持的操作: ${operation}. 支持的操作: detectAll, detectIncremental, getResourceVersion, syncVersions, batchEvaluateSkip, updateContentHash`);
   }
+}
+
+export const action = createApiRoute(handleDetectChangesAction, {
+  requireAuth: true,
+  operationName: '内容变更检测操作'
 });
 
 /**
@@ -63,33 +59,24 @@ async function handleDetectAllChanges(shopId, requestData) {
     batchSize = 50
   } = requestData;
 
-  try {
-    const results = await versionDetectionService.detectAllResourceChanges(shopId, {
-      resourceTypes,
-      includeDeleted,
-      batchSize
-    });
+  const results = await versionDetectionService.detectAllResourceChanges(shopId, {
+    resourceTypes,
+    includeDeleted,
+    batchSize
+  });
 
-    return json({
-      success: true,
-      message: '全量变更检测完成',
-      data: results,
-      summary: {
-        totalProcessed: results.summary.totalProcessed,
-        totalChanges: results.summary.totalChanges,
-        newResources: results.summary.newResources,
-        modifiedResources: results.summary.modifiedResources,
-        deletedResources: results.summary.deletedResources,
-        duration: results.summary.duration
-      }
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'DETECTION_FAILED'
-    }, { status: 500 });
-  }
+  return {
+    message: '全量变更检测完成',
+    data: results,
+    summary: {
+      totalProcessed: results.summary.totalProcessed,
+      totalChanges: results.summary.totalChanges,
+      newResources: results.summary.newResources,
+      modifiedResources: results.summary.modifiedResources,
+      deletedResources: results.summary.deletedResources,
+      duration: results.summary.duration
+    }
+  };
 }
 
 /**
@@ -101,26 +88,17 @@ async function handleDetectIncremental(shopId, requestData) {
     resourceTypes = []
   } = requestData;
 
-  try {
-    const sinceDate = since ? new Date(since) : null;
-    const results = await versionDetectionService.detectIncrementalChanges(shopId, {
-      since: sinceDate,
-      resourceTypes
-    });
+  const sinceDate = since ? new Date(since) : null;
+  const results = await versionDetectionService.detectIncrementalChanges(shopId, {
+    since: sinceDate,
+    resourceTypes
+  });
 
-    return json({
-      success: true,
-      message: '增量变更检测完成',
-      data: results,
-      summary: results.summary
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'INCREMENTAL_DETECTION_FAILED'
-    }, { status: 500 });
-  }
+  return {
+    message: '增量变更检测完成',
+    data: results,
+    summary: results.summary
+  };
 }
 
 /**
@@ -130,31 +108,18 @@ async function handleGetResourceVersion(shopId, requestData) {
   const { resourceType, resourceId } = requestData;
 
   if (!resourceType || !resourceId) {
-    return json({
-      success: false,
-      error: '缺少必要参数：resourceType 和 resourceId',
-      code: 'MISSING_PARAMS'
-    }, { status: 400 });
+    throw new Error('缺少必要参数：resourceType 和 resourceId');
   }
 
-  try {
-    const versionInfo = await versionDetectionService.getResourceVersionInfo(
-      shopId,
-      resourceType,
-      resourceId
-    );
+  const versionInfo = await versionDetectionService.getResourceVersionInfo(
+    shopId,
+    resourceType,
+    resourceId
+  );
 
-    return json({
-      success: true,
-      data: versionInfo
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'VERSION_INFO_FAILED'
-    }, { status: 500 });
-  }
+  return {
+    data: versionInfo
+  };
 }
 
 /**
@@ -164,34 +129,21 @@ async function handleSyncVersions(shopId, requestData) {
   const { resources } = requestData;
 
   if (!Array.isArray(resources) || resources.length === 0) {
-    return json({
-      success: false,
-      error: '缺少要同步的资源列表',
-      code: 'MISSING_RESOURCES'
-    }, { status: 400 });
+    throw new Error('缺少要同步的资源列表');
   }
 
-  try {
-    const results = await versionDetectionService.syncResourceVersions(shopId, resources);
+  const results = await versionDetectionService.syncResourceVersions(shopId, resources);
 
-    return json({
-      success: true,
-      message: '版本同步完成',
-      data: results,
-      summary: {
-        processed: results.processed,
-        updated: results.updated,
-        created: results.created,
-        errors: results.errors.length
-      }
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'SYNC_FAILED'
-    }, { status: 500 });
-  }
+  return {
+    message: '版本同步完成',
+    data: results,
+    summary: {
+      processed: results.processed,
+      updated: results.updated,
+      created: results.created,
+      errors: results.errors.length
+    }
+  };
 }
 
 /**
@@ -208,30 +160,21 @@ async function handleBatchEvaluateSkip(shopId, requestData) {
   } = requestData;
 
   if (resourceIds.length === 0 || languages.length === 0) {
-    return json({
-      success: false,
-      error: '缺少资源ID列表或语言列表',
-      code: 'MISSING_RESOURCES_OR_LANGUAGES'
-    }, { status: 400 });
+    throw new Error('缺少资源ID列表或语言列表');
   }
 
-  try {
-    // 先获取资源信息
-    const { prisma } = await import('../db.server.js');
-    const resources = await prisma.resource.findMany({
-      where: {
-        id: { in: resourceIds },
-        shopId
-      }
-    });
-
-    if (resources.length === 0) {
-      return json({
-        success: false,
-        error: '未找到指定的资源',
-        code: 'RESOURCES_NOT_FOUND'
-      }, { status: 404 });
+  // 先获取资源信息
+  const { prisma } = await import('../db.server.js');
+  const resources = await prisma.resource.findMany({
+    where: {
+      id: { in: resourceIds },
+      shopId
     }
+  });
+
+  if (resources.length === 0) {
+    throw new Error('未找到指定的资源');
+  }
 
     // 执行批量跳过评估
     let processedCount = 0;
@@ -256,8 +199,7 @@ async function handleBatchEvaluateSkip(shopId, requestData) {
         return acc;
       }, {});
 
-    return json({
-      success: true,
+    return {
       message: '批量跳过评估完成',
       data: {
         evaluations: evaluations,
@@ -269,14 +211,7 @@ async function handleBatchEvaluateSkip(shopId, requestData) {
           skipReasons
         }
       }
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'BATCH_EVALUATE_FAILED'
-    }, { status: 500 });
-  }
+    };
 }
 
 /**
@@ -286,66 +221,44 @@ async function handleUpdateContentHash(requestData) {
   const { resourceId, content } = requestData;
 
   if (!resourceId || !content) {
-    return json({
-      success: false,
-      error: '缺少必要参数：resourceId 和 content',
-      code: 'MISSING_PARAMS'
-    }, { status: 400 });
+    throw new Error('缺少必要参数：resourceId 和 content');
   }
 
-  try {
-    const result = await intelligentSkipEngine.updateContentHash(resourceId, content);
+  const result = await intelligentSkipEngine.updateContentHash(resourceId, content);
 
-    return json({
-      success: true,
-      message: result.hasChanged ? '内容哈希已更新，检测到变更' : '内容哈希已更新，无变更',
-      data: result
-    });
-  } catch (error) {
-    return json({
-      success: false,
-      error: error.message,
-      code: error.code || 'UPDATE_HASH_FAILED'
-    }, { status: 500 });
-  }
+  return {
+    message: result.hasChanged ? '内容哈希已更新，检测到变更' : '内容哈希已更新，无变更',
+    data: result
+  };
 }
 
-// 支持GET请求获取跳过统计
-export const loader = withErrorHandling(async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+/**
+ * GET请求处理函数 - 获取跳过统计
+ */
+async function handleDetectChangesQuery({ request, admin, searchParams }) {
   const shopId = admin.rest.session.shop;
-
-  const url = new URL(request.url);
-  const operation = url.searchParams.get('operation');
+  const operation = searchParams.get('operation');
 
   if (operation === 'skipStatistics') {
-    const timeRange = url.searchParams.get('timeRange') || '7d';
-    const resourceType = url.searchParams.get('resourceType');
-    const language = url.searchParams.get('language');
+    const timeRange = searchParams.get('timeRange') || '7d';
+    const resourceType = searchParams.get('resourceType');
+    const language = searchParams.get('language');
 
-    try {
-      const statistics = await intelligentSkipEngine.getSkipStatistics(shopId, {
-        timeRange,
-        resourceType,
-        language
-      });
+    const statistics = await intelligentSkipEngine.getSkipStatistics(shopId, {
+      timeRange,
+      resourceType,
+      language
+    });
 
-      return json({
-        success: true,
-        data: statistics
-      });
-    } catch (error) {
-      return json({
-        success: false,
-        error: error.message,
-        code: 'GET_STATISTICS_FAILED'
-      }, { status: 500 });
-    }
+    return {
+      data: statistics
+    };
   }
 
-  return json({
-    success: false,
-    error: '不支持的查询操作',
-    code: 'INVALID_QUERY_OPERATION'
-  }, { status: 400 });
+  throw new Error('不支持的查询操作');
+}
+
+export const loader = createApiRoute(handleDetectChangesQuery, {
+  requireAuth: true,
+  operationName: '内容变更检测查询'
 });

@@ -103,33 +103,62 @@ export async function translateProductWithRelated(product, targetLang, admin) {
         forceRelated: product.forceRelatedTranslation || false
       });
     }
-    return mainTranslation;
+    return {
+      ...mainTranslation,
+      relatedSummary: {
+        status: 'skipped',
+        reason: 'related_translation_disabled',
+        translatedOptions: 0,
+        translatedMetafields: 0
+      }
+    };
   }
 
   const runRelatedTranslation = async () => {
     try {
-      await Promise.race([
+      const summary = await Promise.race([
         translateRelatedContent(product, targetLang, admin),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error('关联翻译超时')), RELATED_TRANSLATION_CONFIG.timeout)
         )
       ]);
+      return summary;
     } catch (error) {
       logger.warn(`产品 ${product.id} 关联内容翻译失败，但不影响主体翻译`, {
         productId: product.id,
         error: error.message,
         stack: RELATED_TRANSLATION_CONFIG.verboseLogging ? error.stack : undefined
       });
+      return {
+        status: 'failed',
+        translatedOptions: 0,
+        translatedMetafields: 0,
+        failedOptions: 1,
+        failedMetafields: 1
+      };
     }
   };
 
+  let relatedSummary = {
+    status: 'pending',
+    translatedOptions: 0,
+    translatedMetafields: 0,
+    failedOptions: 0,
+    failedMetafields: 0
+  };
+
   if (product.forceRelatedTranslation) {
-    await runRelatedTranslation();
+    relatedSummary = await runRelatedTranslation();
   } else {
-    setImmediate(runRelatedTranslation);
+    setImmediate(async () => {
+      await runRelatedTranslation();
+    });
   }
 
-  return mainTranslation;
+  return {
+    ...mainTranslation,
+    relatedSummary
+  };
 }
 
 /**
@@ -146,28 +175,32 @@ async function translateRelatedContent(product, targetLang, admin) {
     targetLanguage: targetLang
   });
 
-  const results = await Promise.allSettled([
+  const summary = {
+    status: 'completed',
+    translatedOptions: 0,
+    translatedMetafields: 0,
+    failedOptions: 0,
+    failedMetafields: 0,
+    durationMs: 0
+  };
+
+  const relatedTasks = await Promise.allSettled([
     translateProductOptionsIfExists(product, targetLang, admin),
     translateProductMetafieldsIfExists(product, targetLang, admin)
   ]);
 
-  // 统计结果
-  const optionsResult = results[0];
-  const metafieldsResult = results[1];
-
   const relatedTranslationTime = Date.now() - relatedStartTime;
+  summary.durationMs = relatedTranslationTime;
 
-  logger.info(`产品关联内容翻译完成: ${product.id}`, {
-    productId: product.id,
-    duration: `${relatedTranslationTime}ms`,
-    optionsSuccess: optionsResult.status === 'fulfilled',
-    metafieldsSuccess: metafieldsResult.status === 'fulfilled',
-    optionsError: optionsResult.status === 'rejected' ? optionsResult.reason?.message : null,
-    metafieldsError: metafieldsResult.status === 'rejected' ? metafieldsResult.reason?.message : null
-  });
+  const optionsResult = relatedTasks[0];
+  const metafieldsResult = relatedTasks[1];
 
-  // 如果有失败的，记录详细信息（但不抛出错误）
-  if (optionsResult.status === 'rejected') {
+  if (optionsResult.status === 'fulfilled' && optionsResult.value) {
+    summary.translatedOptions = optionsResult.value.successCount || 0;
+    summary.failedOptions = optionsResult.value.failedCount || 0;
+  } else if (optionsResult.status === 'rejected') {
+    summary.failedOptions = optionsResult.reason ? 1 : 0;
+    summary.status = 'partial_failure';
     logger.error(`产品选项翻译失败: ${product.id}`, {
       productId: product.id,
       error: optionsResult.reason?.message,
@@ -175,13 +208,38 @@ async function translateRelatedContent(product, targetLang, admin) {
     });
   }
 
-  if (metafieldsResult.status === 'rejected') {
+  if (metafieldsResult.status === 'fulfilled' && metafieldsResult.value) {
+    summary.translatedMetafields = metafieldsResult.value.successCount || 0;
+    summary.failedMetafields = metafieldsResult.value.failedCount || 0;
+  } else if (metafieldsResult.status === 'rejected') {
+    summary.failedMetafields = metafieldsResult.reason ? 1 : 0;
+    summary.status = 'partial_failure';
     logger.error(`产品metafields翻译失败: ${product.id}`, {
       productId: product.id,
       error: metafieldsResult.reason?.message,
       stack: RELATED_TRANSLATION_CONFIG.verboseLogging ? metafieldsResult.reason?.stack : undefined
     });
   }
+
+  const logPayload = {
+    productId: product.id,
+    duration: `${relatedTranslationTime}ms`,
+    translatedOptions: summary.translatedOptions,
+    translatedMetafields: summary.translatedMetafields,
+    failedOptions: summary.failedOptions,
+    failedMetafields: summary.failedMetafields
+  };
+
+  if (summary.failedOptions > 0 || summary.failedMetafields > 0) {
+    logger.warn(`产品关联内容翻译未完全成功: ${product.id}`, {
+      ...logPayload,
+      status: summary.status
+    });
+  } else {
+    logger.info(`产品关联内容翻译完成: ${product.id}`, logPayload);
+  }
+
+  return summary;
 }
 
 /**
@@ -367,6 +425,9 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
     const forceTranslation = product.forceRelatedTranslation || product.userRequested;
     const { saveTranslation, saveResources } = await import('./database.server.js');
 
+    let successCount = 0;
+    let failedCount = 0;
+
     for (const [index, option] of existingOptions.entries()) {
       try {
         const desiredResourceId = buildDerivedResourceId(product, 'option', index);
@@ -427,12 +488,15 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
         const translations = translationResult.translations || translationResult;
         await saveTranslation(optionResourceId, product.shopId, targetLang, translations);
 
+        successCount += 1;
+
         logger.debug(`选项翻译并保存完成: ${option.title || optionInput.resourceId}`);
       } catch (error) {
         logger.error(`选项翻译失败: ${option.id}`, {
           optionId: option.id,
           error: error.message
         });
+        failedCount += 1;
       }
     }
 
@@ -440,6 +504,8 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
       productId: product.id,
       translatedCount: existingOptions.length
     });
+
+    return { successCount, failedCount };
 
   } catch (error) {
     logger.error(`产品选项翻译过程失败: ${product.id}`, {
@@ -565,6 +631,8 @@ async function translateProductMetafieldsIfExists(product, targetLang, admin) {
       failedCount,
       totalAttempted: translatableMetafields.length
     });
+
+    return { successCount, failedCount };
 
   } catch (error) {
     logger.error(`产品metafields翻译过程失败: ${product.id}`, {

@@ -24,7 +24,6 @@ export const RESOURCE_CATEGORIES = {
       BLOG_POSTS: { name: 'Blog posts', resources: ['ARTICLE'] },
       BLOG_TITLES: { name: 'Blog titles', resources: ['BLOG'] },
       FILTERS: { name: 'Filters', resources: ['FILTER'] },
-      METAFIELDS: { name: 'Metafields', resources: ['METAFIELD'] }, // 若不支持则无资源
       PAGES: { name: 'Pages', resources: ['PAGE'] },
       POLICIES: { name: 'Policies', resources: ['SHOP_POLICY'] },
       STORE_METADATA: { name: 'Store metadata', resources: ['SHOP'] }

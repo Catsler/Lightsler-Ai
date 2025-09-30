@@ -1,4 +1,6 @@
 import { json } from "@remix-run/node";
+import { apiLogger } from "./logger.server.js";
+import { withApiError, withServiceError } from "../services/error-toolkit.server.js";
 
 export function sanitizeForJson(value, seen = new WeakSet()) {
   if (value === null || value === undefined) {
@@ -121,7 +123,7 @@ export function successResponse(data, message = "操作成功", status = 200) {
  * @returns {Response} JSON响应
  */
 export function errorResponse(message = "操作失败", error = null, status = 500) {
-  console.error("API错误:", { message, error, timestamp: new Date().toISOString() });
+  apiLogger.error("API错误", { message, error, timestamp: new Date().toISOString() });
 
   const includeError = process.env.NODE_ENV === 'development';
   const payload = {
@@ -298,3 +300,7 @@ export async function withErrorHandling(operation, operationName, shopDomain = '
     return errorResponse(`${operationName}失败: ${errorMessage}`, errorMessage, 500);
   }
 }
+
+// 重导出错误处理函数（保持向后兼容）
+// ⚠️ DEPRECATED: 建议直接从 error-toolkit.server.js 导入
+export { withApiError, withServiceError };

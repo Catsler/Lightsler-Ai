@@ -953,6 +953,28 @@ function Index() {
     })(); // 立即调用返回的函数
   }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation, shopId, shopQueryParam]);
 
+  useEffect(() => {
+    if (clearFetcher.state !== 'idle' || !clearFetcher.data) {
+      return;
+    }
+
+    const { success, data, message } = clearFetcher.data;
+
+    if (success) {
+      const result = data || {};
+      const finalMessage = message || result.message || `${selectedLanguage} 数据已清空`;
+
+      addLog(`✅ ${finalMessage}`, 'success');
+      showToast(finalMessage, { duration: 2000 });
+
+      loadStatus(selectedLanguage, viewMode);
+    } else {
+      const errorMessage = message || '清空数据失败';
+      addLog(`❌ ${errorMessage}`, 'error');
+      showToast(errorMessage, { isError: true });
+    }
+  }, [clearFetcher.state, clearFetcher.data, addLog, showToast, loadStatus, selectedLanguage, viewMode]);
+
   // 处理资源选择
   const handleResourceSelection = useCallback((resourceId, checked) => {
     if (checked) {

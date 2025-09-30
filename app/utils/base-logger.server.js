@@ -4,7 +4,6 @@
  */
 
 import pino from 'pino';
-import { config } from './config.server.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -29,7 +28,7 @@ const LOG_LEVEL_NAMES = {
 };
 
 function getCurrentLogLevel() {
-  const level = config.logging?.level || 'info';
+  const level = process.env.LOGGING_LEVEL || 'info';
   switch (level.toLowerCase()) {
     case 'error':
       return LOG_LEVELS.ERROR;
@@ -43,6 +42,12 @@ function getCurrentLogLevel() {
       return LOG_LEVELS.INFO;
   }
 }
+
+let emitRetentionWarning = (message) => {
+  retentionWarningBuffer.push(message);
+};
+
+const retentionWarningBuffer = [];
 
 // 配置 pino transport
 const targets = [
@@ -58,23 +63,60 @@ const targets = [
 ];
 
 // 如果启用文件输出，添加文件 transport
-if (config.logging?.fileEnabled) {
+if (process.env.LOGGING_FILE_ENABLED === 'true') {
+  const retentionConfig = process.env.LOGGING_RETENTION_DAYS;
+  const rollingFilePath = path.join(logsDir, 'app.log');
+
   targets.push({
     target: 'pino/file',
     options: {
-      destination: path.join(logsDir, 'app.log'),
+      destination: rollingFilePath,
       append: true
     }
   });
+
+  if (retentionConfig) {
+    try {
+      const retention = JSON.parse(retentionConfig);
+      const days = Number(retention.INFO ?? retention.default ?? 7);
+      const ttlMs = Number.isFinite(days) ? days * 24 * 60 * 60 * 1000 : null;
+
+      if (ttlMs && ttlMs > 0) {
+        setInterval(() => {
+          try {
+            const stats = fs.statSync(rollingFilePath);
+            const age = Date.now() - stats.mtimeMs;
+            if (age > ttlMs) {
+              const archivePath = path.join(logsDir, `app-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
+              fs.renameSync(rollingFilePath, archivePath);
+            }
+          } catch (error) {
+            emitRetentionWarning(`[Logger] 日志轮转失败: ${error.message}`);
+          }
+        }, Math.max(ttlMs, 6 * 60 * 60 * 1000)); // 至少每6小时检查一次
+      }
+    } catch (error) {
+      emitRetentionWarning(`[Logger] LOGGING_RETENTION_DAYS 配置解析失败: ${error.message}`);
+    }
+  }
 }
 
 // 创建 pino logger 实例
 const pinoLogger = pino({
-  level: config.logging?.level || 'info',
+  level: process.env.LOGGING_LEVEL || 'info',
   transport: {
     targets
   }
 });
+
+emitRetentionWarning = (message) => {
+  pinoLogger.warn({ subsystem: 'LOGGER' }, message);
+};
+
+if (retentionWarningBuffer.length > 0) {
+  retentionWarningBuffer.forEach((message) => emitRetentionWarning(message));
+  retentionWarningBuffer.length = 0;
+}
 
 export function formatLogMessage(level, category, message, data = {}) {
   return {
