@@ -44,6 +44,7 @@ import {
   forceFlushPersistentLogs,
   persistenceConfig
 } from '../../utils/logger.server.js';
+import { getLocalizedErrorMessage } from '../../utils/error-messages.server.js';
 
 // 导入质量分析器
 import { qualityErrorAnalyzer } from '../quality-error-analyzer.server.js';
@@ -70,6 +71,9 @@ import { recordTranslationCall, getTranslationMetrics } from './metrics.server.j
 
 // 导入crypto用于生成哈希
 import crypto from 'crypto';
+
+// 🆕 占位符回退统计（内存存储，重启清空）
+const placeholderFallbackStats = new Map(); // { language: count }
 
 // 导入Sequential Thinking核心服务
 import {
@@ -1324,11 +1328,26 @@ export async function translateTextEnhanced(text, targetLang, options = {}) {
           });
         }
 
+        // 🆕 更新占位符回退统计
+        const currentCount = placeholderFallbackStats.get(targetLang) || 0;
+        placeholderFallbackStats.set(targetLang, currentCount + 1);
+
         logger.warn('检测到异常占位符生成，回退到原文', {
           originalText: text,
           translatedText,
           textLength: text.length,
           targetLang
+        });
+
+        // 🆕 [METRICS] 结构化日志
+        console.log('[METRICS]', {
+          type: 'placeholder_fallback',
+          language: targetLang,
+          text_length: text.length,
+          original_text: text.substring(0, 50),
+          placeholder: translatedText,
+          fallback_count: placeholderFallbackStats.get(targetLang),
+          timestamp: Date.now()
         });
 
         if (text.length < 50 && !text.includes('<') && !text.includes('>')) {
@@ -1339,7 +1358,8 @@ export async function translateTextEnhanced(text, targetLang, options = {}) {
           });
         }
 
-        return { success: false, text, error: '异常占位符检测', isOriginal: true, language: targetLang };
+        // 🆕 修改返回值：回退到原文是成功的处理，不是失败
+        return { success: true, text, fallback: 'placeholder_error', isOriginal: true, language: targetLang };
       }
     }
 
@@ -1793,6 +1813,22 @@ export function getTranslationStats() {
 }
 
 /**
+ * 🆕 获取占位符回退错误统计（用于调试）
+ * @returns {Object} 包含各语言的回退次数
+ */
+export function getPlaceholderErrorStats() {
+  const stats = {};
+  for (const [language, count] of placeholderFallbackStats.entries()) {
+    stats[language] = count;
+  }
+  return {
+    byLanguage: stats,
+    total: Array.from(placeholderFallbackStats.values()).reduce((sum, count) => sum + count, 0),
+    timestamp: new Date().toISOString()
+  };
+}
+
+/**
  * 获取详细的翻译日志
  */
 export async function getTranslationLogs(input = {}) {
@@ -1909,7 +1945,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
     try {
       const { translateThemeResource } = await import('../theme-translation.server.js');
-      const themeResult = await translateThemeResource(resource, targetLang);
+      const themeResult = await translateThemeResource(resource, targetLang, options);
       return {
         ...themeResult,
         skipped: false,
@@ -1939,9 +1975,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (resource.title) {
       translated.titleTrans = await translateText(resource.title, targetLang);
       translated.titleTrans = await postProcessTranslation(
-        translated.titleTrans, 
-        targetLang, 
-        resource.title
+        translated.titleTrans,
+        targetLang,
+        resource.title,
+        { linkConversion: options.linkConversion }
       );
       translationLogger.info('标题翻译完成', { 
         original: resource.title,
@@ -1960,9 +1997,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (descriptionToTranslate) {
       translated.descTrans = await translateText(descriptionToTranslate, targetLang);
       translated.descTrans = await postProcessTranslation(
-        translated.descTrans, 
-        targetLang, 
-        descriptionToTranslate
+        translated.descTrans,
+        targetLang,
+        descriptionToTranslate,
+        { linkConversion: options.linkConversion }
       );
         translationLogger.info('描述翻译完成', {
           length: descriptionToTranslate.length
@@ -1981,9 +2019,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (resource.summary) {
       translated.summaryTrans = await translateText(resource.summary, targetLang);
       translated.summaryTrans = await postProcessTranslation(
-        translated.summaryTrans, 
-        targetLang, 
-        resource.summary
+        translated.summaryTrans,
+        targetLang,
+        resource.summary,
+        { linkConversion: options.linkConversion }
       );
     }
 
@@ -1991,9 +2030,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (resource.label) {
       translated.labelTrans = await translateText(resource.label, targetLang);
       translated.labelTrans = await postProcessTranslation(
-        translated.labelTrans, 
-        targetLang, 
-        resource.label
+        translated.labelTrans,
+        targetLang,
+        resource.label,
+        { linkConversion: options.linkConversion }
       );
     }
 
@@ -2001,9 +2041,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (resource.seoTitle) {
       translated.seoTitleTrans = await translateText(resource.seoTitle, targetLang);
       translated.seoTitleTrans = await postProcessTranslation(
-        translated.seoTitleTrans, 
-        targetLang, 
-        resource.seoTitle
+        translated.seoTitleTrans,
+        targetLang,
+        resource.seoTitle,
+        { linkConversion: options.linkConversion }
       );
       translationLogger.info('SEO标题翻译完成', { 
         original: resource.seoTitle,
@@ -2015,9 +2056,10 @@ export async function translateResource(resource, targetLang, options = {}) {
     if (resource.seoDescription) {
       translated.seoDescTrans = await translateText(resource.seoDescription, targetLang);
       translated.seoDescTrans = await postProcessTranslation(
-        translated.seoDescTrans, 
-        targetLang, 
-        resource.seoDescription
+        translated.seoDescTrans,
+        targetLang,
+        resource.seoDescription,
+        { linkConversion: options.linkConversion }
       );
         translationLogger.info('SEO描述翻译完成');
     }
@@ -2034,7 +2076,8 @@ export async function translateResource(resource, targetLang, options = {}) {
           dynamicTranslationFields.name = await postProcessTranslation(
             dynamicTranslationFields.name,
             targetLang,
-            contentFields.name
+            contentFields.name,
+            { linkConversion: options.linkConversion }
           );
         }
         if (Array.isArray(contentFields.values) && contentFields.values.length > 0) {
@@ -2046,7 +2089,7 @@ export async function translateResource(resource, targetLang, options = {}) {
             }
             const translatedValue = await translateText(value, targetLang);
             dynamicTranslationFields.values.push(
-              await postProcessTranslation(translatedValue, targetLang, value)
+              await postProcessTranslation(translatedValue, targetLang, value, { linkConversion: options.linkConversion })
             );
           }
         }
@@ -2058,7 +2101,8 @@ export async function translateResource(resource, targetLang, options = {}) {
           dynamicTranslationFields.value = await postProcessTranslation(
             translatedValue,
             targetLang,
-            contentFields.value
+            contentFields.value,
+            { linkConversion: options.linkConversion }
           );
         }
         break;
@@ -2317,8 +2361,41 @@ function intelligentChunkText(text, maxChunkSize = 1000) {
   if (currentChunk.trim()) {
     chunks.push(currentChunk.trim());
   }
-  
+
   logger.debug(`智能分块完成: ${chunks.length}个块，平均长度: ${Math.round(text.length / chunks.length)}字符`);
+
+  // 🆕 分块数量异常监控
+  if (chunks.length > 100) {
+    const message = getLocalizedErrorMessage('CHUNK_SIZE_ABNORMAL', 'zh-CN', {
+      chunks: chunks.length,
+      textLength: text.length
+    });
+
+    logger.warn(message, {
+      chunkCount: chunks.length,
+      textLength: text.length,
+      averageSize: Math.round(text.length / chunks.length),
+      isHtml
+    });
+
+    // Fire-and-forget error collection (非阻塞)
+    collectError({
+      errorType: ERROR_TYPES.TRANSLATION,
+      errorCategory: 'WARNING',
+      errorCode: 'CHUNK_SIZE_ABNORMAL',
+      message,
+      context: {
+        chunkCount: chunks.length,
+        textLength: text.length,
+        averageSize: Math.round(text.length / chunks.length),
+        isHtml
+      },
+      operation: 'intelligentChunkText',
+      severity: 2,
+      isTranslationError: true
+    }).catch(err => logger.error('Error collection failed', { error: err.message }));
+  }
+
   return chunks;
 }
 

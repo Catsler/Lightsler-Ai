@@ -1,6 +1,7 @@
 import { createApiRoute } from "../utils/base-route.server.js";
 import { translateText } from "../services/translation.server.js";
 import { shouldTranslateMetafield, analyzeMetafields } from "../utils/metafields.js";
+import { getLinkConversionConfig } from "../services/market-urls.server.js";
 
 async function handleTranslateProductMetafields({ request, admin, session }) {
   const formData = await request.formData();
@@ -21,6 +22,16 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
   try {
     const mode = analyzeOnly ? '分析' : '翻译';
     console.log(`🚀 开始${mode}产品metafields: ${productGid} -> ${targetLanguage}`);
+
+    // 🆕 获取链接转换配置
+    const linkConversionConfig = await getLinkConversionConfig(
+      session.shop,
+      admin,
+      targetLanguage
+    ).catch(err => {
+      console.warn('获取链接转换配置失败，将跳过链接转换', err);
+      return null;  // 降级处理
+    });
 
     // 动态导入服务函数
     const { fetchMetafieldsForProduct, registerMetafieldTranslation } = await import("../services/shopify-graphql.server.js");
@@ -112,8 +123,17 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
       try {
         console.log(`🔧 翻译metafield: ${metafield.namespace}.${metafield.key} (${metafield.type}) - 原因: ${decision.reason}`);
 
+        // 🆕 构建翻译选项
+        const translationOptions = {
+          admin,
+          shopId: session.shop
+        };
+        if (linkConversionConfig) {
+          translationOptions.linkConversion = linkConversionConfig;
+        }
+
         // 翻译内容 - 目前只支持文本类型，不处理 rich_text
-        const translatedValue = await translateText(metafield.value, targetLanguage);
+        const translatedValue = await translateText(metafield.value, targetLanguage, translationOptions);
 
         console.log(`✅ 翻译完成: "${metafield.value.substring(0, 50)}..." -> "${translatedValue.substring(0, 50)}..."`);
 

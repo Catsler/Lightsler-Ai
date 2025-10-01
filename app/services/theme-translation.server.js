@@ -488,10 +488,10 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
         
         // 恢复Liquid变量
         translatedText = restoreLiquidVariables(translatedText, protectedMap);
-        
+
         // 后处理
-        translatedText = await postProcessTranslation(translatedText, targetLang, value);
-        
+        translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options.linkConversion });
+
         translated[key] = translatedText;
         logger.debug(`[Theme翻译] 成功翻译 ${fullKey}: "${value.substring(0, 50)}..." -> "${translatedText.substring(0, 50)}..."`);
       } catch (error) {
@@ -516,7 +516,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
  * @param {string} targetLang - 目标语言
  * @returns {Promise<Object>} 翻译结果
  */
-export async function translateThemeResource(resource, targetLang) {
+export async function translateThemeResource(resource, targetLang, options = {}) {
   logger.debug(`[Theme翻译] 开始翻译Theme资源: ${resource.resourceType} - ${resource.id}`);
 
   // 检查是否为Shopify默认主题内容（需要跳过）
@@ -714,8 +714,8 @@ export async function translateThemeResource(resource, targetLang) {
             const { protectedText, protectedMap } = protectLiquidVariables(value);
             let translatedText = await translateThemeValue(protectedText, targetLang);
             translatedText = restoreLiquidVariables(translatedText, protectedMap);
-            translatedText = await postProcessTranslation(translatedText, targetLang, value);
-            
+            translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options.linkConversion });
+
             result.translationFields[key] = translatedText;
           } catch (error) {
             logger.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);

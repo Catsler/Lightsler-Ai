@@ -903,10 +903,18 @@ function Index() {
       return;
     }
 
-    const { success, message, data } = translateFetcher.data;
+    const { success, message, data, redirected, mode } = translateFetcher.data;
     if (!success) {
       addLog(`❌ 翻译失败: ${message || '未知错误'}`, 'error');
       showToast(message || '翻译失败', { isError: true });
+      loadStatus();
+      return;
+    }
+
+    // 🆕 队列模式特殊处理
+    if (redirected && mode === 'queue') {
+      addLog(`📋 ${message}`, 'info');
+      showToast(message, { isError: false });
       loadStatus();
       return;
     }

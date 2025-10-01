@@ -19,14 +19,11 @@ const WEBHOOK_HANDLERS = {
   'products/delete': handleProductDelete,
   'collections/create': handleCollectionCreate,
   'collections/update': handleCollectionUpdate,
-  'pages/create': handlePageCreate,
-  'pages/update': handlePageUpdate,
+  'collections/delete': handleCollectionDelete,
   'themes/publish': handleThemePublish,
   'themes/update': handleThemeUpdate,
   'locales/create': handleLocaleCreate,
-  'locales/update': handleLocaleUpdate,
-  'articles/create': handleArticleCreate,
-  'articles/update': handleArticleUpdate
+  'locales/update': handleLocaleUpdate
 };
 
 /**
@@ -396,6 +393,41 @@ async function handleProductDelete(shop, payload, event) {
 }
 
 /**
+ * 处理集合删除
+ */
+async function handleCollectionDelete(shop, payload, event) {
+  const resourceId = payload.admin_graphql_api_id;
+  invalidateCoverageCache(shop, {
+    resourceType: 'COLLECTION',
+    scope: 'resource',
+    scopeId: resourceId
+  });
+
+  // 清理相关翻译记录
+  await prisma.translation.deleteMany({
+    where: {
+      resource: {
+        shopId: shop,
+        resourceType: 'COLLECTION',
+        originalResourceId: resourceId
+      }
+    }
+  });
+
+  await prisma.resource.deleteMany({
+    where: {
+      shopId: shop,
+      resourceType: 'COLLECTION',
+      originalResourceId: resourceId
+    }
+  });
+
+  return { success: true, message: '集合翻译记录已清理' };
+}
+
+
+
+/**
  * 处理集合创建
  */
 async function handleCollectionCreate(shop, payload, event) {
@@ -445,54 +477,6 @@ async function handleCollectionUpdate(shop, payload, event) {
   return { success: true, message: '集合无需翻译' };
 }
 
-/**
- * 处理页面创建
- */
-async function handlePageCreate(shop, payload, event) {
-  const resourceId = payload.admin_graphql_api_id;
-  invalidateCoverageCache(shop, {
-    resourceType: 'PAGE',
-    scope: 'resource',
-    scopeId: resourceId
-  });
-  
-  if (await shouldTranslate(shop, 'PAGE', resourceId)) {
-    const priority = getResourcePriority('PAGE');
-    await queueTranslation(shop, 'PAGE', resourceId, priority);
-    return { success: true, message: '页面翻译任务已创建' };
-  }
-  
-  return { success: true, message: '页面无需翻译' };
-}
-
-/**
- * 处理页面更新
- */
-async function handlePageUpdate(shop, payload, event) {
-  const resourceId = payload.admin_graphql_api_id;
-  invalidateCoverageCache(shop, {
-    resourceType: 'PAGE',
-    scope: 'resource',
-    scopeId: resourceId
-  });
-  
-  const significantFields = ['title', 'body_html', 'handle'];
-  const hasSignificantChange = significantFields.some(field => 
-    payload.hasOwnProperty(field)
-  );
-  
-  if (!hasSignificantChange) {
-    return { success: true, message: '页面更新不涉及需翻译内容' };
-  }
-  
-  if (await shouldTranslate(shop, 'PAGE', resourceId)) {
-    const priority = getResourcePriority('PAGE');
-    await queueTranslation(shop, 'PAGE', resourceId, priority);
-    return { success: true, message: '页面更新翻译任务已创建' };
-  }
-  
-  return { success: true, message: '页面无需翻译' };
-}
 
 /**
  * 处理主题发布
@@ -562,54 +546,6 @@ async function handleLocaleUpdate(shop, payload, event) {
   return { success: true, message: '语言更新已记录' };
 }
 
-/**
- * 处理文章创建
- */
-async function handleArticleCreate(shop, payload, event) {
-  const resourceId = payload.admin_graphql_api_id;
-  invalidateCoverageCache(shop, {
-    resourceType: 'ARTICLE',
-    scope: 'resource',
-    scopeId: resourceId
-  });
-  
-  if (await shouldTranslate(shop, 'ARTICLE', resourceId)) {
-    const priority = getResourcePriority('ARTICLE');
-    await queueTranslation(shop, 'ARTICLE', resourceId, priority);
-    return { success: true, message: '文章翻译任务已创建' };
-  }
-  
-  return { success: true, message: '文章无需翻译' };
-}
-
-/**
- * 处理文章更新
- */
-async function handleArticleUpdate(shop, payload, event) {
-  const resourceId = payload.admin_graphql_api_id;
-  invalidateCoverageCache(shop, {
-    resourceType: 'ARTICLE',
-    scope: 'resource',
-    scopeId: resourceId
-  });
-  
-  const significantFields = ['title', 'content', 'summary', 'handle'];
-  const hasSignificantChange = significantFields.some(field => 
-    payload.hasOwnProperty(field)
-  );
-  
-  if (!hasSignificantChange) {
-    return { success: true, message: '文章更新不涉及需翻译内容' };
-  }
-  
-  if (await shouldTranslate(shop, 'ARTICLE', resourceId)) {
-    const priority = getResourcePriority('ARTICLE');
-    await queueTranslation(shop, 'ARTICLE', resourceId, priority);
-    return { success: true, message: '文章更新翻译任务已创建' };
-  }
-  
-  return { success: true, message: '文章无需翻译' };
-}
 
 /**
  * 从topic获取资源类型

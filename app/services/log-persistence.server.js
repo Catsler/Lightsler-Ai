@@ -534,6 +534,8 @@ class LogRotationService {
 
   async rotate() {
     const now = Date.now();
+    const BATCH_SIZE = 100;
+    const BATCH_DELAY_MS = 100;
 
     for (const [level, days] of Object.entries(this.retentionByLevel)) {
       if (!days || days <= 0) {
@@ -541,18 +543,73 @@ class LogRotationService {
       }
 
       const cutoff = new Date(now - days * 24 * 60 * 60 * 1000);
-      const result = await prisma.translationLog.deleteMany({
-        where: {
-          level,
-          timestamp: { lt: cutoff }
-        }
-      });
 
-      if (result.count > 0) {
+      // 🆕 检查表是否存在（防止首次运行报错）
+      try {
+        await prisma.translationLog.findFirst();
+      } catch (error) {
+        if (error.code === 'P2021') {
+          consoleLogger.warn('TranslationLog table does not exist, skipping rotation');
+          continue;
+        }
+        throw error;
+      }
+
+      // 🆕 分批删除（避免一次性删除过多记录）
+      let totalDeleted = 0;
+      let batchCount = 0;
+
+      while (true) {
+        // 先查询获取ID列表
+        const logsToDelete = await prisma.translationLog.findMany({
+          where: {
+            level,
+            timestamp: { lt: cutoff }
+          },
+          select: { id: true },
+          take: BATCH_SIZE
+        });
+
+        if (logsToDelete.length === 0) {
+          break;
+        }
+
+        // 批量删除
+        const ids = logsToDelete.map(log => log.id);
+        const result = await prisma.translationLog.deleteMany({
+          where: {
+            id: { in: ids }
+          }
+        });
+
+        totalDeleted += result.count;
+        batchCount++;
+
+        // 🆕 批次间延迟，避免数据库压力
+        if (logsToDelete.length === BATCH_SIZE) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        } else {
+          // 最后一批，无需延迟
+          break;
+        }
+      }
+
+      if (totalDeleted > 0) {
         consoleLogger.info('Log rotation summary', {
           level,
-          deleted: result.count,
+          deleted: totalDeleted,
+          batches: batchCount,
           cutoff: cutoff.toISOString()
+        });
+
+        // 🆕 [METRICS] 结构化日志
+        console.log('[METRICS]', {
+          type: 'log_rotation',
+          level,
+          deleted_count: totalDeleted,
+          batch_count: batchCount,
+          cutoff_date: cutoff.toISOString(),
+          timestamp: Date.now()
         });
       }
     }

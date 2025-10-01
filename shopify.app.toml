@@ -42,17 +42,10 @@ api_version = "2025-07"
   topics = [ "collections/update" ]
   uri = "/webhooks/collection/update"
 
-  # 页面相关webhook - 临时注释：待验证格式问题
-  # 错误：app-preview 报告 pages/create, pages/update 无效
-  # GraphQL API 文档显示存在，可能是 REST/GraphQL 格式差异
-  # 参考：https://shopify.dev/docs/api/admin-graphql/2025-07/enums/WebhookSubscriptionTopic
-  # [[webhooks.subscriptions]]
-  # topics = [ "pages/create" ]
-  # uri = "/webhooks/page/create"
+  [[webhooks.subscriptions]]
+  topics = [ "collections/delete" ]
+  uri = "/webhooks/collection/delete"
 
-  # [[webhooks.subscriptions]]
-  # topics = [ "pages/update" ]
-  # uri = "/webhooks/page/update"
 
   # 主题相关webhook
   [[webhooks.subscriptions]]
@@ -72,17 +65,6 @@ api_version = "2025-07"
   topics = [ "locales/update" ]
   uri = "/webhooks/locale/update"
 
-  # 博客文章相关webhook - 临时注释：待验证格式问题
-  # 错误：app-preview 报告 articles/create, articles/update 无效
-  # GraphQL API 文档显示存在，可能是 REST/GraphQL 格式差异
-  # 参考：https://shopify.dev/docs/api/admin-graphql/2025-07/enums/WebhookSubscriptionTopic
-  # [[webhooks.subscriptions]]
-  # topics = [ "articles/create" ]
-  # uri = "/webhooks/article/create"
-
-  # [[webhooks.subscriptions]]
-  # topics = [ "articles/update" ]
-  # uri = "/webhooks/article/update"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes

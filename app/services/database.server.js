@@ -205,15 +205,24 @@ export async function saveTranslation(resourceId, shopId, language, translations
   // 2. 传递包含 translations 字段的对象 { translations: { titleTrans, descTrans, ... } }
   const actualTranslations = translations?.translations || translations || {};
 
+  // 辅助函数：提取翻译文本（处理可能的对象结构）
+  const extractText = (field) => {
+    if (!field) return null;
+    if (typeof field === 'string') return field;
+    if (typeof field === 'object' && field.text) return field.text;
+    if (typeof field === 'object' && field.skipped) return null;
+    return null;
+  };
+
   // 构建翻译数据对象，使用防御性访问
   const translationData = {
-    titleTrans: actualTranslations.titleTrans || null,
-    descTrans: actualTranslations.descTrans || null,
-    handleTrans: actualTranslations.handleTrans || null,
-    summaryTrans: actualTranslations.summaryTrans || null,
-    labelTrans: actualTranslations.labelTrans || null,
-    seoTitleTrans: actualTranslations.seoTitleTrans || null,
-    seoDescTrans: actualTranslations.seoDescTrans || null,
+    titleTrans: extractText(actualTranslations.titleTrans),
+    descTrans: extractText(actualTranslations.descTrans),
+    handleTrans: extractText(actualTranslations.handleTrans),
+    summaryTrans: extractText(actualTranslations.summaryTrans),
+    labelTrans: extractText(actualTranslations.labelTrans),
+    seoTitleTrans: extractText(actualTranslations.seoTitleTrans),
+    seoDescTrans: extractText(actualTranslations.seoDescTrans),
     translationFields: actualTranslations.translationFields || null,
     status: 'completed',
     syncStatus: 'pending' // 新翻译默认为待同步状态

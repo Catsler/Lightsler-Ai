@@ -10,7 +10,7 @@ module.exports = {
       name: 'shop1-fynony',
       script: 'npm',
       args: 'start',
-      cwd: '/Users/elie/Downloads/translate/Lightsler-Ai',
+      cwd: '/var/www/app1-fynony',
 
       // 环境变量
       env: {
@@ -84,7 +84,7 @@ module.exports = {
       name: 'shop2-onewind',
       script: 'npm',
       args: 'start',
-      cwd: '/Users/elie/Downloads/translate/Lightsler-Ai',
+      cwd: '/var/www/app2-onewind',
 
       // 环境变量
       env: {

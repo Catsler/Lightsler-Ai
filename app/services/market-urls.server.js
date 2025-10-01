@@ -14,6 +14,8 @@ import crypto from 'crypto';
  * @returns {Promise<Object|null>} 返回解析后的域名配置或null
  */
 export async function getMarketsWebPresences(admin) {
+  // Shopify API 2025-01+: defaultLocale 和 alternateLocales 直接返回字符串
+  // 验证脚本: scripts/test-markets-graphql.mjs
   const query = `
     query getMarketsWebPresences {
       markets(first: 250) {
@@ -30,17 +32,94 @@ export async function getMarketsWebPresences(admin) {
                 url
               }
               subfolderSuffix
-              defaultLocale {
-                locale {
-                  isoCode
-                  languageTag
-                }
-              }
-              alternateLocales {
-                locale {
-                  isoCode
-                  languageTag
-                }
+              defaultLocale
+              alternateLocales
+            }
+          }
+        }
+      }
+      shop {
+        primaryDomain {
+          host
+          url
+        }
+        name
+      }
+    }
+  `;
+
+  try {
+    logger.info('开始获取Markets配置', { apiVersion: '2025-01+' });
+
+    const response = await admin.graphql(query);
+    const { data, errors } = await response.json();
+
+    if (errors?.length) {
+      // 记录详细错误（与日志格式一致）
+      logger.error('[TRANSLATION] 获取Markets配置失败', {
+        response: {},
+        headers: response.headers?.raw?.() || {},
+        body: {
+          headers: {},
+          errors: {
+            networkStatusCode: response.status || 200,
+            message: 'GraphQL Client: An error occurred while fetching from the API. Review \'graphQLErrors\' for details.',
+            graphQLErrors: errors,
+            response: {}
+          }
+        }
+      });
+      await captureError('MARKETS_API_ERROR', new Error(errors[0].message), { errors });
+
+      // 降级：尝试最小字段集查询
+      logger.info('尝试降级到最小字段集查询');
+      return await getMarketsWebPresencesMinimal(admin);
+    }
+
+    if (!data?.markets?.nodes) {
+      logger.warn('Markets数据为空');
+      return null;
+    }
+
+    const result = parseMarketsConfig(data);
+
+    // 结构化日志（用于统计）
+    logger.info('[METRICS]', {
+      type: 'graphql_markets_success',
+      markets_count: data.markets.nodes.length,
+      languages_count: Object.keys(result.mappings || {}).length,
+      timestamp: Date.now()
+    });
+
+    return result;
+  } catch (error) {
+    await captureError('MARKETS_FETCH_ERROR', error);
+    logger.error('[TRANSLATION] 获取Markets配置失败', error);
+    return null;
+  }
+}
+
+/**
+ * 降级方案：使用最小字段集查询 Markets
+ * 当标准查询失败时使用（例如 API 版本不兼容）
+ * @param {Object} admin - Shopify Admin API客户端
+ * @returns {Promise<Object|null>} 返回基础配置或null
+ */
+async function getMarketsWebPresencesMinimal(admin) {
+  const minimalQuery = `
+    query getMarketsWebPresencesMinimal {
+      markets(first: 250) {
+        nodes {
+          id
+          name
+          enabled
+          primary
+          webPresences(first: 10) {
+            nodes {
+              id
+              domain {
+                host
+                url
               }
             }
           }
@@ -57,32 +136,29 @@ export async function getMarketsWebPresences(admin) {
   `;
 
   try {
-    logger.info('开始获取Markets配置');
-    
-    const response = await admin.graphql(query);
+    logger.info('使用最小字段集查询Markets');
+
+    const response = await admin.graphql(minimalQuery);
     const { data, errors } = await response.json();
-    
+
     if (errors?.length) {
-      logger.warn('Markets API返回错误', { errors });
-      await captureError('MARKETS_API_ERROR', new Error(errors[0].message), { errors });
+      logger.error('最小字段集查询也失败', { errors });
       return null;
     }
-    
+
     if (!data?.markets?.nodes) {
-      logger.warn('Markets数据为空');
       return null;
     }
-    
+
+    // 解析最小字段集数据（不包含 locale 信息）
     const result = parseMarketsConfig(data);
-    logger.info('Markets配置获取成功', { 
-      marketsCount: data.markets.nodes.length,
-      languagesCount: Object.keys(result.mappings).length 
+    logger.warn('Markets配置获取成功（使用降级方案，无locale信息）', {
+      marketsCount: data.markets.nodes.length
     });
-    
+
     return result;
   } catch (error) {
-    await captureError('MARKETS_FETCH_ERROR', error);
-    logger.error('获取Markets配置失败', error);
+    logger.error('降级查询失败', error);
     return null;
   }
 }
@@ -93,65 +169,29 @@ export async function getMarketsWebPresences(admin) {
  * @returns {Object} 解析后的配置
  */
 /**
- * 提取 Locale 信息，兼容不同版本的 GraphQL 返回结构
- * @param {unknown} node
+ * 提取 Locale 信息
+ * 根据 Shopify GraphQL Admin API 2025-01 规范，ShopLocale.locale 直接是 String 类型
+ * @param {Object|string} shopLocale - ShopLocale 对象或语言代码字符串
  * @returns {{ code: string | null, tag: string | null }}
  */
-function getLocaleInfo(node) {
-  if (!node) {
+function getLocaleInfo(shopLocale) {
+  // 🆕 处理直接传入字符串的情况
+  if (typeof shopLocale === 'string') {
+    return { code: shopLocale, tag: shopLocale };
+  }
+
+  // 处理对象的情况
+  if (!shopLocale || typeof shopLocale !== 'object') {
     return { code: null, tag: null };
   }
 
-  if (typeof node === 'string') {
-    return { code: node, tag: node };
-  }
+  // ShopLocale.locale 直接是 String（ISO 代码，如 "en"、"fr"、"zh-CN"）
+  const locale = typeof shopLocale.locale === 'string' ? shopLocale.locale : null;
 
-  if (typeof node !== 'object') {
-    return { code: null, tag: null };
-  }
-
-  const localeObject = /** @type {Record<string, unknown>} */ (node);
-  const localeField = /** @type {unknown} */ (localeObject.locale);
-
-  let code = null;
-  let tag = null;
-
-  if (typeof localeField === 'string') {
-    code = localeField;
-    tag = localeField;
-  } else if (localeField && typeof localeField === 'object') {
-    const localeDetails = /** @type {Record<string, unknown>} */ (localeField);
-    if (typeof localeDetails.isoCode === 'string') {
-      code = localeDetails.isoCode;
-    }
-    if (typeof localeDetails.languageTag === 'string') {
-      tag = localeDetails.languageTag;
-      if (!code) {
-        code = tag;
-      }
-    }
-  }
-
-  if (!code && typeof localeObject.isoCode === 'string') {
-    code = localeObject.isoCode;
-  }
-  if (!tag && typeof localeObject.languageTag === 'string') {
-    tag = localeObject.languageTag;
-  }
-
-  if (!code) {
-    if (typeof localeObject.localeCode === 'string') {
-      code = localeObject.localeCode;
-    } else if (typeof localeObject.tag === 'string') {
-      code = localeObject.tag;
-    }
-  }
-
-  if (!tag && code) {
-    tag = code;
-  }
-
-  return { code, tag };
+  return {
+    code: locale,    // ISO 代码
+    tag: locale      // 语言标签（使用相同值）
+  };
 }
 
 /**
@@ -331,6 +371,75 @@ export async function getLanguageUrlsForDisplay(admin) {
   });
   
   return languageUrls;
+}
+
+/**
+ * 获取按市场分组的语言URL配置
+ * @param {Object} admin - Shopify Admin API客户端
+ * @returns {Promise<Array>} 返回按市场分组的语言配置
+ */
+export async function getMarketsLanguagesGrouped(admin) {
+  const { getShopLocales } = await import("./shopify-locales.server.js");
+
+  try {
+    const [config, shopLocales] = await Promise.all([
+      getMarketsWebPresences(admin),
+      getShopLocales(admin).catch(err => {
+        logger.warn('获取shopLocales失败', err);
+        return [];
+      })
+    ]);
+
+    if (!config?.markets) {
+      logger.info('无Markets配置');
+      return [];
+    }
+
+    // 增强每个市场的语言元数据
+    const enhancedMarkets = config.markets.map(market => {
+      const enhancedLanguages = market.languages.map(lang => {
+        const shopLocale = shopLocales.find(l => l.locale === lang.locale);
+        const localeConfig = config.mappings[lang.locale] || {};
+
+        return {
+          locale: lang.locale,
+          name: shopLocale?.name || getLanguageName(lang.locale),
+          type: lang.type,
+          url: lang.url,
+          path: localeConfig.path,
+          suffix: localeConfig.suffix,
+          marketName: market.name,
+          published: shopLocale?.published ?? false,
+          primary: shopLocale?.primary ?? false,
+          isAlternate: lang.isAlternate || false
+        };
+      });
+
+      return {
+        marketId: market.id,
+        marketName: market.name,
+        isPrimaryMarket: market.primary,
+        languageCount: enhancedLanguages.length,
+        languages: enhancedLanguages.sort((a, b) => {
+          // 默认语言排在前面
+          if (a.primary) return -1;
+          if (b.primary) return 1;
+          return a.locale.localeCompare(b.locale);
+        })
+      };
+    });
+
+    logger.info('按市场分组的语言配置生成成功', {
+      marketsCount: enhancedMarkets.length,
+      totalLanguages: enhancedMarkets.reduce((sum, m) => sum + m.languageCount, 0)
+    });
+
+    return enhancedMarkets;
+  } catch (error) {
+    await captureError('GET_MARKETS_LANGUAGES_GROUPED', error);
+    logger.error('获取市场语言分组失败', error);
+    return [];
+  }
 }
 
 /**
@@ -659,5 +768,57 @@ export async function updateUrlConversionSettings(shopId, settings) {
   } catch (error) {
     await captureError('UPDATE_URL_SETTINGS', error, { shopId, settings });
     return false;
+  }
+}
+
+/**
+ * 获取链接转换配置（供翻译路由使用）
+ * @param {string} shopId - 店铺ID
+ * @param {Object} admin - Admin API客户端（可选）
+ * @param {string} targetLang - 目标语言
+ * @returns {Promise<Object|null>} linkConversion配置对象，关闭时返回null
+ */
+export async function getLinkConversionConfig(shopId, admin, targetLang) {
+  try {
+    // 1. 先读缓存
+    let marketConfig = await getCachedMarketConfig(shopId).catch(() => null);
+
+    // 2. 缓存不存在且有admin，尝试同步
+    if (!marketConfig && admin) {
+      marketConfig = await syncMarketConfig(shopId, admin).catch(() => null);
+    }
+
+    // 3. 获取URL转换设置
+    const urlSettings = await getUrlConversionSettings(shopId).catch(() => null);
+
+    // 4. 读取环境变量默认值
+    const { getConfig } = await import('../utils/config.server.js');
+    const config = getConfig();
+    const envConfig = config.linkConversion;
+
+    // 5. 判断是否启用（数据库优先）
+    const enabled = urlSettings?.enableLinkConversion ?? envConfig.enabled;
+
+    // 6. 未启用或无配置，返回null
+    if (!enabled || !marketConfig) {
+      return null;
+    }
+
+    // 7. 返回完整配置
+    const strategy = urlSettings?.urlStrategy || envConfig.strategy;
+    return {
+      enabled: true,
+      locale: targetLang,
+      marketConfig: marketConfig,
+      options: {
+        strategy,
+        preserveQueryParams: true,
+        preserveAnchors: true
+      }
+    };
+  } catch (error) {
+    logger.error('获取链接转换配置失败', error);
+    await captureError('GET_LINK_CONVERSION_CONFIG', error, { shopId, targetLang });
+    return null;  // 失败时返回null，不阻塞翻译
   }
 }

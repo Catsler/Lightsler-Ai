@@ -5,6 +5,7 @@ import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
 import { createApiRoute } from "../utils/base-route.server.js";
 import { getLocalizedErrorMessage } from "../utils/error-messages.server.js";
+import { getLinkConversionConfig } from "../services/market-urls.server.js";
 
 /**
  * POST请求处理函数 - 核心翻译API
@@ -99,7 +100,43 @@ async function handleTranslate({ request, admin, session }) {
         stats: { total: 0, success: 0, failure: 0 }
       };
     }
-    
+
+    // 🆕 自动队列重定向：大批量翻译自动使用异步队列（避免超时）
+    const QUEUE_THRESHOLD = 10; // 超过10个资源自动使用队列
+    if (resourcesToTranslate.length > QUEUE_THRESHOLD) {
+      console.log(`资源数量(${resourcesToTranslate.length})超过阈值(${QUEUE_THRESHOLD})，自动重定向到队列模式`);
+
+      // 导入队列服务
+      const { addBatchTranslationJob } = await import("../services/queue.server.js");
+
+      const resourceIdsToTranslate = resourcesToTranslate.map(r => r.id);
+      const jobResult = await addBatchTranslationJob(
+        resourceIdsToTranslate,
+        shop.id,
+        targetLanguage,
+        session.shop
+      );
+
+      // 记录队列任务创建
+      console.log('[METRICS]', {
+        type: 'batch_translation_queued',
+        resource_count: jobResult.resourceCount,
+        estimated_time_min: Math.ceil(jobResult.resourceCount / 20),
+        timestamp: Date.now()
+      });
+
+      // 返回队列任务信息（前端会显示Toast）
+      return {
+        redirected: true,
+        mode: 'queue',
+        jobId: jobResult.jobId,
+        resourceCount: jobResult.resourceCount,
+        estimatedMinutes: Math.ceil(jobResult.resourceCount / 20), // 假设20个/分钟
+        message: `已加入翻译队列，共 ${jobResult.resourceCount} 个资源。请前往"资源列表"页面（/app）刷新查看进度，预计 ${Math.ceil(jobResult.resourceCount / 20)} 分钟完成。`,
+        success: true
+      };
+    }
+
     // 如果需要清除缓存，先删除现有的翻译记录
     if (clearCache) {
       console.log('清除缓存：删除现有翻译记录');
@@ -173,6 +210,16 @@ async function handleTranslate({ request, admin, session }) {
       longTextCount: sortedResources.filter(isLikelyLongText).length
     });
 
+    // 🆕 获取链接转换配置（批次循环外，只调用一次）
+    const linkConversionConfig = await getLinkConversionConfig(
+      session.shop,
+      admin,
+      targetLanguage
+    ).catch(err => {
+      console.warn('获取链接转换配置失败，将跳过链接转换', err);
+      return null;  // 降级处理
+    });
+
     // 按批次处理
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
@@ -216,9 +263,18 @@ async function handleTranslate({ request, admin, session }) {
             }
           : resource;
 
+        // 🆕 构建翻译选项（统一处理）
+        const translationOptions = {
+          admin,
+          shopId: session.shop
+        };
+        if (linkConversionConfig) {
+          translationOptions.linkConversion = linkConversionConfig;
+        }
+
         if (themeResourceTypes.includes(resourceTypeUpper)) {
           console.log(`使用Theme资源翻译函数处理: ${resource.resourceType}`);
-          const themeTranslations = await translateThemeResource(resourceInput, targetLanguage);
+          const themeTranslations = await translateThemeResource(resourceInput, targetLanguage, translationOptions);
           translations = { skipped: false, translations: themeTranslations };
         } else if (resourceTypeUpper === 'PRODUCT') {
           const { translateProductWithRelated } = await import('../services/product-translation-enhanced.server.js');
@@ -226,20 +282,20 @@ async function handleTranslate({ request, admin, session }) {
           const shouldAwaitRelated = params.forceRelatedTranslation || params.userRequested || clearCache;
 
           if (shouldAwaitRelated) {
-            translations = await translateProductWithRelated(resourceInput, targetLanguage, admin);
+            translations = await translateProductWithRelated(resourceInput, targetLanguage, admin, translationOptions);
           } else {
-            translations = await translateResource(resourceInput, targetLanguage, { admin });
+            translations = await translateResource(resourceInput, targetLanguage, translationOptions);
 
             setImmediate(async () => {
               try {
-                await translateProductWithRelated({ ...resourceInput, userRequested: false, forceRelatedTranslation: false }, targetLanguage, admin);
+                await translateProductWithRelated({ ...resourceInput, userRequested: false, forceRelatedTranslation: false }, targetLanguage, admin, translationOptions);
               } catch (relatedError) {
                 console.warn('产品关联内容异步翻译失败:', relatedError);
               }
             });
           }
         } else {
-          translations = await translateResource(resourceInput, targetLanguage, { admin });
+          translations = await translateResource(resourceInput, targetLanguage, translationOptions);
         }
         
         if (translations.skipped) {

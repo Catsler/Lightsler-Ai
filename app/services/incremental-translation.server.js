@@ -6,6 +6,7 @@
 import { prisma } from '../db.server.js';
 import { logger } from '../utils/logger.server.js';
 import { translateTextWithFallback } from './translation.server.js';
+import { getLinkConversionConfig } from './market-urls.server.js';
 import crypto from 'crypto';
 
 /**
@@ -127,9 +128,10 @@ export async function detectUntranslatedFields(resource, language, existingTrans
  * @param {Object} resource - 资源对象
  * @param {Array} untranslatedFields - 未翻译字段列表
  * @param {string} language - 目标语言
+ * @param {Object} linkConversionConfig - 链接转换配置（可选）
  * @returns {Promise<Object>} 翻译结果
  */
-export async function translateSpecificFields(resource, untranslatedFields, language) {
+export async function translateSpecificFields(resource, untranslatedFields, language, linkConversionConfig = null) {
   try {
     const translationResults = {};
     const newContentDigests = { ...resource.contentDigests };
@@ -144,8 +146,16 @@ export async function translateSpecificFields(resource, untranslatedFields, lang
           reason: fieldInfo.reason
         });
 
+        // 🆕 构建翻译选项
+        const translationOptions = {
+          shopId: resource.shopId
+        };
+        if (linkConversionConfig) {
+          translationOptions.linkConversion = linkConversionConfig;
+        }
+
         // 调用翻译API
-        const result = await translateTextWithFallback(fieldInfo.content, language);
+        const result = await translateTextWithFallback(fieldInfo.content, language, translationOptions);
 
         if (result.success) {
           translationResults[fieldInfo.targetField] = result.text;
@@ -380,6 +390,16 @@ export async function performIncrementalTranslation(shopId, language, resourceId
   try {
     logger.info('开始增量翻译', { shopId, language, resourceCount: resourceIds.length || 'all' });
 
+    // 🆕 获取链接转换配置（只调用一次）
+    const linkConversionConfig = await getLinkConversionConfig(
+      shopId,
+      null,  // 增量翻译通常没有admin上下文，依赖缓存
+      language
+    ).catch(err => {
+      logger.warn('获取链接转换配置失败，将跳过链接转换', err);
+      return null;  // 降级处理
+    });
+
     // 获取待处理资源
     const whereClause = { shopId };
     if (resourceIds.length > 0) {
@@ -414,7 +434,7 @@ export async function performIncrementalTranslation(shopId, language, resourceId
         }
 
         // 翻译指定字段
-        const translationResult = await translateSpecificFields(resource, untranslatedFields, language);
+        const translationResult = await translateSpecificFields(resource, untranslatedFields, language, linkConversionConfig);
 
         // 保存翻译结果
         await saveIncrementalTranslation(

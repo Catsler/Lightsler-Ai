@@ -5,6 +5,8 @@
 
 import { logger } from "../utils/logger.server.js";
 import { captureError } from "../utils/error-handler.server.js";
+import { getLocalizedErrorMessage } from "../utils/error-messages.server.js";
+import { collectError, ERROR_TYPES } from "./error-collector.server.js";
 
 /**
  * 转换HTML内容中的链接
@@ -18,49 +20,69 @@ export function convertLinksForLocale(html, targetLocale, marketConfig, options 
   if (!html || !targetLocale || !marketConfig) {
     return html;
   }
-  
+
   const {
     enableConversion = true,
     strategy = 'conservative', // conservative: 只转换相对路径, aggressive: 转换所有内部链接
     preserveQueryParams = true,
     preserveAnchors = true
   } = options;
-  
+
   if (!enableConversion) {
     return html;
   }
-  
+
+  // 🆕 转换统计
+  const stats = {
+    totalLinks: 0,
+    successCount: 0,
+    failedCount: 0,
+    failedUrls: []  // 最多收集3条
+  };
+
   try {
     // 标准化locale格式（zh-CN → zh, pt-BR → pt）
     const normalizedLocale = normalizeLocale(targetLocale);
-    
+
     // 获取目标语言的域名配置
-    const targetConfig = marketConfig.mappings?.[targetLocale] || 
+    const targetConfig = marketConfig.mappings?.[targetLocale] ||
                          marketConfig.mappings?.[normalizedLocale];
-    
+
     if (!targetConfig) {
       logger.debug('未找到目标语言的域名配置', { targetLocale, normalizedLocale });
       return html;
     }
-    
+
     const primaryHost = marketConfig.primaryHost;
     const primaryUrl = marketConfig.primaryUrl;
-    
+
     // 转换所有<a>标签中的href
     let convertedHtml = html.replace(
       /<a([^>]*?)href=["']([^"']+)["']([^>]*)>/gi,
       (match, before, url, after) => {
+        stats.totalLinks++;  // 🆕 统计总数
+
         try {
           const convertedUrl = transformUrl(
-            url, 
-            targetConfig, 
-            primaryHost, 
+            url,
+            targetConfig,
+            primaryHost,
             primaryUrl,
             { strategy, preserveQueryParams, preserveAnchors }
           );
+          stats.successCount++;  // 🆕 统计成功
           return `<a${before}href="${convertedUrl}"${after}>`;
         } catch (error) {
-          // 单个链接转换失败不影响其他链接
+          // 🆕 统计失败并收集样本
+          stats.failedCount++;
+
+          if (stats.failedUrls.length < 3) {
+            stats.failedUrls.push({
+              url: url.substring(0, 200),           // 截断至200字符
+              error: error.message.substring(0, 100) // 截断至100字符
+            });
+          }
+
           logger.warn('单个链接转换失败', {
             eventType: 'linkConversion',
             phase: 'url_error',
@@ -87,7 +109,58 @@ export function convertLinksForLocale(html, targetLocale, marketConfig, options 
         }
       );
     }
-    
+
+    // 🆕 转换成功率监控
+    if (stats.totalLinks > 0) {
+      const successRate = (stats.successCount / stats.totalLinks) * 100;
+
+      logger.info('URL转换完成', {
+        eventType: 'linkConversion',
+        locale: targetLocale,
+        stats: {
+          ...stats,
+          successRate: `${successRate.toFixed(1)}%`
+        }
+      });
+
+      // 成功率过低告警
+      if (successRate < 80 && stats.totalLinks >= 5) {
+        const message = getLocalizedErrorMessage('LINK_CONVERSION_LOW_SUCCESS_RATE', 'zh-CN', {
+          rate: successRate.toFixed(1),
+          total: stats.totalLinks,
+          failed: stats.failedCount
+        });
+
+        logger.warn(message, {
+          eventType: 'linkConversion',
+          phase: 'low_success_rate',
+          stats
+        });
+
+        // Fire-and-forget error collection (非阻塞)
+        collectError({
+          errorType: ERROR_TYPES.TRANSLATION,
+          errorCategory: 'WARNING',
+          errorCode: 'LINK_CONVERSION_LOW_SUCCESS_RATE',
+          message,
+          context: {
+            targetLocale,
+            strategy,
+            stats: {
+              total: stats.totalLinks,
+              success: stats.successCount,
+              failed: stats.failedCount,
+              rate: successRate.toFixed(1)
+            },
+            failedSamples: stats.failedUrls,  // 最多3条，已截断
+          },
+          operation: 'convertLinksForLocale',
+          severity: 2,
+          isTranslationError: true
+        }).catch(err => logger.error('Error collection failed', { error: err.message }));
+      }
+    }
+
     return convertedHtml;
   } catch (error) {
     logger.error('链接转换过程出错', {

@@ -2,6 +2,40 @@
 
 ## 🚧 进行中
 
+### 翻译系统错误处理增强 (2025-10-01) - 🆕 Phase 0 实施中
+**目标**: 在翻译系统关键节点（长文本分块、URL转换）增加本地化错误处理，提升问题定位效率。
+**文档**: `docs/translation-error-handling-enhancement.md`
+**优先级**: P2 (中等)
+**预计工作量**: 1-1.5小时
+
+#### Phase 0 实施进度（最小验证）
+- [x] 创建需求文档（docs/translation-error-handling-enhancement.md）
+- [ ] 扩展 error-messages.server.js 支持参数替换
+- [ ] 添加分块异常监控（intelligentChunkText）
+- [ ] 添加URL转换成功率监控（convertLinksForLocale）
+- [ ] 更新 CLAUDE.md 错误排查文档
+- [ ] 代码检查通过（lint + build）
+
+#### 预期效果
+- ✅ 中文错误消息，快速理解问题
+- ✅ 错误码直达代码位置，定位效率提升80%
+- ✅ 详细上下文，支持趋势分析
+
+#### 观察期（1-2周）
+- [ ] 分析错误触发频率
+- [ ] 验证上下文信息有效性
+- [ ] 评估阈值合理性（分块>100, URL成功率<80%）
+- [ ] 收集团队反馈
+
+#### Phase 1（按需扩展，待观察期结果）
+- 根据观察期数据决定是否需要：
+  - 调整阈值
+  - 添加更多监控场景
+  - 创建专门查询API
+  - 监控仪表盘集成
+
+---
+
 ### HTML长文本翻译问题修复 (2025-09-30) - ✅ Phase 1 完成
 **目标**: 修复Shipping & Duty Policy等页面HTML长文本翻译不完整的问题。
 **方案**: 基于KISS原则，复用现有分块能力，最小化改动范围。
@@ -1643,3 +1677,67 @@ npm run build
 - ✅ = 已完成任务
 - 🐛 = 需要修复的问题
 - 💡 = 未来的改进想法
+
+## 📅 2025-10-01 - Day 1: GraphQL API 修复完成
+
+### ✅ 完成任务
+
+#### 1. GraphQL 验证脚本 (Task 1.1)
+- 创建 `scripts/test-markets-graphql.mjs`
+- 支持测试 3 种 API 查询模式（2025-01+/minimal/legacy）
+- 读取环境变量 `SHOPIFY_API_SECRET`
+- 支持命令行参数覆盖
+
+**使用方式**：
+```bash
+node scripts/test-markets-graphql.mjs
+```
+
+#### 2. market-urls.server.js 修复 (Task 1.2)
+- 简化 GraphQL 查询结构
+- `defaultLocale` 和 `alternateLocales` 改为直接字符串查询
+- 添加降级方案 `getMarketsWebPresencesMinimal()`
+- 增强错误日志格式（与现有日志一致）
+- 添加 `[METRICS]` 结构化日志
+
+**关键修改**：
+```javascript
+// ❌ 旧版本（查询子字段）
+defaultLocale {
+  locale
+  name
+  primary
+}
+
+// ✅ 新版本（直接字符串）
+defaultLocale      // String: "en"
+alternateLocales   // [String!]!: ["fr", "de"]
+```
+
+#### 3. 构建验证 (Task 1.3)
+- ✅ `npm run build` 成功
+- ✅ 无语法错误
+- ✅ 兼容现有 `getLocaleInfo()` 解析逻辑
+
+### 📊 预期效果
+
+| 指标 | 修复前 | 修复后 |
+|-----|--------|--------|
+| Markets 查询成功率 | ~0% | 预期100% |
+| GraphQL 错误日志 | 4次 | 预期0次 |
+| API 版本兼容性 | 单一版本 | 支持降级 |
+
+### 🔍 待验证
+
+需要在实际环境验证：
+1. Markets 配置查询是否成功
+2. 语言域名映射是否正确
+3. 降级逻辑是否生效（如果需要）
+
+### 📝 下一步
+
+- **Day 2**: 批量翻译改为异步队列模式
+- **Day 3**: 占位符回退逻辑
+- **Day 4**: 日志轮转优化
+- **Day 5**: 综合验证和文档更新
+

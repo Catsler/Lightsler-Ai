@@ -148,6 +148,15 @@ NODE_ENV=development|production          # 环境标识
 ENABLE_PRODUCT_RELATED_TRANSLATION=true  # 产品关联翻译
 ```
 
+**🆕 链接转换配置**:
+```bash
+LINK_CONVERSION_ENABLED=false            # 启用内链转换功能
+LINK_CONVERSION_STRATEGY=conservative    # 转换策略: conservative(保守) | aggressive(激进)
+```
+> 启用后，翻译时自动将内部链接转换为目标语言的URL（如 `/products/shirt` → `/fr/products/shirt`）。
+> 保守模式只转换明确匹配的域名和路径，激进模式会尝试转换更多链接。
+> 可在UI中（语言域名配置页面）动态修改，数据库配置优先级高于环境变量。
+
 **API 监控**:
 ```bash
 API_MONITORING_ENABLED=true                 # 默认开启监控
@@ -268,6 +277,138 @@ npm run dev                      # 启动开发服务器（自动集成）
 
 ### 产品关联翻译
 通过设置 `ENABLE_PRODUCT_RELATED_TRANSLATION=true` 启用，自动翻译产品options和metafields。
+
+## ⚠️ Shopify 平台限制
+
+### Webhook 支持限制
+
+**不支持的资源类型**：
+- ❌ **Articles (博客文章)** - 无 `articles/*` webhook
+- ❌ **Pages (页面)** - 无 `pages/*` webhook
+
+**原因**：
+- Shopify API（包括 2025-07 及所有历史版本）不提供这些 webhook events
+- 参考：[WebhookSubscriptionTopic Enum](https://shopify.dev/docs/api/admin-graphql/latest/enums/WebhookSubscriptionTopic)
+
+**替代方案**：
+1. **定期轮询**：通过 GraphQL API 定期检查资源更新时间戳
+2. **手动触发**：在 UI 中添加"扫描新内容"按钮
+3. **间接信号**：监听 `themes/update` webhook，在主题更新时触发内容扫描
+
+**支持的 Webhook**：
+- ✅ Products (`products/create`, `products/update`, `products/delete`)
+- ✅ Collections (`collections/create`, `collections/update`, `collections/delete`)
+- ✅ Themes (`themes/publish`, `themes/update`)
+- ✅ Locales (`locales/create`, `locales/update`)
+
+## 翻译错误排查
+
+### 错误代码说明
+
+**CHUNK_SIZE_ABNORMAL** - 分块数量异常
+- **触发条件**: 文本分块数量超过 100 个
+- **影响**: 可能导致翻译质量下降、API调用超限
+- **排查位置**: `app/services/translation/core.server.js:intelligentChunkText`
+- **常见原因**:
+  - 富文本内容中含有大量复杂HTML标签
+  - 文本过长且未合理分段
+  - 品牌词保护导致分块碎片化
+
+**LINK_CONVERSION_LOW_SUCCESS_RATE** - URL转换成功率过低
+- **触发条件**: URL转换成功率 < 80% 且链接数量 ≥ 5
+- **影响**: 翻译内容中的内链未正确本地化
+- **排查位置**: `app/services/link-converter.server.js:convertLinksForLocale`
+- **常见原因**:
+  - Markets配置缺失或不完整
+  - URL格式不符合转换规则
+  - 目标语言域名配置错误
+
+### 日志查询示例
+
+**查询分块异常**:
+```bash
+# 查看所有分块异常警告
+tail -f logs/app.log | jq 'select(.errorCode=="CHUNK_SIZE_ABNORMAL")'
+
+# 统计分块异常频率（最近1000条）
+tail -1000 logs/app.log | jq -r 'select(.errorCode=="CHUNK_SIZE_ABNORMAL") | .time' | wc -l
+
+# 查看具体分块详情
+tail -f logs/app.log | jq 'select(.errorCode=="CHUNK_SIZE_ABNORMAL") | {chunkCount, textLength, averageSize}'
+```
+
+**查询URL转换问题**:
+```bash
+# 查看URL转换成功率警告
+tail -f logs/app.log | jq 'select(.errorCode=="LINK_CONVERSION_LOW_SUCCESS_RATE")'
+
+# 查看失败的URL样本
+tail -f logs/app.log | jq 'select(.errorCode=="LINK_CONVERSION_LOW_SUCCESS_RATE") | .context.failedSamples'
+
+# 查看转换统计
+tail -f logs/app.log | jq 'select(.eventType=="linkConversion" and .locale) | {locale, stats}'
+```
+
+**综合错误查询**:
+```bash
+# 查看所有翻译相关警告（最近1小时）
+tail -f logs/app.log | jq 'select(.level==40 and .isTranslationError==true)'
+
+# 按错误代码分组统计
+tail -1000 logs/app.log | jq -r 'select(.errorCode) | .errorCode' | sort | uniq -c
+
+# 导出错误详情到文件分析
+tail -5000 logs/app.log | jq 'select(.errorCode=="CHUNK_SIZE_ABNORMAL")' > chunk_errors.json
+```
+
+### API错误查询
+
+**通过 Prisma Studio 查询**:
+```bash
+# 启动 Prisma Studio
+npx prisma studio
+
+# 在浏览器中打开 ErrorLog 表，使用以下过滤条件：
+# - errorCode = "CHUNK_SIZE_ABNORMAL"
+# - errorCode = "LINK_CONVERSION_LOW_SUCCESS_RATE"
+# - errorCategory = "WARNING"
+# - createdAt > [最近24小时]
+```
+
+**通过数据库直接查询**:
+```bash
+# 查询分块异常（最近24小时）
+sqlite3 prisma/dev.db "SELECT * FROM ErrorLog WHERE errorCode='CHUNK_SIZE_ABNORMAL' AND datetime(createdAt) > datetime('now', '-24 hours') ORDER BY createdAt DESC LIMIT 10;"
+
+# 查询URL转换问题汇总
+sqlite3 prisma/dev.db "SELECT errorCode, COUNT(*) as count, MAX(createdAt) as lastOccurrence FROM ErrorLog WHERE errorCode='LINK_CONVERSION_LOW_SUCCESS_RATE' GROUP BY errorCode;"
+
+# 查看错误详情（带context）
+sqlite3 prisma/dev.db "SELECT errorCode, message, context FROM ErrorLog WHERE errorCode IN ('CHUNK_SIZE_ABNORMAL', 'LINK_CONVERSION_LOW_SUCCESS_RATE') ORDER BY createdAt DESC LIMIT 5;"
+```
+
+### 问题解决指南
+
+**分块数量异常 (CHUNK_SIZE_ABNORMAL)**:
+1. 检查原始文本长度和HTML复杂度
+2. 查看 `context.chunkCount` 和 `context.averageSize`
+3. 优化措施：
+   - 简化HTML结构，移除冗余标签
+   - 调整 `MAX_CHUNK_SIZE` 配置（当前默认3000）
+   - 检查品牌词列表是否过于广泛
+
+**URL转换成功率过低 (LINK_CONVERSION_LOW_SUCCESS_RATE)**:
+1. 查看 `context.failedSamples` 了解失败案例
+2. 检查 Markets 配置：`/app/language-domains` 页面
+3. 验证域名配置：
+   ```bash
+   # 检查数据库中的 Markets 配置
+   sqlite3 prisma/dev.db "SELECT * FROM ShopSettings WHERE key='marketsConfig';"
+   ```
+4. 优化措施：
+   - 补全缺失的语言域名映射
+   - 检查 `primaryHost` 和 `primaryUrl` 是否正确
+   - 如需调试，临时启用 `aggressive` 策略观察差异
 
 ## 故障排查
 

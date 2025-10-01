@@ -19,9 +19,12 @@ import {
   Spinner,
   Banner,
   Box,
-  Divider
+  Divider,
+  Collapsible,
+  Checkbox,
+  ChoiceList
 } from "@shopify/polaris";
-import { LanguageIcon, LinkIcon, RefreshIcon, GlobeIcon } from '@shopify/polaris-icons';
+import { LanguageIcon, LinkIcon, RefreshIcon, GlobeIcon, ChevronDownIcon, ChevronUpIcon } from '@shopify/polaris-icons';
 import { useCallback, useState, useEffect } from "react";
 
 export const action = async ({ request }) => {
@@ -76,10 +79,9 @@ export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
   const {
     getMarketConfigWithCache,
-    getLanguageUrlsForDisplay,
+    getMarketsLanguagesGrouped,
     getUrlConversionSettings
   } = await import("../services/market-urls.server");
-  const { getShopLocales } = await import("../services/shopify-locales.server");
   const { logger } = await import("../utils/logger.server");
 
   try {
@@ -87,74 +89,40 @@ export const loader = async ({ request }) => {
 
     logger.info('加载语言域名页面', { shop: session.shop });
 
-    const marketsConfig = await getMarketConfigWithCache(session.shop, admin);
-
-    const [shopLocales, languageUrls, urlSettings] = await Promise.all([
-      getShopLocales(admin).catch(err => {
-        logger.error('获取店铺语言失败', err);
-        return [];
-      }),
-      getLanguageUrlsForDisplay(admin),
+    const [marketsLanguages, marketsConfig, urlSettings] = await Promise.all([
+      getMarketsLanguagesGrouped(admin),
+      getMarketConfigWithCache(session.shop, admin),
       getUrlConversionSettings(session.shop)
     ]);
 
-    const mergeLocaleMeta = (localeKey, marketConfig, locales) => {
-      const shopLocale = locales.find(l => l.locale === localeKey);
-      return {
-        locale: localeKey,
-        name: shopLocale?.name || marketConfig.marketName || localeKey,
-        primary: shopLocale?.primary || marketConfig.primary || false,
-        published: shopLocale?.published || false,
-        marketName: marketConfig.marketName,
-        type: marketConfig.type || 'unknown',
-        url: marketConfig.url || marketsConfig?.primaryUrl || '#',
-        path: marketConfig.path,
-        hasMarketConfig: true
-      };
-    };
+    const totalLanguages = marketsLanguages.reduce((sum, m) => sum + m.languageCount, 0);
 
-    let enhancedLanguageData = [];
-
-    if (marketsConfig?.mappings) {
-      enhancedLanguageData = Object.entries(marketsConfig.mappings)
-        .flatMap(([marketName, marketData]) => {
-          const { locales = [], ...rest } = marketData;
-          return locales.map(localeKey => {
-            const localeInfo = mergeLocaleMeta(localeKey, { ...rest, marketName }, shopLocales);
-            const urlInfo = languageUrls.find(item => item.locale === localeKey) || {};
-            return {
-              ...localeInfo,
-              ...urlInfo,
-              marketName,
-              localeKey
-            };
-          });
-        })
-        .sort((a, b) => {
-          if (a.primary) return -1;
-          if (b.primary) return 1;
-          return a.locale.localeCompare(b.locale);
-        });
-    }
+    logger.info('语言域名页面数据加载完成', {
+      marketsCount: marketsLanguages.length,
+      totalLanguages,
+      markets: marketsLanguages.map(m => `${m.marketName}(${m.languageCount})`).join(', ')
+    });
 
     return json({
-      languages: enhancedLanguageData,
+      marketsLanguages,
       marketsConfig,
       shopName: marketsConfig?.shopName || session.shop,
       primaryDomain: marketsConfig?.primaryUrl || `https://${session.shop}`,
-      hasMarketsConfig: !!marketsConfig,
-      marketsCount: marketsConfig?.markets?.length || 0,
+      hasMarketsConfig: !!marketsConfig && marketsLanguages.length > 0,
+      marketsCount: marketsLanguages.length,
+      totalLanguages,
       urlSettings
     });
   } catch (error) {
     logger.error('加载语言域名页面失败', error);
     return json({
-      languages: [],
+      marketsLanguages: [],
       marketsConfig: null,
       shopName: '',
       primaryDomain: '',
       hasMarketsConfig: false,
       marketsCount: 0,
+      totalLanguages: 0,
       error: error.message
     });
   }
@@ -162,18 +130,29 @@ export const loader = async ({ request }) => {
 
 export default function LanguageDomains() {
   const {
-    languages,
+    marketsLanguages,
     marketsConfig,
     shopName,
     primaryDomain,
     hasMarketsConfig,
     marketsCount,
+    totalLanguages,
+    urlSettings,
     error
   } = useLoaderData();
 
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [showMessage, setShowMessage] = useState(false);
+  const [openMarkets, setOpenMarkets] = useState({});
+
+  // 🆕 链接转换设置状态
+  const [enableLinkConversion, setEnableLinkConversion] = useState(
+    urlSettings?.enableLinkConversion || false
+  );
+  const [urlStrategy, setUrlStrategy] = useState(
+    urlSettings?.urlStrategy || 'conservative'
+  );
 
   // 监听同步成功后刷新数据
   useEffect(() => {
@@ -190,24 +169,35 @@ export default function LanguageDomains() {
     fetcher.submit({ action: 'sync' }, { method: 'post' });
   }, [fetcher]);
 
-  // 生成友好的市场-语言展示名称（保持小写）
-  const getMarketLanguageDisplay = (locale, marketName) => {
-    try {
-      // 解析locale格式 (如 en-de, zh-cn) - 保持小写
-      const parts = locale.toLowerCase().split('-');
-      const languageCode = parts[0];
-      const regionCode = parts[1];
+  // 🆕 保存链接转换设置
+  const handleSaveSettings = useCallback(() => {
+    const formData = new FormData();
+    formData.append('action', 'updateSettings');
+    formData.append('enableLinkConversion', enableLinkConversion.toString());
+    formData.append('urlStrategy', urlStrategy);
+    fetcher.submit(formData, { method: 'post' });
+  }, [fetcher, enableLinkConversion, urlStrategy]);
 
-      // 直接使用小写代码，不做转换
-      const regionDisplay = regionCode || marketName?.toLowerCase() || '未知';
-      const languageDisplay = languageCode;
-
-      return `${regionDisplay} · ${languageDisplay}`;
-    } catch (error) {
-      // 降级处理：返回小写的locale
-      return `${marketName?.toLowerCase() || '未知'} · ${locale.toLowerCase()}`;
+  // 默认展开primary市场
+  useEffect(() => {
+    if (marketsLanguages.length > 0 && Object.keys(openMarkets).length === 0) {
+      const primaryMarket = marketsLanguages.find(m => m.isPrimaryMarket);
+      if (primaryMarket) {
+        setOpenMarkets({ [primaryMarket.marketId]: true });
+      } else {
+        // 如果没有primary市场，展开第一个
+        setOpenMarkets({ [marketsLanguages[0].marketId]: true });
+      }
     }
-  };
+  }, [marketsLanguages]);
+
+  // 切换市场折叠/展开
+  const toggleMarket = useCallback((marketId) => {
+    setOpenMarkets(prev => ({
+      ...prev,
+      [marketId]: !prev[marketId]
+    }));
+  }, []);
 
   // 获取URL类型的徽章
   const getTypeBadge = (type) => {
@@ -222,70 +212,9 @@ export default function LanguageDomains() {
     const config = typeConfig[type] || typeConfig['unknown'];
     return <Badge status={config.status}>{config.label}</Badge>;
   };
-  
-  // 构建数据表格行
-  const rows = languages.map(lang => [
-    // 语言信息
-    <InlineStack gap="200" blockAlign="center">
-      <Box>
-        <Icon source={LanguageIcon} />
-      </Box>
-      <BlockStack gap="0">
-        <Text variant="bodyMd" fontWeight="semibold">
-          {lang.name}
-        </Text>
-        <Text variant="bodySm" color="subdued">
-          {lang.locale}
-        </Text>
-      </BlockStack>
-      {lang.primary && <Badge status="info">默认</Badge>}
-    </InlineStack>,
 
-    // 市场说明（友好格式）
-    <Text variant="bodyMd" fontWeight="semibold">
-      {getMarketLanguageDisplay(lang.locale, lang.marketName)}
-    </Text>,
-
-    // URL配置
-    <BlockStack gap="100">
-      <InlineStack gap="100" blockAlign="center">
-        <Box>
-          <Icon source={LinkIcon} color="subdued" />
-        </Box>
-        <Text variant="bodySm" as="span" breakWord>
-          {lang.url}
-        </Text>
-      </InlineStack>
-      {lang.path && (
-        <Text variant="bodySm" color="subdued">
-          路径: {lang.path}
-        </Text>
-      )}
-    </BlockStack>,
-
-    // 类型
-    getTypeBadge(lang.type),
-
-    // 状态
-    lang.published ?
-      <Badge status="success">已发布</Badge> :
-      <Badge status="critical">未发布</Badge>,
-
-    // 操作
-    <InlineStack gap="100">
-      <Button
-        size="slim"
-        url={lang.url}
-        external
-        disabled={!lang.hasMarketConfig || lang.type === 'unknown'}
-      >
-        访问
-      </Button>
-    </InlineStack>
-  ]);
-  
   // 空状态
-  if (!languages || languages.length === 0) {
+  if (!marketsLanguages || marketsLanguages.length === 0) {
     return (
       <Page
         title="语言域名配置"
@@ -350,20 +279,18 @@ export default function LanguageDomains() {
                 </BlockStack>
 
                 <BlockStack gap="050">
-                  <Text variant="bodySm" color="subdued">语言</Text>
+                  <Text variant="bodySm" color="subdued">市场</Text>
                   <Text variant="bodyMd" fontWeight="semibold">
-                    {languages.length} 种
+                    {marketsCount} 个
                   </Text>
                 </BlockStack>
 
-                {marketsCount > 0 && (
-                  <BlockStack gap="050">
-                    <Text variant="bodySm" color="subdued">市场</Text>
-                    <Text variant="bodyMd" fontWeight="semibold">
-                      {marketsCount} 个
-                    </Text>
-                  </BlockStack>
-                )}
+                <BlockStack gap="050">
+                  <Text variant="bodySm" color="subdued">总语言数</Text>
+                  <Text variant="bodyMd" fontWeight="semibold">
+                    {totalLanguages} 种
+                  </Text>
+                </BlockStack>
               </InlineStack>
 
               {marketsConfig?.timestamp && (
@@ -379,19 +306,161 @@ export default function LanguageDomains() {
             </InlineStack>
           </Card>
         )}
-        
-        {/* 语言域名映射表 */}
-        <Card>
-          <BlockStack gap="200">
-            <Text variant="headingMd">语言域名映射</Text>
-            <DataTable
-              columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
-              headings={['语言', '市场说明', 'URL配置', '类型', '状态', '操作']}
-              rows={rows}
-              hoverable
-            />
-          </BlockStack>
-        </Card>
+
+        {/* 🆕 链接转换设置 */}
+        {hasMarketsConfig && (
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <BlockStack gap="100">
+                  <Text variant="headingMd" fontWeight="semibold">
+                    链接转换设置
+                  </Text>
+                  <Text variant="bodySm" color="subdued">
+                    翻译时自动转换内链到对应语言的URL
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+
+              <Divider />
+
+              <BlockStack gap="400">
+                <Checkbox
+                  label="启用链接转换"
+                  checked={enableLinkConversion}
+                  onChange={setEnableLinkConversion}
+                  helpText="翻译内容时自动将内部链接转换为目标语言的URL"
+                />
+
+                {enableLinkConversion && (
+                  <ChoiceList
+                    title="转换策略"
+                    choices={[
+                      {
+                        label: '保守模式',
+                        value: 'conservative',
+                        helpText: '只转换明确匹配的域名和路径'
+                      },
+                      {
+                        label: '激进模式',
+                        value: 'aggressive',
+                        helpText: '尝试转换更多链接，可能误转换外部链接'
+                      }
+                    ]}
+                    selected={[urlStrategy]}
+                    onChange={(value) => setUrlStrategy(value[0])}
+                  />
+                )}
+
+                <InlineStack align="end">
+                  <Button
+                    onClick={handleSaveSettings}
+                    loading={fetcher.state !== 'idle'}
+                    variant="primary"
+                  >
+                    保存设置
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </BlockStack>
+          </Card>
+        )}
+
+        {/* 按市场分组的语言配置 */}
+        {marketsLanguages.map(market => (
+          <Card key={market.marketId}>
+            <BlockStack gap="300">
+              {/* 市场头部 - 可点击展开/折叠 */}
+              <Box
+                as="button"
+                onClick={() => toggleMarket(market.marketId)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="300" blockAlign="center">
+                    <Icon
+                      source={openMarkets[market.marketId] ? ChevronUpIcon : ChevronDownIcon}
+                    />
+                    <Icon source={GlobeIcon} />
+                    <Text variant="headingMd" fontWeight="semibold">
+                      {market.marketName}
+                    </Text>
+                    <Badge>
+                      {market.languageCount} 种语言
+                    </Badge>
+                    {market.isPrimaryMarket && (
+                      <Badge status="success">主市场</Badge>
+                    )}
+                  </InlineStack>
+                </InlineStack>
+              </Box>
+
+              {/* 语言列表 - 可折叠 */}
+              <Collapsible
+                open={openMarkets[market.marketId] || false}
+                id={`market-${market.marketId}`}
+                transition={{ duration: '200ms', timingFunction: 'ease-in-out' }}
+              >
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text', 'text', 'text']}
+                  headings={['语言', 'URL配置', '类型', '状态', '操作']}
+                  rows={market.languages.map(lang => [
+                    // 语言信息
+                    <InlineStack gap="200" blockAlign="center" key={`lang-${lang.locale}`}>
+                      <Icon source={LanguageIcon} />
+                      <BlockStack gap="0">
+                        <Text variant="bodyMd" fontWeight="semibold">{lang.name}</Text>
+                        <Text variant="bodySm" color="subdued">{lang.locale}</Text>
+                      </BlockStack>
+                      {lang.primary && <Badge status="info">默认</Badge>}
+                      {lang.isAlternate && <Badge>备选</Badge>}
+                    </InlineStack>,
+
+                    // URL配置
+                    <BlockStack gap="100" key={`url-${lang.locale}`}>
+                      <InlineStack gap="100" blockAlign="center">
+                        <Icon source={LinkIcon} color="subdued" />
+                        <Text variant="bodySm" breakWord>{lang.url}</Text>
+                      </InlineStack>
+                      {lang.path && (
+                        <Text variant="bodySm" color="subdued">
+                          路径: {lang.path}
+                        </Text>
+                      )}
+                    </BlockStack>,
+
+                    // 类型
+                    getTypeBadge(lang.type),
+
+                    // 状态
+                    lang.published ?
+                      <Badge status="success">已发布</Badge> :
+                      <Badge status="critical">未发布</Badge>,
+
+                    // 操作
+                    <Button
+                      key={`action-${lang.locale}`}
+                      size="slim"
+                      url={lang.url}
+                      external
+                      disabled={lang.type === 'unknown'}
+                    >
+                      访问
+                    </Button>
+                  ])}
+                  hoverable
+                />
+              </Collapsible>
+            </BlockStack>
+          </Card>
+        ))}
         
         {/* 简化的配置说明 */}
         <Card>

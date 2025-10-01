@@ -123,7 +123,21 @@ export const config = {
     monitoringEnabled: getEnvVar('TRANSLATION_HOOKS_MONITORING', 'true', 'boolean'),
     enableShopIdFilter: getEnvVar('TRANSLATION_HOOKS_SHOP_FILTER', '').split(',').filter(Boolean)
   },
+
+  // 链接转换配置
+  linkConversion: {
+    enabled: getEnvVar('LINK_CONVERSION_ENABLED', false, 'boolean'),
+    strategy: getEnvVar('LINK_CONVERSION_STRATEGY', 'conservative', 'string')
+  },
 };
+
+/**
+ * 获取应用配置对象
+ * @returns {Object} 配置对象
+ */
+export function getConfig() {
+  return config;
+}
 
 /**
  * 验证必需的环境变量

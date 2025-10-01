@@ -10,6 +10,7 @@ import { MemoryQueue } from './memory-queue.server.js';
 import { collectError, ERROR_TYPES } from './error-collector.server.js';
 import { createShopRedisConfig, parseRedisUrl } from '../utils/redis-parser.server.js';
 import { logger } from '../utils/logger.server.js';
+import { getLinkConversionConfig } from './market-urls.server.js';
 
 /**
  * Redis任务队列服务
@@ -471,7 +472,26 @@ async function handleTranslateResource(job) {
 
     const admin = createAdminClient(shop.domain, shop.accessToken);
 
-    const translationResult = await translateResource(resource, language, { admin });
+    // 🆕 动态获取链接转换配置
+    const linkConversionConfig = await getLinkConversionConfig(
+      shop.domain,
+      admin,
+      language
+    ).catch(err => {
+      logger.warn('获取链接转换配置失败，将跳过链接转换', err);
+      return null;  // 降级处理
+    });
+
+    // 🆕 构建翻译选项
+    const translationOptions = {
+      admin,
+      shopId: shop.domain
+    };
+    if (linkConversionConfig) {
+      translationOptions.linkConversion = linkConversionConfig;
+    }
+
+    const translationResult = await translateResource(resource, language, translationOptions);
     job.progress(50);
 
     if (translationResult.skipped) {

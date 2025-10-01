@@ -1,4 +1,3 @@
-# Shopify App Configuration for Shop2 (OneWindOutdoors)
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "8102af9807fd9df0b322a44f500a1d0e"
@@ -43,6 +42,23 @@ api_version = "2025-07"
   topics = [ "collections/update" ]
   uri = "/webhooks/collection/update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "collections/delete" ]
+  uri = "/webhooks/collection/delete"
+
+  # 页面相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "pages/create" ]
+  uri = "/webhooks/page/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "pages/update" ]
+  uri = "/webhooks/page/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "pages/delete" ]
+  uri = "/webhooks/page/delete"
+
   # 主题相关webhook
   [[webhooks.subscriptions]]
   topics = [ "themes/publish" ]
@@ -61,9 +77,22 @@ api_version = "2025-07"
   topics = [ "locales/update" ]
   uri = "/webhooks/locale/update"
 
+  # 博客文章相关webhook
+  [[webhooks.subscriptions]]
+  topics = [ "articles/create" ]
+  uri = "/webhooks/article/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "articles/update" ]
+  uri = "/webhooks/article/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "articles/delete" ]
+  uri = "/webhooks/article/delete"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_translations,read_locales,write_locales"
+scopes = "read_markets,read_content,read_files,read_locales,read_online_store_pages,read_products,read_themes,read_translations,write_content,write_files,write_locales,write_online_store_pages,write_products,write_themes,write_translations,write_markets"
 
 [auth]
 redirect_urls = [
