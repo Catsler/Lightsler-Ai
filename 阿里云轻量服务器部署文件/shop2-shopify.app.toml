@@ -46,18 +46,6 @@ api_version = "2025-07"
   topics = [ "collections/delete" ]
   uri = "/webhooks/collection/delete"
 
-  # 页面相关webhook
-  [[webhooks.subscriptions]]
-  topics = [ "pages/create" ]
-  uri = "/webhooks/page/create"
-
-  [[webhooks.subscriptions]]
-  topics = [ "pages/update" ]
-  uri = "/webhooks/page/update"
-
-  [[webhooks.subscriptions]]
-  topics = [ "pages/delete" ]
-  uri = "/webhooks/page/delete"
 
   # 主题相关webhook
   [[webhooks.subscriptions]]
@@ -77,18 +65,6 @@ api_version = "2025-07"
   topics = [ "locales/update" ]
   uri = "/webhooks/locale/update"
 
-  # 博客文章相关webhook
-  [[webhooks.subscriptions]]
-  topics = [ "articles/create" ]
-  uri = "/webhooks/article/create"
-
-  [[webhooks.subscriptions]]
-  topics = [ "articles/update" ]
-  uri = "/webhooks/article/update"
-
-  [[webhooks.subscriptions]]
-  topics = [ "articles/delete" ]
-  uri = "/webhooks/article/delete"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
