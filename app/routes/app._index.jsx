@@ -395,16 +395,48 @@ function Index() {
   const isTranslating = translateFetcher.state === 'submitting';
   const isClearing = clearFetcher.state === 'submitting';
 
-  // 加载状态 - 添加错误重试机制和filterMode参数
-  const loadStatus = useCallback((lang = selectedLanguage, mode = viewMode) => {
-    try {
-      statusFetcher.load(`/api/status?language=${lang}&filterMode=${mode}${shopQueryParam ? `&${shopQueryParam}` : ''}`);
-    } catch (error) {
-      console.error('状态加载失败:', error);
-      addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
-      setAppBridgeError(true);
-    }
-  }, [addLog, selectedLanguage, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 🔧 使用 useRef 稳定 loadStatus，避免循环依赖
+  const loadStatusRef = useRef();
+  const loadStatusAbortController = useRef(null);
+
+  // 更新 ref 实现（依赖变化时更新）
+  useEffect(() => {
+    loadStatusRef.current = (lang = selectedLanguage, mode = viewMode, force = false) => {
+      try {
+        // 取消之前的请求（去重）
+        if (loadStatusAbortController.current) {
+          loadStatusAbortController.current.abort();
+        }
+        loadStatusAbortController.current = new AbortController();
+
+        const params = new URLSearchParams();
+        params.set('language', lang);
+        params.set('filterMode', mode);
+        if (force) params.set('force', '1');
+        if (shopId) params.set('shop', shopId);
+
+        statusFetcher.load(`/api/status?${params.toString()}`);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('状态加载失败:', error);
+          addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
+          setAppBridgeError(true);
+        }
+      }
+    };
+  }, [addLog, selectedLanguage, viewMode, statusFetcher, shopId]);
+
+  // 创建稳定的 loadStatus 包装函数
+  const loadStatus = useCallback((...args) => {
+    loadStatusRef.current?.(...args);
+  }, []);
+
+  // 清理函数
+  useEffect(() => {
+    return () => {
+      loadStatusAbortController.current?.abort();
+    };
+  }, []);
 
   // 处理API响应
   // 状态比较和去重处理函数
@@ -665,18 +697,18 @@ function Index() {
       // 根据当前状态调整轮询频率
       const isActiveOperation = isScanning || isTranslating || isClearing || isPublishing;
       const currentInterval = isActiveOperation ? 10000 : 60000; // 操作中10秒，空闲60秒
-      
+
       if (currentInterval !== pollInterval) {
         setPollInterval(currentInterval);
       }
-      
+
       if (!isActiveOperation) {
         loadStatus();
       }
     }, pollInterval);
-    
+
     return () => clearInterval(interval);
-  }, [pollInterval, isScanning, isTranslating, isClearing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pollInterval, isScanning, isTranslating, isClearing, isPublishing, loadStatus]); // ✅ 修复依赖数组
 
   // 扫描产品
   const scanProducts = useCallback(() => {
@@ -1182,7 +1214,22 @@ function Index() {
                 <BlockStack gap="300">
                   <Text as="h3" variant="headingMd">服务状态</Text>
                   {getTranslationServiceStatus()}
-                  
+
+                  {translationService.status === 'unhealthy' && (
+                    <Banner tone="critical" title="翻译服务不可用">
+                      <BlockStack gap="200">
+                        <Text variant="bodySm">
+                          {translationService.errors?.[0] || '无法连接到翻译服务，请稍后重试。'}
+                        </Text>
+                        <InlineStack gap="200">
+                          <Button size="slim" onClick={() => loadStatus(selectedLanguage, viewMode, true)}>
+                            重试健康检查
+                          </Button>
+                        </InlineStack>
+                      </BlockStack>
+                    </Banner>
+                  )}
+
                   {translationService.warnings && translationService.warnings.length > 0 && (
                     <BlockStack gap="200">
                       {translationService.warnings.map((warning, index) => (
