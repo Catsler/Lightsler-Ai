@@ -6,9 +6,15 @@
 import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-// 确保日志目录存在
-const logsDir = path.join(process.cwd(), 'logs');
+// 获取项目根目录的绝对路径
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '../..');
+
+// 确保日志目录存在（使用绝对路径）
+const logsDir = path.join(PROJECT_ROOT, 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }

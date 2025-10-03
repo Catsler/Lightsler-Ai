@@ -70,16 +70,16 @@ import {
 import { recordTranslationCall, getTranslationMetrics } from './metrics.server.js';
 
 // 导入crypto用于生成哈希
-import crypto from 'crypto';
-
-// 🆕 占位符回退统计（内存存储，重启清空）
-const placeholderFallbackStats = new Map(); // { language: count }
+import crypto from 'crypto'; // { language: count }
 
 // 导入Sequential Thinking核心服务
 import {
   DecisionEngine,
   TranslationScheduler
 } from '../sequential-thinking-core.server.js';
+
+// 🆕 占位符回退统计（内存存储，重启清空）
+const placeholderFallbackStats = new Map();
 
 const translationLogger = createTranslationLogger('TRANSLATION');
 
@@ -1649,8 +1649,9 @@ async function testTranslationAPI() {
 /**
  * 获取翻译服务状态
  */
-export async function getTranslationServiceStatus() {
-  const configCheck = await validateTranslationConfig();
+export async function getTranslationServiceStatus(options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh);
+  const configCheck = await validateTranslationConfig(forceRefresh);
   
   return {
     status: configCheck.valid ? 'healthy' : 'unhealthy',

@@ -120,4 +120,29 @@ if [ $ADDED_COUNT -gt 0 ]; then
     grep -Ff <(grep -E '^[A-Z_]+=' "$TEMPLATE_FILE" | cut -d= -f1) "$ENV_FILE" | tail -n $ADDED_COUNT
 fi
 
+# 检查关键变量的配置差异
+echo ""
+log "检查关键配置差异..."
+CRITICAL_VARS=("REDIS_URL" "QUEUE_CONCURRENCY" "NODE_ENV" "GPT_MODEL" "DATABASE_URL")
+DIFF_FOUND=false
+
+for var in "${CRITICAL_VARS[@]}"; do
+    OLD_VALUE=$(grep "^${var}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
+    NEW_VALUE=$(grep "^${var}=" "$TEMPLATE_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
+
+    if [ -n "$NEW_VALUE" ] && [ "$OLD_VALUE" != "$NEW_VALUE" ]; then
+        if [ "$DIFF_FOUND" = false ]; then
+            warning "发现以下配置差异，请确认是否需要手动更新："
+            DIFF_FOUND=true
+        fi
+        echo "  📝 $var:"
+        echo "     当前值: $OLD_VALUE"
+        echo "     模板值: $NEW_VALUE"
+    fi
+done
+
+if [ "$DIFF_FOUND" = false ]; then
+    success "关键配置无差异"
+fi
+
 success "环境变量合并成功完成！"

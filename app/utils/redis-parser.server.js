@@ -131,8 +131,7 @@ export function createShopRedisConfig(url, shopId, options = {}) {
     ...baseConfig,
     db: shopIndex,
     // 添加店铺标识到选项中
-    shopId,
-    keyPrefix: `shop:${shopId}:`
+    shopId
   };
 }
 

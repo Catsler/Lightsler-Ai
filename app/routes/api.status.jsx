@@ -13,6 +13,8 @@ import { createApiRoute } from "../utils/base-route.server.js";
  */
 async function handleGetStatus({ session, params }) {
   const targetLanguage = params.language;
+  const forceRefresh = params.force === '1' || params.force === 'true' ||
+    params.forceRefresh === '1' || params.forceRefresh === 'true';
   const filterMode = params.filterMode || 'all';
 
   // 获取店铺记录
@@ -28,7 +30,7 @@ async function handleGetStatus({ session, params }) {
   const queueStats = await getQueueStats();
 
   // 获取翻译服务状态和统计
-  const translationServiceStatus = await getTranslationServiceStatus();
+  const translationServiceStatus = await getTranslationServiceStatus({ forceRefresh });
   const translationServiceStats = getTranslationServiceStats();
 
   // 获取资源列表（支持语言和过滤模式）
@@ -102,7 +104,8 @@ async function handleGetStatus({ session, params }) {
     filterMode,  // 返回当前过滤模式
     translationService: {
       ...translationServiceStatus,
-      stats: translationServiceStats
+      stats: translationServiceStats,
+      forceRefreshApplied: forceRefresh
     },
     summary: resourceSummary,
     resources: normalizedResources

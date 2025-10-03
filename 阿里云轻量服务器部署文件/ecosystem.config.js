@@ -81,6 +81,37 @@ module.exports = {
     },
 
     {
+      name: 'shop1-translation-worker',
+      script: 'node',
+      args: 'scripts/translation-queue-worker.js',
+      cwd: '/var/www/app1-fynony',
+      env: {
+        NODE_ENV: 'production',
+        NODE_OPTIONS: '--max-old-space-size=768',
+        SHOP_ID: 'shop1',
+        SHOP_PREFIX: 'shop1',
+        REDIS_URL: process.env.REDIS_URL,
+        REDIS_ENABLED: 'true',
+        QUEUE_CONCURRENCY: process.env.QUEUE_CONCURRENCY || '2',
+        GPT_API_KEY: process.env.GPT_API_KEY,
+        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
+        ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
+        UV_THREADPOOL_SIZE: '4',
+        QUEUE_ROLE: 'worker'
+      },
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1024M',
+      log_file: './logs/shop1-worker-combined.log',
+      out_file: './logs/shop1-worker-out.log',
+      error_file: './logs/shop1-worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true
+    },
+
+    {
       name: 'shop2-onewind',
       script: 'npm',
       args: 'start',
@@ -152,6 +183,37 @@ module.exports = {
         NODE_OPTIONS: '--max-old-space-size=1536',
         PORT: 3002
       }
+    },
+
+    {
+      name: 'shop2-translation-worker',
+      script: 'node',
+      args: 'scripts/translation-queue-worker.js',
+      cwd: '/var/www/app2-onewind',
+      env: {
+        NODE_ENV: 'production',
+        NODE_OPTIONS: '--max-old-space-size=768',
+        SHOP_ID: 'shop2',
+        SHOP_PREFIX: 'shop2',
+        REDIS_URL: process.env.REDIS_URL,
+        REDIS_ENABLED: 'true',
+        QUEUE_CONCURRENCY: process.env.QUEUE_CONCURRENCY || '2',
+        GPT_API_KEY: process.env.GPT_API_KEY,
+        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
+        ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
+        UV_THREADPOOL_SIZE: '4',
+        QUEUE_ROLE: 'worker'
+      },
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1024M',
+      log_file: './logs/shop2-worker-combined.log',
+      out_file: './logs/shop2-worker-out.log',
+      error_file: './logs/shop2-worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true
     }
   ],
 

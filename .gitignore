@@ -13,6 +13,8 @@ database.sqlite
 
 .env
 .env.*
+!.env.example
+!.env.shared.example
 
 # Temporary and test files
 test-*.js
@@ -56,3 +58,11 @@ test-results/
 *.backup-*
 *.db.backup
 dev.sqlite.backup*
+
+# Shop configurations (multi-tenant)
+shop*/.env
+!shop*/.env.example
+shop*/dev.sqlite
+shop*/dev.sqlite-journal
+shop*/*.sqlite
+shop*/*.sqlite-journal

@@ -8,7 +8,7 @@ set -euo pipefail
 SERVER_IP="47.79.77.128"
 SERVER_USER="root"
 SSH_KEY="/Users/elie/Downloads/shopify.pem"
-BIND_IP="192.168.31.152"
+BIND_IP="192.168.31.83"
 
 # 服务器路径
 REMOTE_BASE="/var/www"
@@ -25,6 +25,13 @@ LOCAL_DEPLOY_FILES="$LOCAL_PROJECT/阿里云轻量服务器部署文件"
 # PM2 进程名
 PM2_SHOP1="shop1-fynony"
 PM2_SHOP2="shop2-onewind"
+PM2_SHOP1_WORKER="shop1-translation-worker"
+PM2_SHOP2_WORKER="shop2-translation-worker"
+
+# ============ 监控配置 ============
+QUEUE_BACKLOG_THRESHOLD=100    # 队列积压阈值
+HEALTH_SLEEP_SECONDS=30        # 健康检查等待时间
+LOG_SCAN_LINES=50              # 日志扫描行数
 
 # ============ 颜色定义 ============
 RED='\033[0;31m'
@@ -101,13 +108,13 @@ stop_apps() {
     phase "Phase 1: 停止应用进程"
 
     log "停止 PM2 进程..."
-    ssh_cmd "pm2 stop $PM2_SHOP1 $PM2_SHOP2 || true"
+    ssh_cmd "pm2 stop $PM2_SHOP1 $PM2_SHOP2 $PM2_SHOP1_WORKER $PM2_SHOP2_WORKER || true"
 
     # 等待进程完全停止
     sleep 3
 
     # 验证进程已停止
-    if ssh_cmd "pm2 list | grep -E '$PM2_SHOP1|$PM2_SHOP2' | grep -q 'online'"; then
+    if ssh_cmd "pm2 list | grep -E '$PM2_SHOP1|$PM2_SHOP2|$PM2_SHOP1_WORKER|$PM2_SHOP2_WORKER' | grep -q 'online'"; then
         error "进程未能完全停止"
         exit 1
     fi
@@ -248,15 +255,15 @@ update_configs() {
 install_deps() {
     phase "Phase 5: 安装依赖包"
 
-    log "安装 Shop1 依赖..."
-    ssh_cmd "cd $REMOTE_SHOP1 && npm install --production" || {
+    log "安装 Shop1 依赖（包含 devDependencies 用于构建和迁移）..."
+    ssh_cmd "cd $REMOTE_SHOP1 && npm ci" || {
         error "Shop1 依赖安装失败"
         exit 1
     }
     success "Shop1 依赖安装完成"
 
-    log "安装 Shop2 依赖..."
-    ssh_cmd "cd $REMOTE_SHOP2 && npm install --production" || {
+    log "安装 Shop2 依赖（包含 devDependencies 用于构建和迁移）..."
+    ssh_cmd "cd $REMOTE_SHOP2 && npm ci" || {
         error "Shop2 依赖安装失败"
         exit 1
     }
@@ -292,31 +299,93 @@ run_migrations() {
 
 # 启动应用
 start_apps() {
-    phase "Phase 7: 启动应用"
+    phase "Phase 7: 启动应用（零停机重启）"
 
-    log "启动 PM2 进程..."
-    ssh_cmd "cd $REMOTE_BASE && pm2 start $PM2_SHOP1 $PM2_SHOP2" || {
-        error "应用启动失败"
+    log "尝试 PM2 reload（零停机）..."
+    if ssh_cmd "cd $REMOTE_BASE && pm2 reload $REMOTE_ECOSYSTEM --only $PM2_SHOP1,$PM2_SHOP2,$PM2_SHOP1_WORKER,$PM2_SHOP2_WORKER --update-env" 2>/dev/null; then
+        success "PM2 reload 成功（零停机）"
+    else
+        warning "PM2 reload 失败（可能首次部署），使用 pm2 start..."
+        ssh_cmd "cd $REMOTE_BASE && pm2 start $REMOTE_ECOSYSTEM --only $PM2_SHOP1,$PM2_SHOP2,$PM2_SHOP1_WORKER,$PM2_SHOP2_WORKER" || {
+            error "应用启动失败"
+            exit 1
+        }
+    fi
+
+    log "等待进程启动..."
+    sleep 5
+
+    # 关卡1：验证进程在线
+    log "验证进程状态..."
+    ONLINE_COUNT=$(ssh_cmd "pm2 list | grep -E '$PM2_SHOP1|$PM2_SHOP2|$PM2_SHOP1_WORKER|$PM2_SHOP2_WORKER' | grep -c 'online'")
+    if [ "$ONLINE_COUNT" -ne 4 ]; then
+        error "进程启动异常（预期4个online，实际${ONLINE_COUNT}个）"
+        ssh_cmd "pm2 list"
+        echo ""
+        echo "📌 修复后重新运行：./deploy-to-aliyun.sh"
         exit 1
-    }
+    fi
+    success "所有进程已启动"
+
+    # 关卡2：验证 Worker 初始化成功
+    log "验证 Shop1 Worker 初始化..."
+    if ! ssh_cmd "pm2 logs $PM2_SHOP1_WORKER --lines $LOG_SCAN_LINES --nostream | grep -q 'worker ready'"; then
+        error "Shop1 Worker 未成功初始化"
+        ssh_cmd "pm2 logs $PM2_SHOP1_WORKER --err --lines 30 --nostream"
+        echo ""
+        echo "📌 修复后重新运行：./deploy-to-aliyun.sh"
+        exit 1
+    fi
+
+    log "验证 Shop2 Worker 初始化..."
+    if ! ssh_cmd "pm2 logs $PM2_SHOP2_WORKER --lines $LOG_SCAN_LINES --nostream | grep -q 'worker ready'"; then
+        error "Shop2 Worker 未成功初始化"
+        ssh_cmd "pm2 logs $PM2_SHOP2_WORKER --err --lines 30 --nostream"
+        echo ""
+        echo "📌 修复后重新运行：./deploy-to-aliyun.sh"
+        exit 1
+    fi
+    success "Worker 初始化成功"
+
+    # 关卡3：验证 Redis 模式
+    log "检查 Shop1 队列模式..."
+    if ssh_cmd "pm2 logs $PM2_SHOP1 --lines $LOG_SCAN_LINES --nostream | grep -q '内存模式'" && \
+       ssh_cmd "pm2 logs $PM2_SHOP1_WORKER --lines $LOG_SCAN_LINES --nostream | grep -q '内存模式'"; then
+        error "Shop1 队列运行在内存模式（Redis 不可用）"
+        echo ""
+        echo "诊断步骤："
+        echo "  redis-cli ping"
+        echo "  systemctl status redis"
+        echo "  cat /var/www/app1-fynony/.env | grep REDIS_URL"
+        echo ""
+        echo "📌 修复 Redis 后重新运行：./deploy-to-aliyun.sh"
+        exit 1
+    fi
+
+    log "检查 Shop2 队列模式..."
+    if ssh_cmd "pm2 logs $PM2_SHOP2 --lines $LOG_SCAN_LINES --nostream | grep -q '内存模式'" && \
+       ssh_cmd "pm2 logs $PM2_SHOP2_WORKER --lines $LOG_SCAN_LINES --nostream | grep -q '内存模式'"; then
+        error "Shop2 队列运行在内存模式（Redis 不可用）"
+        echo ""
+        echo "📌 修复 Redis 后重新运行：./deploy-to-aliyun.sh"
+        exit 1
+    fi
+    success "队列运行在 Redis 模式"
 
     log "保存 PM2 配置..."
     ssh_cmd "pm2 save"
 
     success "应用启动完成"
-
-    # 显示状态
-    log "PM2 进程状态："
-    ssh_cmd "pm2 list"
 }
 
 # 健康检查
 health_check() {
     phase "Phase 8: 健康检查"
 
-    log "等待应用启动（30秒）..."
-    sleep 30
+    log "等待应用启动（${HEALTH_SLEEP_SECONDS}秒）..."
+    sleep $HEALTH_SLEEP_SECONDS
 
+    # 端点探测
     log "检查 Shop1 (端口3001)..."
     if ssh_cmd "curl -sf http://localhost:3001/api/status > /dev/null"; then
         success "Shop1 健康检查通过"
@@ -333,6 +402,25 @@ health_check() {
         ssh_cmd "pm2 logs $PM2_SHOP2 --lines 20 --nostream"
     fi
 
+    # 队列深度
+    log "检查队列深度..."
+    QUEUE_DEPTH=$(ssh_cmd "redis-cli --scan --pattern 'bull:translation_*:wait' | xargs -I{} redis-cli LLEN {} 2>/dev/null | awk '{s+=\$1} END {print s}'")
+
+    if [ -z "$QUEUE_DEPTH" ]; then
+        warning "无法获取队列深度（可能 Redis 不可用）"
+    elif [ "$QUEUE_DEPTH" -gt "$QUEUE_BACKLOG_THRESHOLD" ]; then
+        warning "队列积压较多：${QUEUE_DEPTH} 个任务（阈值: ${QUEUE_BACKLOG_THRESHOLD}）"
+        echo "  建议：检查 Worker 日志确认是否正常消费"
+        echo "  命令：pm2 logs $PM2_SHOP1_WORKER --lines 50"
+    else
+        success "队列深度正常：${QUEUE_DEPTH} 个任务"
+    fi
+
+    # Worker 状态
+    log "检查队列 Worker 状态..."
+    ssh_cmd "pm2 list | grep -E '$PM2_SHOP1_WORKER|$PM2_SHOP2_WORKER'"
+
+    # 日志速览
     log "查看最近日志..."
     ssh_cmd "pm2 logs --lines 10 --nostream"
 }
@@ -367,6 +455,8 @@ show_next_steps() {
     echo "5️⃣  监控应用："
     echo "   pm2 monit"
     echo "   pm2 logs"
+    echo "   pm2 logs $PM2_SHOP1_WORKER --lines 20"
+    echo "   pm2 logs $PM2_SHOP2_WORKER --lines 20"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }

@@ -1,7 +1,7 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
 import { translateResource } from './translation.server.js';
-import shopify from '../shopify.server.js';
+import shopify, { apiVersion } from '../shopify.server.js';
 import { updateResourceTranslation } from './shopify-graphql.server.js';
 import { saveTranslation, updateResourceStatus, prisma } from './database.server.js';
 // import { authenticate } from '../shopify.server.js'; // 只在需要时导入
@@ -34,7 +34,7 @@ if (config.redis.enabled && process.env.REDIS_URL) {
     lazyConnect: true,
 
     // 队列专用优化
-    enableOfflineQueue: false,
+    enableOfflineQueue: true,
     retryDelayOnFailover: 500,
 
     // 错误处理
@@ -124,36 +124,30 @@ function createAdminClient(shopDomain, accessToken) {
     throw new Error(`店铺 ${shopDomain} 缺少 accessToken，无法创建 Shopify Admin 客户端`);
   }
 
-  const configuredScopes = Array.isArray(shopify.api?.config?.scopes)
-    ? shopify.api.config.scopes.join(',')
-    : (shopify.api?.config?.scopes || process.env.SCOPES || '');
+  const apiVersionToUse = shopify.api?.config?.apiVersion || apiVersion || '2025-01';
+  const endpoint = `https://${shopDomain}/admin/api/${apiVersionToUse}/graphql.json`;
 
-  const session = {
-    id: `offline_${shopDomain}`,
-    shop: shopDomain,
-    state: 'offline',
-    isOnline: false,
-    scope: configuredScopes,
-    accessToken
+  const graphql = async (query, options = {}) => {
+    const body = {
+      query: typeof query === 'string' ? query : String(query),
+      ...(options?.variables ? { variables: options.variables } : {})
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': accessToken,
+        ...(options?.headers || {})
+      },
+      body: JSON.stringify(body),
+      signal: options?.signal
+    });
+
+    return response;
   };
 
-  const graphqlClient = new shopify.api.clients.Graphql({
-    session,
-    apiVersion: shopify.api?.config?.apiVersion
-  });
-
-  return {
-    graphql: async (query, options = {}) => {
-      const result = await graphqlClient.request(query, {
-        variables: options?.variables,
-        retries: options?.tries ? options.tries - 1 : 0,
-        headers: options?.headers,
-        signal: options?.signal
-      });
-
-      return new Response(JSON.stringify(result));
-    }
-  };
+  return { graphql };
 }
 
 const processorDefinitions = [];
@@ -223,7 +217,15 @@ function ensureProcessorDefinitions() {
 }
 
 function registerProcessors(queue) {
+  // 🔍 临时调试日志 - 验证processor注册情况（验证后删除）
+  logger.info('[Queue] registerProcessors', {
+    queueType: queue?.constructor?.name,
+    hasProcess: typeof queue?.process,
+    shopId: SHOP_ID
+  });
+
   if (!queue || typeof queue.process !== 'function') {
+    logger.warn('[Queue] registerProcessors skipped - invalid queue');
     return;
   }
 
@@ -236,8 +238,16 @@ function registerProcessors(queue) {
       ? (job) => handler(job, queue)
       : handler;
 
+    // 🔍 临时调试日志 - 验证processor注册（验证后删除）
+    logger.info('[Queue] Registering processor', {
+      name: definition.name,
+      concurrency
+    });
+
     queue.process(definition.name, concurrency, boundHandler);
   }
+
+  logger.info('[Queue] All processors registered successfully');
 }
 
 function attachLifecycleEvents(queue) {
@@ -246,6 +256,19 @@ function attachLifecycleEvents(queue) {
   }
 
   attachedQueues.add(queue);
+
+  // 🔍 临时调试事件 - 验证Bull queue是否工作（验证后删除）
+  queue.on('waiting', (jobId) => {
+    logger.info('[Queue Event] waiting', { jobId });
+  });
+
+  queue.on('active', (job) => {
+    logger.info('[Queue Event] active', { jobId: job?.id, name: job?.name });
+  });
+
+  queue.on('stalled', (job) => {
+    logger.warn('[Queue Event] stalled', { jobId: job?.id, name: job?.name });
+  });
 
   queue.on('error', async (error) => {
     logger.error('队列错误:', error);
@@ -313,21 +336,22 @@ function createBullQueue() {
 
   logger.info(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}]`);
 
+  // ✅ 修正Bull初始化：将IORedis配置对象放在redis属性中
   return new Bull(QUEUE_NAME, {
-    redis: redisConfig,
+    redis: redisConfig,  // IORedis配置对象必须放在redis属性中
+    prefix: `bull:${SHOP_ID}`,  // Bull键名前缀：bull:shop1:translation_shop1:*
     defaultJobOptions: {
-      removeOnComplete: 10, // 保留最近10个完成任务
-      removeOnFail: 5,      // 保留最近5个失败任务
+      removeOnComplete: 10,
+      removeOnFail: 5,
       attempts: 3,
       backoff: {
         type: 'exponential',
         delay: 2000
-      },
-      delay: 100, // 添加100ms延迟避免过快处理
+      }
     },
     settings: {
-      stalledInterval: 30000,    // 30秒检查一次卡住的任务
-      retryProcessDelay: 5000,   // 5秒后重试处理
+      stalledInterval: 30000,
+      retryProcessDelay: 5000
     }
   });
 }
@@ -408,6 +432,16 @@ function initializeQueue() {
   if (!useMemoryQueue) {
     try {
       translationQueue = createBullQueue();
+
+      // 🔍 异步验证连接（不阻塞模块加载）
+      translationQueue.isReady()
+        .then(() => {
+          logger.info('[Queue] Bull队列已连接到Redis');
+        })
+        .catch((connErr) => {
+          logger.warn('[Queue] Bull队列连接Redis失败:', connErr?.message);
+          // 连接失败时的降级处理在queue.on('error')中完成
+        });
     } catch (error) {
       logger.warn('Bull队列创建失败，使用内存模式:', error?.message || error);
       useMemoryQueue = true;
@@ -419,7 +453,15 @@ function initializeQueue() {
     useMemoryQueue = true;
   }
 
-  registerProcessors(translationQueue);
+  // 🔍 只在Worker进程中注册processors（主应用只负责添加任务）
+  const QUEUE_ROLE = process.env.QUEUE_ROLE || '';
+  if (QUEUE_ROLE === 'worker') {
+    logger.info('[Queue] Worker模式，注册processors');
+    registerProcessors(translationQueue);
+  } else {
+    logger.info('[Queue] 主应用模式，跳过processor注册');
+  }
+
   attachLifecycleEvents(translationQueue);
 
   if (useMemoryQueue) {
@@ -435,6 +477,8 @@ async function handleTranslateResource(job) {
   assertJobPayload(job?.data);
   const { resourceId, shopId, shopDomain, language } = job.data;
   let resource;
+
+  logger.info(`[Worker] 开始翻译: resourceId=${resourceId}, language=${language}`, { jobId: job.id, shopId });
 
   try {
     job.progress(10);
@@ -498,6 +542,7 @@ async function handleTranslateResource(job) {
       logger.info(`ℹ️ 跳过翻译，内容未变化: ${resource.title}`);
       await updateResourceStatus(resourceId, 'pending');
       job.progress(100);
+      logger.info(`[Worker] 完成（跳过）: resourceId=${resourceId}`, { jobId: job.id });
       return {
         resourceId,
         resourceType: resource.resourceType,
@@ -519,6 +564,8 @@ async function handleTranslateResource(job) {
 
     await updateResourceStatus(resourceId, 'completed');
     job.progress(100);
+
+    logger.info(`[Worker] 完成: resourceId=${resourceId}`, { jobId: job.id });
 
     return {
       resourceId,
@@ -566,14 +613,20 @@ async function handleTranslateResource(job) {
 }
 
 async function handleBatchTranslate(job, queue) {
+  // 🔍 临时调试日志 - 验证handler是否被调用（验证后删除）
+  logger.info('[Batch] handleBatchTranslate 被调用', { jobId: job?.id });
+
   assertBatchJobPayload(job?.data);
   const { resourceIds = [], shopId, shopDomain, language } = job.data;
-  const results = [];
+  const jobIds = [];
+  const errors = [];
   const total = resourceIds.length;
 
   if (!queue || typeof queue.add !== 'function') {
     throw new Error('当前队列不支持批量翻译');
   }
+
+  logger.info(`[Batch] 批量添加翻译任务: ${total} 个`, { shopId, language });
 
   for (let index = 0; index < resourceIds.length; index++) {
     const resourceId = resourceIds[index];
@@ -590,16 +643,15 @@ async function handleBatchTranslate(job, queue) {
 
       const translateJob = await queue.add('translateResource', singleJobPayload, {
         attempts: 3,
-        backoff: 'exponential',
-        delay: index * 1000
+        backoff: 'exponential'
+        // 移除 delay 避免任务卡在 delayed 状态
       });
 
-      const result = await translateJob.finished();
-      results.push(result);
+      jobIds.push(translateJob.id);
     } catch (error) {
-      results.push({
+      logger.error(`[Batch] 添加失败: resourceId=${resourceId}`, error);
+      errors.push({
         resourceId,
-        success: false,
         error: error?.message || String(error)
       });
     }
@@ -609,11 +661,14 @@ async function handleBatchTranslate(job, queue) {
     }
   }
 
+  logger.info(`[Batch] 添加完成: ${jobIds.length}/${total} 成功`);
+
   return {
     total,
-    success: results.filter((item) => item?.success).length,
-    failure: results.filter((item) => !item?.success).length,
-    results
+    queued: jobIds.length,
+    failed: errors.length,
+    jobIds,
+    errors: errors.length > 0 ? errors : undefined
   };
 }
 
@@ -673,6 +728,13 @@ export async function addBatchTranslationJob(resourceIds, shopId, language, shop
     throw new Error('任务队列未配置，无法创建批量任务');
   }
 
+  logger.info(`[addBatchTranslationJob] 准备添加批量任务`, {
+    resourceCount: resourceIds.length,
+    shopId,
+    language,
+    queueType: translationQueue.constructor.name  // 查看队列类型
+  });
+
   const jobData = {
     resourceIds,
     shopId,
@@ -686,6 +748,11 @@ export async function addBatchTranslationJob(resourceIds, shopId, language, shop
     attempts: 1,
     removeOnComplete: 5,
     removeOnFail: 5
+  });
+
+  logger.info(`[addBatchTranslationJob] 批量任务已添加`, {
+    jobId: job.id,
+    resourceCount: resourceIds.length
   });
 
   return {
