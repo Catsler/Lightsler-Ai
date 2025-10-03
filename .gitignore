@@ -40,3 +40,19 @@ screenshoots/
 .shopify/*
 .shopify.lock
 archive/*.tar.gz
+
+# Deployment credentials (阿里云部署凭证)
+阿里云轻量服务器部署文件/*.txt
+阿里云轻量服务器部署文件/*-env.txt
+阿里云轻量服务器部署文件/shop*.env*
+阿里云轻量服务器部署文件/.env.*
+
+# Build artifacts
+build/
+coverage/
+test-results/
+
+# Database backups
+*.backup-*
+*.db.backup
+dev.sqlite.backup*

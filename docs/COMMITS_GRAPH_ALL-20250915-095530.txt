@@ -1,9 +1,0 @@
-# ALL branches simplified graph (full commit ids)
-
-* 9d7a30a5f0877d8558d67dff480f69865dc1fe2d  (HEAD -> main, tag: archive-20250912-2214, origin/main, origin/HEAD) chore(archive): add local tar snapshots index and ignore tarballs [Administrator] 2025-09-12 22:13:14 +0800
-* 05c46fcc454e0bad48ea21a6f27bf51f91f0b2e6  (tag: backup-pre-revert-20250912-05c46fc) ✨ feat: 完整功能开发与系统优化 [Administrator] 2025-09-10 17:28:15 +0800
-* b2eb1f7fbbdacd137bb2da6e994911d808f3e75d  (tag: v1.0.0-production-ready) 🔧 config: 更新Shopify应用配置为生产域名 [Administrator] 2025-09-04 10:18:23 +0800
-| * e109ae0b29b04a5d4d2a3d1b35f2b300023ea3d9  (tag: v2.1.0) 增强项目功能和改进 CLAUDE.md 文档 [Administrator] 2025-08-21 23:11:28 +0800
-| * 3152821a5c32d7fb47f8c89f9c6143699834af97  (tag: v1.0-stable-before-animation) 保存当前稳定版本：扫描动画功能实现前的备份 [Administrator] 2025-08-21 09:58:30 +0800
-|/  
-* 7ffc071c4b41473e75de6c56f734ac9b75b5d496  Initial commit: Shopify Translation App [Catsler] 2025-07-28 18:00:18 +0800
