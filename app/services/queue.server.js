@@ -637,6 +637,18 @@ async function handleTranslateResource(job) {
     // 确保传递正确的数据结构给 saveTranslation
     // translationResult 可能包含 translations 字段，也可能直接就是翻译数据
     const translationData = translationResult.translations || translationResult;
+
+    // fail-fast 检查：确保 translations 字段有效
+    if (!translationData || typeof translationData !== 'object') {
+      logger.error('[Queue] 翻译结果结构异常', {
+        resourceId,
+        resourceType: resource?.resourceType,
+        hasTranslations: !!translationResult.translations,
+        translationResultKeys: translationResult ? Object.keys(translationResult) : []
+      });
+      throw new Error(`翻译结果缺少有效的 translations 字段: resourceId=${resourceId}`);
+    }
+
     await saveTranslation(resourceId, shopId, language, translationData);
     job.progress(70);
 

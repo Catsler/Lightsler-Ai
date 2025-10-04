@@ -1948,8 +1948,8 @@ export async function translateResource(resource, targetLang, options = {}) {
       const { translateThemeResource } = await import('../theme-translation.server.js');
       const themeResult = await translateThemeResource(resource, targetLang, options);
       return {
-        ...themeResult,
-        skipped: false,
+        skipped: themeResult.skipped || false,
+        skipReason: themeResult.skipReason,
         translations: themeResult
       };
     } catch (error) {
@@ -2128,11 +2128,8 @@ export async function translateResource(resource, targetLang, options = {}) {
       processedFields: processedFields.join(', ')
     });
 
-      // 返回兼容对象：同时支持扁平访问和嵌套访问
+      // 返回统一结构
       return {
-        // 保留扁平字段（向后兼容）
-        ...translated,
-        // 新增标准结构（向前兼容）
         skipped: false,
         translations: translated
       };
