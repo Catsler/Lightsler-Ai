@@ -140,6 +140,55 @@ function toReadableConfigKey(text) {
     .join(' ');
 }
 
+/**
+ * 安全转换选项值为字符串
+ * 处理 Shopify option values 可能是对象或数值的情况
+ * @param {any} value - 原始选项值
+ * @returns {string} 转换后的字符串值
+ */
+function normalizeOptionValue(value) {
+  // 已经是字符串，trim 后返回
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  // 对象类型：安全访问 value/label 属性
+  if (typeof value === 'object' && value !== null) {
+    // 使用 hasOwnProperty 避免原型链污染
+    if (Object.prototype.hasOwnProperty.call(value, 'value') && value.value !== undefined) {
+      return String(value.value).trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'label') && value.label !== undefined) {
+      return String(value.label).trim();
+    }
+
+    // JSON.stringify 加 try/catch 处理循环引用
+    try {
+      const jsonStr = JSON.stringify(value);
+      logger.warn('[normalizeOptionValue] 对象类型选项值已序列化', {
+        originalValue: value,
+        keys: Object.keys(value),
+        serialized: jsonStr
+      });
+      return jsonStr;
+    } catch (err) {
+      // 循环引用或其他序列化错误，回退到 String()
+      logger.error('[normalizeOptionValue] JSON序列化失败，使用String转换', {
+        error: err.message,
+        value: value
+      });
+      return String(value).trim();
+    }
+  }
+
+  // 数值、布尔等：转字符串并 trim
+  if (value !== undefined && value !== null) {
+    return String(value).trim();
+  }
+
+  return '';
+}
+
 async function translateConfigKeyWithFallback(originalText, targetLang) {
   const normalizedText = toReadableConfigKey(originalText);
   const startTime = Date.now();
@@ -2084,13 +2133,22 @@ export async function translateResource(resource, targetLang, options = {}) {
         if (Array.isArray(contentFields.values) && contentFields.values.length > 0) {
           dynamicTranslationFields.values = [];
           for (const value of contentFields.values) {
-            if (typeof value !== 'string' || !value.trim()) {
-              dynamicTranslationFields.values.push(value);
+            // 使用安全转换函数处理各种类型的值
+            const normalizedValue = normalizeOptionValue(value);
+
+            // trim 后可能变空字符串，跳过
+            if (!normalizedValue) {
+              logger.warn('[PRODUCT_OPTION] 跳过空值', {
+                originalValue: value,
+                type: typeof value,
+                resourceType: resource?.resourceType
+              });
               continue;
             }
-            const translatedValue = await translateText(value, targetLang);
+
+            const translatedValue = await translateText(normalizedValue, targetLang);
             dynamicTranslationFields.values.push(
-              await postProcessTranslation(translatedValue, targetLang, value, { linkConversion: options.linkConversion })
+              await postProcessTranslation(translatedValue, targetLang, normalizedValue, { linkConversion: options.linkConversion })
             );
           }
         }
