@@ -159,10 +159,10 @@ function getShopIndex(shopId) {
     'shop1': 11,
 
     // 远程服务器 shop2
-    'onewindoutdoors.myshopify.com': 2,
-    'onewind.myshopify.com': 2,
-    'onewind': 2,
-    'shop2': 2
+    'onewindoutdoors.myshopify.com': 12,
+    'onewind.myshopify.com': 12,
+    'onewind': 12,
+    'shop2': 12
   };
 
   // 1. 精确匹配

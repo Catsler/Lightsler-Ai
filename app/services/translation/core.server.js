@@ -2122,13 +2122,23 @@ export async function translateResource(resource, targetLang, options = {}) {
       case 'PRODUCT_OPTION':
       case 'PRODUCT_OPTION_VALUE':
         if (contentFields.name) {
-          dynamicTranslationFields.name = await translateText(contentFields.name, targetLang);
-          dynamicTranslationFields.name = await postProcessTranslation(
-            dynamicTranslationFields.name,
-            targetLang,
-            contentFields.name,
-            { linkConversion: options.linkConversion }
-          );
+          // 使用安全转换函数处理 name 字段（可能是对象或其他类型）
+          const normalizedName = normalizeOptionValue(contentFields.name);
+          if (normalizedName) {
+            dynamicTranslationFields.name = await translateText(normalizedName, targetLang);
+            dynamicTranslationFields.name = await postProcessTranslation(
+              dynamicTranslationFields.name,
+              targetLang,
+              normalizedName,
+              { linkConversion: options.linkConversion }
+            );
+          } else {
+            logger.warn('[PRODUCT_OPTION] 跳过空name值', {
+              originalName: contentFields.name,
+              type: typeof contentFields.name,
+              resourceType: resource?.resourceType
+            });
+          }
         }
         if (Array.isArray(contentFields.values) && contentFields.values.length > 0) {
           dynamicTranslationFields.values = [];
