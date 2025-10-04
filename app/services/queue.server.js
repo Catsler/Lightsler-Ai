@@ -353,8 +353,8 @@ function createBullQueue() {
     tls: redisConfig.tls,
     maxRetriesPerRequest: 2,  // Bull推荐值
     enableReadyCheck: false,
-    connectTimeout: 30000,    // 增加到30秒
-    commandTimeout: 10000,    // 增加到10秒
+    connectTimeout: 60000,    // 增加到60秒
+    commandTimeout: 30000,    // 增加到30秒（避免Railway Redis超时）
     enableOfflineQueue: redisConfig.enableOfflineQueue,
     retryDelayOnFailover: redisConfig.retryDelayOnFailover,
     reconnectOnError: redisConfig.reconnectOnError
