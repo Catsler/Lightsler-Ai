@@ -1,5 +1,4 @@
 import { translateResource, getTranslationStats } from "../services/translation.server.js";
-import { translateThemeResource } from "../services/theme-translation.server.js";
 import { getRecentLogSummaries } from "../utils/logger.server.js";
 import { clearTranslationCache } from "../services/memory-cache.server.js";
 import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
@@ -273,9 +272,30 @@ async function handleTranslate({ request, admin, session }) {
         }
 
         if (themeResourceTypes.includes(resourceTypeUpper)) {
-          console.log(`使用Theme资源翻译函数处理: ${resource.resourceType}`);
-          const themeTranslations = await translateThemeResource(resourceInput, targetLanguage, translationOptions);
-          translations = { skipped: false, translations: themeTranslations };
+          console.log(`Theme资源 ${resource.resourceType} 加入翻译队列以避免超时`);
+
+          // 导入队列服务
+          const { addTranslationJob } = await import("../services/queue.server.js");
+
+          // 加入队列
+          const jobResult = await addTranslationJob(
+            resource.id,
+            shop.id,
+            targetLanguage,
+            session.shop
+          );
+
+          // 返回队列结果并跳过后续同步逻辑
+          results.push({
+            resourceId: resource.id,
+            resourceType: resource.resourceType,
+            title: resource.title,
+            success: true,
+            queued: true,
+            jobId: jobResult.jobId,
+            message: `已加入翻译队列，Job ID: ${jobResult.jobId}`
+          });
+          continue;  // ⚠️ 关键：跳过后续同步逻辑
         } else if (resourceTypeUpper === 'PRODUCT') {
           const { translateProductWithRelated } = await import('../services/product-translation-enhanced.server.js');
 
