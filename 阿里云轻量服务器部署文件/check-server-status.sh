@@ -42,7 +42,7 @@ ssh_cmd "netstat -tlnp | grep -E '3001|3002'"
 echo ""
 
 echo -e "${YELLOW}💾 数据库文件：${NC}"
-ssh_cmd "ls -lh /var/www/app1-fynony/prisma/prod.db /var/www/app2-onewind/prisma/prod.db"
+ssh_cmd "ls -lh /var/www/app1-fynony/prisma/dev.sqlite /var/www/app2-onewind/prisma/dev.sqlite"
 echo ""
 
 echo -e "${YELLOW}📈 系统资源使用：${NC}"

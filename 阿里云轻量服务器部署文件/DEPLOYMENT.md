@@ -140,8 +140,8 @@ pm2 reload ecosystem.config.js
 ### 健康检查
 ```bash
 # 检查应用状态
-curl http://localhost:3001/api/status  # Shop1
-curl http://localhost:3002/api/status  # Shop2
+curl http://localhost:3001/healthz  # Shop1
+curl http://localhost:3002/healthz  # Shop2
 
 # 检查Redis连接
 redis-cli -u $REDIS_URL ping

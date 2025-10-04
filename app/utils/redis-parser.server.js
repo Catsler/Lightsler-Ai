@@ -127,11 +127,11 @@ export function createShopRedisConfig(url, shopId, options = {}) {
   // shop1 -> db 0, shop2 -> db 1, 以此类推
   const shopIndex = getShopIndex(shopId);
 
+  // ✅ 返回纯净的IORedis配置，shopId仅用于日志记录
   return {
     ...baseConfig,
-    db: shopIndex,
-    // 添加店铺标识到选项中
-    shopId
+    db: shopIndex
+    // 移除 shopId 字段，避免传递给 Bull 时产生问题
   };
 }
 
@@ -143,7 +143,43 @@ export function createShopRedisConfig(url, shopId, options = {}) {
 function getShopIndex(shopId) {
   if (!shopId) return 0;
 
-  // 简单的哈希算法，将shopId映射到0-15
+  // 🔥 明确的环境隔离映射，避免跨环境队列污染
+  const normalizedShopId = shopId.toLowerCase();
+
+  // 精确匹配映射表
+  const dbMap = {
+    // 本地开发环境
+    'lightsler-ai.myshopify.com': 10,
+    'lightsler-ai': 10,
+    'lightsler': 10,
+
+    // 远程服务器 shop1
+    'fynony.myshopify.com': 11,
+    'fynony': 11,
+    'shop1': 11,
+
+    // 远程服务器 shop2
+    'onewindoutdoors.myshopify.com': 2,
+    'onewind.myshopify.com': 2,
+    'onewind': 2,
+    'shop2': 2
+  };
+
+  // 1. 精确匹配
+  if (dbMap[normalizedShopId]) {
+    return dbMap[normalizedShopId];
+  }
+
+  // 2. 包含匹配（处理部分匹配的情况）
+  for (const [key, db] of Object.entries(dbMap)) {
+    if (normalizedShopId.includes(key) || key.includes(normalizedShopId)) {
+      logger.info('[Redis] Shop ID匹配到环境映射', { shopId, matchedKey: key, db });
+      return db;
+    }
+  }
+
+  // 3. 降级到哈希算法（新店铺或未知环境）
+  logger.warn('[Redis] Shop ID未在映射表中，使用哈希分配', { shopId });
   let hash = 0;
   for (let i = 0; i < shopId.length; i++) {
     const char = shopId.charCodeAt(i);

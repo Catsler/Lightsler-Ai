@@ -213,7 +213,7 @@ ssh -i /Users/elie/Downloads/shopify.pem root@47.79.77.128
 - [ ] 4个PM2进程全部显示 "online"
 - [ ] Worker日志显示 "Translation queue worker ready"
 - [ ] Worker日志显示 "翻译队列使用 Redis 模式"
-- [ ] `/api/status` 端点返回200（Shop1和Shop2）
+- [ ] `/healthz` 端点返回200（Shop1和Shop2）
 - [ ] Redis队列键存在（`bull:translation_shop1:*`）
 - [ ] PM2配置已保存（`pm2 save`）
 - [ ] 主应用可访问（fynony.ease-joy.fun、onewind.ease-joy.fun）
@@ -226,8 +226,8 @@ ssh -i /Users/elie/Downloads/shopify.pem root@47.79.77.128
 
 ```bash
 # 恢复数据库
-cp /var/www/backups/shop1-20251002_232011.db /var/www/app1-fynony/prisma/prod.db
-cp /var/www/backups/shop2-20251002_232011.db /var/www/app2-onewind/prisma/prod.db
+cp /var/www/backups/shop1-20251002_232011.db /var/www/app1-fynony/prisma/dev.sqlite
+cp /var/www/backups/shop2-20251002_232011.db /var/www/app2-onewind/prisma/dev.sqlite
 
 # 恢复环境变量
 cp /var/www/app1-fynony/.env.backup.20251002_232124 /var/www/app1-fynony/.env

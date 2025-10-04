@@ -68,8 +68,8 @@ GPT_API_KEY=你的翻译API密钥
 pm2 list
 
 # 检查应用健康
-curl http://localhost:3001/api/status  # Shop1
-curl http://localhost:3002/api/status  # Shop2
+curl http://localhost:3001/healthz  # Shop1
+curl http://localhost:3002/healthz  # Shop2
 
 # 查看日志
 pm2 logs
@@ -111,7 +111,7 @@ pm2 restart all
 ```bash
 # 清理浏览器缓存
 # 检查网络请求状态
-curl -v http://localhost:3001/api/status
+curl -v http://localhost:3001/healthz
 ```
 
 ## 📞 部署完成确认

@@ -70,8 +70,8 @@ backup_existing() {
     ssh_cmd "mkdir -p $backup_dir"
 
     # 备份重要文件
-    ssh_cmd "cp -r $APP1_PATH/prisma/prod.db $backup_dir/shop1-prod.db 2>/dev/null || true"
-    ssh_cmd "cp -r $APP2_PATH/prisma/prod.db $backup_dir/shop2-prod.db 2>/dev/null || true"
+    ssh_cmd "cp -r $APP1_PATH/prisma/dev.sqlite $backup_dir/shop1-dev.sqlite 2>/dev/null || true"
+    ssh_cmd "cp -r $APP2_PATH/prisma/dev.sqlite $backup_dir/shop2-dev.sqlite 2>/dev/null || true"
     ssh_cmd "cp $APP1_PATH/.env $backup_dir/shop1.env 2>/dev/null || true"
     ssh_cmd "cp $APP2_PATH/.env $backup_dir/shop2.env 2>/dev/null || true"
 
@@ -282,8 +282,8 @@ verify_deployment() {
     # 测试API健康检查
     echo ""
     log "API健康检查："
-    ssh_cmd "curl -s http://localhost:3001/api/status | head -20 || echo 'Shop1 API未响应'"
-    ssh_cmd "curl -s http://localhost:3002/api/status | head -20 || echo 'Shop2 API未响应'"
+    ssh_cmd "curl -s http://localhost:3001/healthz | head -20 || echo 'Shop1 API未响应'"
+    ssh_cmd "curl -s http://localhost:3002/healthz | head -20 || echo 'Shop2 API未响应'"
 
     success "部署验证完成"
 }

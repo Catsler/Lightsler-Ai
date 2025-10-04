@@ -199,8 +199,18 @@ async function handleResourceDetail({ request, session, searchParams }) {
     throw new Error('Resource not found');
   }
 
-  // 验证店铺权限
-  if (resource.shopId !== session.shop) {
+  // 验证店铺权限 - 智能匹配shopId（兼容不同格式）
+  const normalizeShopId = (id) => {
+    if (!id) return '';
+    // 移除 .myshopify.com 后缀进行比较
+    return id.replace(/\.myshopify\.com$/, '').toLowerCase();
+  };
+
+  if (normalizeShopId(resource.shopId) !== normalizeShopId(session.shop)) {
+    console.error('[AUTH] Shop mismatch in API:', {
+      resourceShopId: resource.shopId,
+      sessionShop: session.shop
+    });
     throw new Error('Unauthorized');
   }
 

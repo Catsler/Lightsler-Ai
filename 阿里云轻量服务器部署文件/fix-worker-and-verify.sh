@@ -191,14 +191,14 @@ success "Worker运行在Redis模式"
 section "Phase 7: 应用健康检查"
 
 log "检查 Shop1 API端点..."
-if ssh_cmd "curl -sf http://localhost:3001/api/status > /dev/null"; then
+if ssh_cmd "curl -sf http://localhost:3001/healthz > /dev/null"; then
     success "Shop1 API健康检查通过"
 else
     warning "Shop1 API响应异常"
 fi
 
 log "检查 Shop2 API端点..."
-if ssh_cmd "curl -sf http://localhost:3002/api/status > /dev/null"; then
+if ssh_cmd "curl -sf http://localhost:3002/healthz > /dev/null"; then
     success "Shop2 API健康检查通过"
 else
     warning "Shop2 API响应异常"

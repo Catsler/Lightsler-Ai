@@ -271,7 +271,14 @@ function attachLifecycleEvents(queue) {
   });
 
   queue.on('error', async (error) => {
-    logger.error('队列错误:', error);
+    logger.error('队列错误:', {
+      message: error?.message,
+      code: error?.code,
+      name: error?.name,
+      stack: error?.stack,
+      type: error?.constructor?.name,
+      fullError: error
+    });
 
     try {
       await collectError({
@@ -334,12 +341,42 @@ function createBullQueue() {
     throw new Error('Redis配置不可用，无法创建Bull队列');
   }
 
-  logger.info(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}]`);
+  logger.info(`[Queue] 创建Bull队列 [Shop: ${SHOP_ID}, Queue: ${QUEUE_NAME}, DB: ${redisConfig.db || 0}]`);
 
-  // ✅ 修正Bull初始化：将IORedis配置对象放在redis属性中
+  // ✅ 创建纯净的IORedis配置对象（移除可能干扰Bull的自定义字段）
+  const cleanRedisConfig = {
+    host: redisConfig.host,
+    port: redisConfig.port,
+    db: redisConfig.db,
+    password: redisConfig.password,
+    username: redisConfig.username,
+    tls: redisConfig.tls,
+    maxRetriesPerRequest: 2,  // Bull推荐值
+    enableReadyCheck: false,
+    connectTimeout: 30000,    // 增加到30秒
+    commandTimeout: 10000,    // 增加到10秒
+    enableOfflineQueue: redisConfig.enableOfflineQueue,
+    retryDelayOnFailover: redisConfig.retryDelayOnFailover,
+    reconnectOnError: redisConfig.reconnectOnError
+  };
+
+  // 移除undefined值（Bull不需要这些）
+  Object.keys(cleanRedisConfig).forEach(key => {
+    if (cleanRedisConfig[key] === undefined) {
+      delete cleanRedisConfig[key];
+    }
+  });
+
+  logger.info('[Queue] Bull配置已清理', {
+    hasHost: !!cleanRedisConfig.host,
+    hasPort: !!cleanRedisConfig.port,
+    db: cleanRedisConfig.db,
+    hasTLS: !!cleanRedisConfig.tls
+  });
+
   return new Bull(QUEUE_NAME, {
-    redis: redisConfig,  // IORedis配置对象必须放在redis属性中
-    prefix: `bull:${SHOP_ID}`,  // Bull键名前缀：bull:shop1:translation_shop1:*
+    redis: cleanRedisConfig,  // ✅ 使用清理后的配置
+    prefix: `bull:${SHOP_ID}`,
     defaultJobOptions: {
       removeOnComplete: 10,
       removeOnFail: 5,
@@ -431,19 +468,39 @@ async function requestMemoryFallback(reason) {
 function initializeQueue() {
   if (!useMemoryQueue) {
     try {
+      logger.info('[Queue] 开始创建Bull队列...', {
+        shopId: SHOP_ID,
+        redisConfig: redisConfig ? {
+          host: redisConfig.host,
+          port: redisConfig.port,
+          db: redisConfig.db
+        } : null
+      });
+
       translationQueue = createBullQueue();
 
       // 🔍 异步验证连接（不阻塞模块加载）
       translationQueue.isReady()
         .then(() => {
-          logger.info('[Queue] Bull队列已连接到Redis');
+          logger.info('[Queue] ✅ Bull队列已连接到Redis', {
+            shopId: SHOP_ID,
+            queueName: translationQueue.name
+          });
         })
         .catch((connErr) => {
-          logger.warn('[Queue] Bull队列连接Redis失败:', connErr?.message);
+          logger.warn('[Queue] ❌ Bull队列连接Redis失败:', {
+            message: connErr?.message,
+            code: connErr?.code,
+            stack: connErr?.stack
+          });
           // 连接失败时的降级处理在queue.on('error')中完成
         });
     } catch (error) {
-      logger.warn('Bull队列创建失败，使用内存模式:', error?.message || error);
+      logger.warn('Bull队列创建失败，使用内存模式:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
       useMemoryQueue = true;
     }
   }
@@ -453,13 +510,12 @@ function initializeQueue() {
     useMemoryQueue = true;
   }
 
-  // 🔍 只在Worker进程中注册processors（主应用只负责添加任务）
+  // ✅ Worker进程需要在queue ready后手动调用registerQueueProcessors()
   const QUEUE_ROLE = process.env.QUEUE_ROLE || '';
   if (QUEUE_ROLE === 'worker') {
-    logger.info('[Queue] Worker模式，注册processors');
-    registerProcessors(translationQueue);
+    logger.info('[Queue] Worker模式，等待queue ready后手动注册processors');
   } else {
-    logger.info('[Queue] 主应用模式，跳过processor注册');
+    logger.info('[Queue] 主应用模式，不注册processors');
   }
 
   attachLifecycleEvents(translationQueue);
@@ -474,6 +530,13 @@ function initializeQueue() {
 }
 
 async function handleTranslateResource(job) {
+  // 🔍 调试日志 - 验证handler是否被调用
+  logger.info('[Worker] ⚡ handleTranslateResource CALLED', { 
+    jobId: job?.id, 
+    jobName: job?.name,
+    hasData: !!job?.data 
+  });
+  
   assertJobPayload(job?.data);
   const { resourceId, shopId, shopDomain, language } = job.data;
   let resource;
@@ -488,7 +551,25 @@ async function handleTranslateResource(job) {
     });
 
     if (!resource) {
-      throw new Error(`资源 ${resourceId} 不存在`);
+      // 🔥 资源不存在 - 可能是跨环境访问或已删除
+      // 返回失败状态而不是抛出异常，避免任务卡住
+      const currentEnvShop = await prisma.shop.findFirst({
+        select: { id: true, domain: true }
+      });
+
+      logger.error('[Worker] 资源不存在，可能是跨环境访问', {
+        resourceId,
+        requestedShopId: shopId,
+        currentEnvShop: currentEnvShop?.domain || 'unknown',
+        jobId: job.id
+      });
+
+      return {
+        resourceId,
+        success: false,
+        error: 'RESOURCE_NOT_FOUND',
+        message: `资源不存在 - 可能是跨环境访问 (当前环境: ${currentEnvShop?.domain || 'unknown'}, 请求shopId: ${shopId})`
+      };
     }
 
     await updateResourceStatus(resourceId, 'processing');
@@ -612,17 +693,20 @@ async function handleTranslateResource(job) {
   }
 }
 
-async function handleBatchTranslate(job, queue) {
+async function handleBatchTranslate(job) {
   // 🔍 临时调试日志 - 验证handler是否被调用（验证后删除）
   logger.info('[Batch] handleBatchTranslate 被调用', { jobId: job?.id });
 
   assertBatchJobPayload(job?.data);
-  const { resourceIds = [], shopId, shopDomain, language } = job.data;
+  
+  // ✅ 从 job.data 解构变量
+  const { resourceIds, shopId, shopDomain, language } = job.data;
+  const total = resourceIds.length;
   const jobIds = [];
   const errors = [];
-  const total = resourceIds.length;
-
-  if (!queue || typeof queue.add !== 'function') {
+  
+  // ✅ 使用全局的translationQueue而不是参数传递
+  if (!translationQueue || typeof translationQueue.add !== 'function') {
     throw new Error('当前队列不支持批量翻译');
   }
 
@@ -641,7 +725,7 @@ async function handleBatchTranslate(job, queue) {
 
       assertJobPayload(singleJobPayload);
 
-      const translateJob = await queue.add('translateResource', singleJobPayload, {
+      const translateJob = await translationQueue.add('translateResource', singleJobPayload, {
         attempts: 3,
         backoff: 'exponential'
         // 移除 delay 避免任务卡在 delayed 状态
@@ -674,7 +758,20 @@ async function handleBatchTranslate(job, queue) {
 
 initializeQueue();
 
-export { translationQueue };
+/**
+ * 手动注册队列processors（供Worker进程在queue ready后调用）
+ */
+export function registerQueueProcessors() {
+  if (!translationQueue) {
+    throw new Error('队列未初始化');
+  }
+  
+  logger.info('[Queue] 手动注册processors');
+  registerProcessors(translationQueue);
+  logger.info('[Queue] Processors注册完成');
+}
+
+export { translationQueue, handleTranslateResource, handleBatchTranslate };
 
 /**
  * 添加翻译任务到队列
@@ -690,6 +787,15 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
     throw new Error('任务队列未配置，无法创建异步任务');
   }
 
+  logger.info('[addTranslationJob] 准备添加翻译任务', {
+    resourceId,
+    shopId,
+    language,
+    shopDomain,
+    queueType: translationQueue.constructor.name,
+    useMemoryQueue
+  });
+
   const jobData = {
     resourceId,
     shopId,
@@ -699,20 +805,38 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
 
   assertJobPayload(jobData);
 
-  const job = await translationQueue.add('translateResource', jobData, {
-    attempts: 3,
-    backoff: 'exponential',
-    removeOnComplete: 10,
-    removeOnFail: 5,
-    ...options
-  });
+  try {
+    const job = await translationQueue.add('translateResource', jobData, {
+      attempts: 3,
+      backoff: 'exponential',
+      removeOnComplete: 10,
+      removeOnFail: 5,
+      ...options
+    });
 
-  return {
-    jobId: job.id,
-    resourceId,
-    shopDomain,
-    status: 'queued'
-  };
+    logger.info('[addTranslationJob] ✅ 翻译任务已添加', {
+      jobId: job.id,
+      resourceId,
+      queueType: translationQueue.constructor.name
+    });
+
+    return {
+      jobId: job.id,
+      resourceId,
+      shopDomain,
+      status: 'queued'
+    };
+  } catch (error) {
+    logger.error('[addTranslationJob] ❌ 添加任务失败', {
+      resourceId,
+      error: {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      }
+    });
+    throw error;
+  }
 }
 
 /**

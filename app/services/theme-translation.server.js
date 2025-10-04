@@ -457,7 +457,7 @@ function restoreLiquidVariables(text, protectedMap) {
  * @param {string} parentKey - 父级键名（用于上下文）
  * @returns {Promise<any>} 翻译后的数据
  */
-async function translateThemeJsonData(data, targetLang, parentKey = '') {
+async function translateThemeJsonData(data, targetLang, parentKey = '', options = {}) {
   if (!data || typeof data !== 'object') {
     return data;
   }
@@ -465,8 +465,8 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
   // 处理数组
   if (Array.isArray(data)) {
     return Promise.all(
-      data.map((item, index) => 
-        translateThemeJsonData(item, targetLang, `${parentKey}[${index}]`)
+      data.map((item, index) =>
+        translateThemeJsonData(item, targetLang, `${parentKey}[${index}]`, options)
       )
     );
   }
@@ -490,7 +490,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
         translatedText = restoreLiquidVariables(translatedText, protectedMap);
 
         // 后处理
-        translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options.linkConversion });
+        translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options?.linkConversion });
 
         translated[key] = translatedText;
         logger.debug(`[Theme翻译] 成功翻译 ${fullKey}: "${value.substring(0, 50)}..." -> "${translatedText.substring(0, 50)}..."`);
@@ -500,7 +500,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '') {
       }
     } else if (typeof value === 'object' && value !== null) {
       // 递归处理嵌套对象
-      translated[key] = await translateThemeJsonData(value, targetLang, fullKey);
+      translated[key] = await translateThemeJsonData(value, targetLang, fullKey, options);
     } else {
       // 保留原值
       translated[key] = value;
@@ -591,7 +591,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
             ? JSON.parse(contentFields.themeData) 
             : contentFields.themeData;
           
-          const translatedData = await translateThemeJsonData(themeData, targetLang);
+          const translatedData = await translateThemeJsonData(themeData, targetLang, '', options);
           result.translationFields.themeData = JSON.stringify(translatedData, null, 2);
           logger.debug(`[Theme翻译] themeData翻译完成`);
         } catch (error) {
@@ -714,7 +714,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
             const { protectedText, protectedMap } = protectLiquidVariables(value);
             let translatedText = await translateThemeValue(protectedText, targetLang);
             translatedText = restoreLiquidVariables(translatedText, protectedMap);
-            translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options.linkConversion });
+            translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options?.linkConversion });
 
             result.translationFields[key] = translatedText;
           } catch (error) {
@@ -723,7 +723,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
           }
         } else if (typeof value === 'object' && value !== null) {
           // 递归处理嵌套对象
-          result.translationFields[key] = await translateThemeJsonData(value, targetLang, key);
+          result.translationFields[key] = await translateThemeJsonData(value, targetLang, key, options);
         } else {
           result.translationFields[key] = value;
         }

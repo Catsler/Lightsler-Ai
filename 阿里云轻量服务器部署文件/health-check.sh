@@ -111,12 +111,12 @@ main() {
     echo ""
 
     # 检查 API 健康
-    log "检查 Shop1 API (最多等待 ${MAX_RETRIES}x${RETRY_INTERVAL}s)..."
-    if check_api "http://localhost:$SHOP1_PORT/api/health" $MAX_RETRIES; then
-        success "Shop1 API 健康检查通过"
+    log "检查 Shop1 健康端点 (最多等待 ${MAX_RETRIES}x${RETRY_INTERVAL}s)..."
+    if check_api "http://localhost:$SHOP1_PORT/healthz" $MAX_RETRIES; then
+        success "Shop1 健康检查通过"
 
         # 获取详细状态
-        local status_response=$(get_api_response "http://localhost:$SHOP1_PORT/api/status")
+        local status_response=$(get_api_response "http://localhost:$SHOP1_PORT/healthz")
         if [ -n "$status_response" ] && [ "$status_response" != "{}" ]; then
             log "Shop1 状态详情："
             echo "$status_response" | jq '.' 2>/dev/null || echo "$status_response"
@@ -129,12 +129,12 @@ main() {
 
     echo ""
 
-    log "检查 Shop2 API (最多等待 ${MAX_RETRIES}x${RETRY_INTERVAL}s)..."
-    if check_api "http://localhost:$SHOP2_PORT/api/health" $MAX_RETRIES; then
-        success "Shop2 API 健康检查通过"
+    log "检查 Shop2 健康端点 (最多等待 ${MAX_RETRIES}x${RETRY_INTERVAL}s)..."
+    if check_api "http://localhost:$SHOP2_PORT/healthz" $MAX_RETRIES; then
+        success "Shop2 健康检查通过"
 
         # 获取详细状态
-        local status_response=$(get_api_response "http://localhost:$SHOP2_PORT/api/status")
+        local status_response=$(get_api_response "http://localhost:$SHOP2_PORT/healthz")
         if [ -n "$status_response" ] && [ "$status_response" != "{}" ]; then
             log "Shop2 状态详情："
             echo "$status_response" | jq '.' 2>/dev/null || echo "$status_response"

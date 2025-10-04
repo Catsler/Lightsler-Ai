@@ -121,14 +121,14 @@ health_check() {
     sleep 5
 
     # 检查端口3001（shop1）
-    if curl -f http://localhost:3001/api/status >/dev/null 2>&1; then
+    if curl -f http://localhost:3001/healthz >/dev/null 2>&1; then
         success "Shop1 (端口3001) 健康检查通过"
     else
         warning "Shop1 (端口3001) 健康检查失败"
     fi
 
     # 检查端口3002（shop2）
-    if curl -f http://localhost:3002/api/status >/dev/null 2>&1; then
+    if curl -f http://localhost:3002/healthz >/dev/null 2>&1; then
         success "Shop2 (端口3002) 健康检查通过"
     else
         warning "Shop2 (端口3002) 健康检查失败"

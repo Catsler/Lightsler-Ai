@@ -42,8 +42,22 @@ export const loader = async ({ request, params }) => {
       throw new Response("资源未找到", { status: 404 });
     }
     
-    // 验证权限
-    if (resource.shopId !== session.shop) {
+    // 验证权限 - 智能匹配shopId（兼容不同格式）
+    const normalizeShopId = (id) => {
+      if (!id) return '';
+      // 移除 .myshopify.com 后缀进行比较
+      return id.replace(/\.myshopify\.com$/, '').toLowerCase();
+    };
+
+    if (normalizeShopId(resource.shopId) !== normalizeShopId(session.shop)) {
+      console.error('[AUTH] Shop mismatch:', {
+        resourceShopId: resource.shopId,
+        sessionShop: session.shop,
+        normalized: {
+          resource: normalizeShopId(resource.shopId),
+          session: normalizeShopId(session.shop)
+        }
+      });
       throw new Response("无权访问此资源", { status: 403 });
     }
     

@@ -132,11 +132,11 @@ backup_data() {
     ssh_cmd "mkdir -p $REMOTE_BACKUP"
 
     log "备份 Shop1 数据库..."
-    ssh_cmd "sqlite3 $REMOTE_SHOP1/prisma/prod.db \".backup $REMOTE_BACKUP/shop1-${timestamp}.db\""
+    ssh_cmd "sqlite3 $REMOTE_SHOP1/prisma/dev.sqlite \".backup $REMOTE_BACKUP/shop1-${timestamp}.db\""
     success "Shop1 数据库备份完成"
 
     log "备份 Shop2 数据库..."
-    ssh_cmd "sqlite3 $REMOTE_SHOP2/prisma/prod.db \".backup $REMOTE_BACKUP/shop2-${timestamp}.db\""
+    ssh_cmd "sqlite3 $REMOTE_SHOP2/prisma/dev.sqlite \".backup $REMOTE_BACKUP/shop2-${timestamp}.db\""
     success "Shop2 数据库备份完成"
 
     log "备份配置文件..."
@@ -387,7 +387,7 @@ health_check() {
 
     # 端点探测
     log "检查 Shop1 (端口3001)..."
-    if ssh_cmd "curl -sf http://localhost:3001/api/status > /dev/null"; then
+    if ssh_cmd "curl -sf http://localhost:3001/healthz > /dev/null"; then
         success "Shop1 健康检查通过"
     else
         warning "Shop1 健康检查失败，请检查日志"
@@ -395,7 +395,7 @@ health_check() {
     fi
 
     log "检查 Shop2 (端口3002)..."
-    if ssh_cmd "curl -sf http://localhost:3002/api/status > /dev/null"; then
+    if ssh_cmd "curl -sf http://localhost:3002/healthz > /dev/null"; then
         success "Shop2 健康检查通过"
     else
         warning "Shop2 健康检查失败，请检查日志"

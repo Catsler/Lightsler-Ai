@@ -186,13 +186,13 @@ log "检查进程状态..."
 ssh_cmd "pm2 status"
 
 log "检查应用健康..."
-if ssh_cmd "curl -sf http://localhost:3001/api/status > /dev/null"; then
+if ssh_cmd "curl -sf http://localhost:3001/healthz > /dev/null"; then
     success "Shop1 健康检查通过"
 else
     warning "Shop1 健康检查失败"
 fi
 
-if ssh_cmd "curl -sf http://localhost:3002/api/status > /dev/null"; then
+if ssh_cmd "curl -sf http://localhost:3002/healthz > /dev/null"; then
     success "Shop2 健康检查通过"
 else
     warning "Shop2 健康检查失败"
