@@ -53,6 +53,8 @@ const BadgeGroup = ({ badges }) => {
 
 // 翻译状态卡片
 const TranslationCard = ({ translations, currentLanguage }) => {
+  if (!currentLanguage) return null;
+
   const translation = translations[currentLanguage];
   if (!translation) return null;
   
@@ -111,7 +113,7 @@ const JsonViewer = ({ data, collapsed = true }) => {
 };
 
 // 主组件 - 统一处理所有资源类型（支持双语对照）
-export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslate, onEdit, onViewHistory, translatableKeys = [] }) {
+export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLanguages = false, onTranslate, onEdit, onViewHistory, translatableKeys = [] }) {
   // 创建适配器 - 核心：通过配置而非代码处理差异
   const adapter = useMemo(() => {
     return createResourceAdapter(resource.type);
@@ -192,10 +194,12 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
             <Text variant="bodySm" tone="subdued">原文</Text>
             <Box paddingBlockStart="100">{renderValue(original, isHtml, true)}</Box>
           </Box>
-          <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px', minWidth: 0 }}>
-            <Text variant="bodySm" tone="subdued">译文（{currentLanguage}）</Text>
-            <Box paddingBlockStart="100">{renderValue(translated, isHtml, false)}</Box>
-          </Box>
+          {!hasNoSecondaryLanguages && currentLanguage && (
+            <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px', minWidth: 0 }}>
+              <Text variant="bodySm" tone="subdued">译文（{currentLanguage}）</Text>
+              <Box paddingBlockStart="100">{renderValue(translated, isHtml, false)}</Box>
+            </Box>
+          )}
         </div>
       </Box>
     );
@@ -416,7 +420,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
   const [metafieldsState, setMetafieldsState] = useState({ loading: false, data: [] });
 
   const loadOptions = useCallback(async () => {
-    if (!productGid) return;
+    if (!productGid || !currentLanguage || hasNoSecondaryLanguages) return;
     setOptionsState({ loading: true, data: [] });
     try {
       const res = await fetch(`/api/product-options?gid=${encodeURIComponent(productGid)}&lang=${encodeURIComponent(currentLanguage)}`);
@@ -425,10 +429,10 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
     } catch {
       setOptionsState({ loading: false, data: [] });
     }
-  }, [productGid, currentLanguage]);
+  }, [productGid, currentLanguage, hasNoSecondaryLanguages]);
 
   const loadMetafields = useCallback(async () => {
-    if (!productGid) return;
+    if (!productGid || !currentLanguage || hasNoSecondaryLanguages) return;
     setMetafieldsState({ loading: true, data: [] });
     try {
       const res = await fetch(`/api/product-metafields?gid=${encodeURIComponent(productGid)}&lang=${encodeURIComponent(currentLanguage)}`);
@@ -441,7 +445,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
     } catch {
       setMetafieldsState({ loading: false, data: [] });
     }
-  }, [productGid, currentLanguage]);
+  }, [productGid, currentLanguage, hasNoSecondaryLanguages]);
 
   useEffect(() => {
     if (showOptions) {
@@ -486,6 +490,13 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
     <Layout>
       <Layout.Section>
         <BlockStack gap="400">
+          {/* 零辅语言警告 */}
+          {hasNoSecondaryLanguages && (
+            <Banner tone="warning">
+              <p>当前商店未配置次要语言，无法进行翻译。请先在 Shopify 设置中添加目标语言。</p>
+            </Banner>
+          )}
+
           {/* 头部信息 */}
           <Card>
             <InlineStack align="space-between">
@@ -503,7 +514,7 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
               <InlineStack align="space-between" blockAlign="center">
                 <Text variant="headingMd">资源内容</Text>
                 <InlineStack gap="200">
-                  <Button primary onClick={onTranslate} disabled={!resource.metadata?.canTranslate}>
+                  <Button primary onClick={onTranslate} disabled={!resource.metadata?.canTranslate || hasNoSecondaryLanguages}>
                     重新翻译
                   </Button>
                   <Button onClick={onEdit} disabled={!resource.metadata?.canEdit}>
@@ -545,11 +556,19 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
                       <Text variant="bodySm" tone="subdued">加载选项中...</Text>
                     ) : optionsState.data.length > 0 ? (
                       optionsState.data.map((opt, idx) => {
+                        // 工具函数：提取对象/字符串的实际值
+                        const extractValue = (item) => {
+                          if (item && typeof item === 'object') {
+                            return item.text ?? item.value ?? item.original ?? '';
+                          }
+                          return item ?? '';
+                        };
+
                         const originalValues = Array.isArray(opt.values)
                           ? opt.values.join(', ')
                           : (typeof opt.values === 'string' ? opt.values : '');
                         const translatedValues = Array.isArray(opt.translatedValues)
-                          ? opt.translatedValues.join(', ')
+                          ? opt.translatedValues.map(extractValue).filter(Boolean).join(', ')
                           : (typeof opt.translatedValues === 'string' ? opt.translatedValues : null);
 
                         const optionLabel = opt.translatedName
@@ -596,9 +615,10 @@ export function ResourceDetail({ resource, currentLanguage = 'zh-CN', onTranslat
           )}
 
           {/* 翻译信息（若已双语展示，可省略；保留在无译文时的回退） */}
-          {(!resource.translations || !resource.translations[currentLanguage]) && (
-            <TranslationCard 
-              translations={resource.translations || {}} 
+          {!hasNoSecondaryLanguages && currentLanguage &&
+           (!resource.translations || !resource.translations[currentLanguage]) && (
+            <TranslationCard
+              translations={resource.translations || {}}
               currentLanguage={currentLanguage}
             />
           )}
