@@ -962,8 +962,25 @@ export async function translateTextWithFallback(text, targetLang, options = {}) 
 }
 
 export async function postProcessTranslation(translatedText, targetLang, originalText = '', options = {}) {
-  if (translatedText == null || typeof translatedText !== 'string') {
-    return translatedText;
+  let textToProcess = translatedText;
+
+  // 统一处理 translateText() 的两种返回格式：string 或 {text, skipped, ...}
+  if (translatedText && typeof translatedText === 'object') {
+    textToProcess = translatedText.text ?? translatedText.value ?? originalText ?? '';
+
+    // 调试日志：记录skip事件
+    if (translatedText.skipped) {
+      logger.debug('[postProcessTranslation] 检测到skip结果', {
+        skipReason: translatedText.skipReason,
+        originalText: originalText?.slice(0, 50),
+        targetLang
+      });
+    }
+  }
+
+  // 类型检查，非字符串直接返回原文
+  if (typeof textToProcess !== 'string') {
+    return originalText;
   }
 
   const context = {
@@ -972,7 +989,7 @@ export async function postProcessTranslation(translatedText, targetLang, origina
     ...(options || {})
   };
 
-  return applyPostProcessors(translatedText, context);
+  return applyPostProcessors(textToProcess, context);
 }
 
 export async function translateText(text, targetLang, options = {}) {
@@ -1988,7 +2005,9 @@ export async function translateResource(resource, targetLang, options = {}) {
   }
 
   // 检查是否为Theme资源，如果是则使用独立的Theme翻译逻辑
-  if (resource.resourceType && resource.resourceType.includes('THEME')) {
+  const normalizedResourceType = (resource.resourceType || '').toUpperCase();
+
+  if (normalizedResourceType.includes('THEME')) {
     translationLogger.info('检测到Theme资源，使用专用翻译逻辑', {
       resourceType: resource.resourceType
     });
