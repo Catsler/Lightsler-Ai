@@ -28,6 +28,41 @@ async function translateThemeValue(text, targetLang) {
 }
 
 /**
+ * 扁平化翻译字段中的复杂嵌套结构
+ * 将 { key: { value, digest, original } } 转换为 { key: value }
+ * @param {Object} translationFields - 翻译字段对象
+ * @returns {Object} 扁平化后的对象
+ */
+function flattenTranslationFields(translationFields) {
+  if (!translationFields || typeof translationFields !== 'object') {
+    return {};
+  }
+
+  const flattened = {};
+
+  for (const [key, value] of Object.entries(translationFields)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // 处理嵌套对象结构
+      if (value.value !== undefined) {
+        // 提取 value 字段 (来自 { value, digest, original } 结构)
+        flattened[key] = value.value;
+      } else if (key === 'dynamicFields' || key === 'themeData') {
+        // 递归处理 dynamicFields 和 themeData
+        flattened[key] = flattenTranslationFields(value);
+      } else {
+        // 保持其他对象原样 (可能是合法的JSON结构)
+        flattened[key] = value;
+      }
+    } else {
+      // 字符串、数字、null等直接保留
+      flattened[key] = value;
+    }
+  }
+
+  return flattened;
+}
+
+/**
  * 深度遍历JSON对象并翻译可翻译字段
  * @param {Object} obj - 要遍历的对象
  * @param {string} targetLang - 目标语言
@@ -748,7 +783,18 @@ export async function translateThemeResource(resource, targetLang, options = {})
       }
   }
 
-  logger.debug(`[Theme翻译] Theme资源翻译完成: ${resource.id}`);
+  // 扁平化 translationFields 中的复杂嵌套结构
+  if (result.translationFields) {
+    result.translationFields = flattenTranslationFields(result.translationFields);
+  }
+
+  logger.info('[Theme翻译] Theme资源翻译完成', {
+    resourceId: resource.id,
+    resourceType: resource.resourceType,
+    fieldCount: Object.keys(result.translationFields || {}).length,
+    structure: 'flattened'
+  });
+
   return result;
 }
 

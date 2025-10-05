@@ -11,6 +11,7 @@ import { collectError, ERROR_TYPES } from './error-collector.server.js';
 import { createShopRedisConfig, parseRedisUrl } from '../utils/redis-parser.server.js';
 import { logger } from '../utils/logger.server.js';
 import { getLinkConversionConfig } from './market-urls.server.js';
+import { getEnvWithDevOverride } from '../utils/env.server.js';
 
 /**
  * Redis任务队列服务
@@ -19,13 +20,14 @@ import { getLinkConversionConfig } from './market-urls.server.js';
  */
 
 // 获取当前店铺ID（从环境变量）
-const SHOP_ID = process.env.SHOP_ID || 'default';
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
 
 // Redis连接配置
 let redisConfig = null;
-if (config.redis.enabled && process.env.REDIS_URL) {
+const resolvedRedisUrl = getEnvWithDevOverride('REDIS_URL');
+if (config.redis.enabled && resolvedRedisUrl) {
   // 使用解析器创建店铺隔离的Redis配置
-  redisConfig = createShopRedisConfig(process.env.REDIS_URL, SHOP_ID, {
+  redisConfig = createShopRedisConfig(resolvedRedisUrl, SHOP_ID, {
     // 针对云Redis服务的优化
     maxRetriesPerRequest: 2,
     enableReadyCheck: false,
@@ -378,6 +380,7 @@ function createBullQueue() {
     redis: cleanRedisConfig,  // ✅ 使用清理后的配置
     prefix: `bull:${SHOP_ID}`,
     defaultJobOptions: {
+      timeout: 600000,
       removeOnComplete: 10,
       removeOnFail: 5,
       attempts: 3,
@@ -387,8 +390,10 @@ function createBullQueue() {
       }
     },
     settings: {
-      stalledInterval: 30000,
-      retryProcessDelay: 5000
+      stalledInterval: 120000,
+      lockDuration: 600000,
+      retryProcessDelay: 5000,
+      maxStalledCount: 2
     }
   });
 }
@@ -511,7 +516,7 @@ function initializeQueue() {
   }
 
   // ✅ Worker进程需要在queue ready后手动调用registerQueueProcessors()
-  const QUEUE_ROLE = process.env.QUEUE_ROLE || '';
+  const QUEUE_ROLE = getEnvWithDevOverride('QUEUE_ROLE', '');
   if (QUEUE_ROLE === 'worker') {
     logger.info('[Queue] Worker模式，等待queue ready后手动注册processors');
   } else {
@@ -524,6 +529,14 @@ function initializeQueue() {
     startHealthCheck();
   } else {
     stopHealthCheck();
+  }
+
+  const isDevelopmentRuntime = (process.env.NODE_ENV || '').toLowerCase() !== 'production';
+  const shouldAutoRegister = isDevelopmentRuntime && QUEUE_ROLE !== 'worker';
+
+  if (shouldAutoRegister) {
+    logger.info('[Queue] 开发环境自动注册processors');
+    registerProcessors(translationQueue);
   }
 
   logger.info(`🚀 翻译队列已启动: ${useMemoryQueue ? '内存模式' : 'Redis模式'}`);

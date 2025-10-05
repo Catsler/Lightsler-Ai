@@ -9,9 +9,11 @@ import {
   InlineStack,
   Badge,
   Button,
-  Divider
+  Divider,
+  Banner,
+  Select
 } from "@shopify/polaris";
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ThemeTranslationCompare from '../components/ThemeTranslationCompare';
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
@@ -194,9 +196,44 @@ export const loader = async ({ request, params }) => {
       throw new Response("此资源不是Theme类型", { status: 400 });
     }
 
+    // 获取商店语言配置（与通用路由保持一致）
+    const { getShopLocales } = await import("../services/shopify-locales.server.js");
+    const shopLocales = await getShopLocales(admin);
+    const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+    const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+
+    // 判断是否为零辅语言商店
+    const hasNoSecondaryLanguages = alternateLocales.length === 0;
+
+    // 构建支持的语言列表
+    let supportedLocales = alternateLocales.map((locale) => ({
+      label: locale.name || locale.locale,
+      value: locale.locale,
+      locale: locale.locale
+    }));
+
+    // 如果没有辅语言，从数据库回退
+    if (supportedLocales.length === 0) {
+      const shop = await prisma.shop.findUnique({
+        where: { id: session.shop },
+        include: { languages: { where: { isActive: true } } }
+      });
+
+      supportedLocales = (shop?.languages ?? [])
+        .filter((lang) => !primaryLocale || lang.code !== primaryLocale.locale)
+        .map((lang) => ({
+          label: lang.name,
+          value: lang.code,
+          locale: lang.code
+        }));
+    }
+
     return json({
       resource,
       shop: session.shop,
+      primaryLocale,
+      supportedLocales,
+      hasNoSecondaryLanguages,
       queryInfo: {
         searchParam: resourceId,
         foundBy: resource.id === resourceId ? 'uuid' : 'resourceId',
@@ -217,22 +254,46 @@ export const loader = async ({ request, params }) => {
 };
 
 export default function ThemeDetailPage() {
-  const { resource, queryInfo } = useLoaderData();
+  const { resource, queryInfo, primaryLocale, supportedLocales, hasNoSecondaryLanguages } = useLoaderData();
   const navigate = useNavigate();
   const fetcher = useFetcher();
 
-  // Theme资源数据归一化函数 - 提取实际的模块化数据
+  // Theme资源数据归一化函数 - 提取实际的模块化数据并扁平化复杂结构
   const normalizeThemeFields = (fields) => {
     if (fields?.dynamicFields) {
-      if (typeof fields.dynamicFields === 'string') {
+      // 处理字符串格式的JSON
+      let dynamicFields = fields.dynamicFields;
+      if (typeof dynamicFields === 'string') {
         try {
-          return JSON.parse(fields.dynamicFields);
+          dynamicFields = JSON.parse(dynamicFields);
         } catch (error) {
           console.warn('[Theme数据归一化] JSON解析失败:', error);
           return fields || {};
         }
       }
-      return fields.dynamicFields;
+
+      // 防御性处理：扁平化复杂嵌套结构 (兼容旧数据格式)
+      // 将 { key: { value, digest, original } } 转换为 { key: value }
+      const normalized = {};
+      let hasComplexStructure = false;
+
+      for (const [key, val] of Object.entries(dynamicFields)) {
+        if (val && typeof val === 'object' && val.value !== undefined) {
+          // 检测到旧的复杂结构
+          hasComplexStructure = true;
+          normalized[key] = val.value;
+        } else {
+          // 新格式或普通值，直接使用
+          normalized[key] = val;
+        }
+      }
+
+      // 记录遗留数据格式的警告
+      if (hasComplexStructure) {
+        console.warn('[Theme数据归一化] 检测到旧数据格式，已自动转换为扁平结构');
+      }
+
+      return normalized;
     }
     return fields || {};
   };
@@ -265,7 +326,7 @@ export default function ThemeDetailPage() {
   }, [resource.translations]);
 
   const initialTargetLanguage = useMemo(() => {
-    // 首先检查URL参数
+    // 优先级1: URL参数
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const urlLang = urlParams.get('lang');
@@ -275,33 +336,59 @@ export default function ThemeDetailPage() {
       }
     }
 
-    // 然后使用第一个非中文翻译，避免总是默认中文
-    const nonChineseTranslation = resource.translations?.find(item =>
-      item?.language && item.language !== 'zh-CN'
+    // 优先级2: supportedLocales第一个（已排除主语言，最安全）
+    if (supportedLocales && supportedLocales.length > 0) {
+      const firstSupported = supportedLocales[0].value;
+      console.log('[初始语言] 使用第一个支持语言:', firstSupported);
+      return firstSupported;
+    }
+
+    // 优先级3: 已有翻译中的非主语言
+    const nonPrimaryTranslation = resource.translations?.find(item =>
+      item?.language && item.language !== primaryLocale?.locale
     )?.language;
 
-    if (nonChineseTranslation) {
-      console.log('[初始语言] 使用非中文翻译:', nonChineseTranslation);
-      return nonChineseTranslation;
+    if (nonPrimaryTranslation) {
+      console.log('[初始语言] 使用已有翻译语言:', nonPrimaryTranslation);
+      return nonPrimaryTranslation;
     }
 
-    // 最后使用现有翻译或默认语言
-    const existing = resource.translations?.find(item => item?.language)?.language;
-    const result = existing || availableLanguages[0]?.code || 'zh-CN';
-    console.log('[初始语言] 使用默认:', result);
-    return result;
-  }, [resource.translations, availableLanguages]);
+    // 优先级4: 安全兜底 - 使用 supportedLocales 或固定默认值
+    const fallback = supportedLocales.find(l => l.value !== primaryLocale?.locale)?.value
+          || initialTargetLanguage
+          || (primaryLocale?.locale === 'en' ? 'fr' : 'en');
 
-  // 添加当前语言状态管理
-  const [currentLanguage, setCurrentLanguage] = useState(initialTargetLanguage);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[初始语言] 使用兜底语言:', fallback, '(主语言:', primaryLocale?.locale, ')');
+    }
+    return fallback;
+  }, [supportedLocales, resource.translations, primaryLocale, availableLanguages]);
 
-  // 确保 currentLanguage 跟随 initialTargetLanguage 更新
+  // 语言状态管理 - 修复初始化时序问题
+  const [currentLanguage, setCurrentLanguage] = useState('');
+  const initialSetRef = useRef(false);
+
+  // 只在首次获得 initialTargetLanguage 时设置，之后不再干扰用户选择
   useEffect(() => {
-    if (initialTargetLanguage !== currentLanguage) {
-      console.log('[语言同步] 更新状态:', currentLanguage, '->', initialTargetLanguage);
-      setCurrentLanguage(initialTargetLanguage);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[DEBUG] 语言配置初始化:', {
+        primaryLocale: primaryLocale?.locale,
+        primaryLocaleName: primaryLocale?.name,
+        supportedLocales: supportedLocales?.map(l => l.value),
+        initialTargetLanguage,
+        currentLanguage,
+        initialSetRef: initialSetRef.current
+      });
     }
-  }, [initialTargetLanguage, currentLanguage]);
+
+    if (initialTargetLanguage && !initialSetRef.current) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[语言初始化] 设置为:', initialTargetLanguage);
+      }
+      setCurrentLanguage(initialTargetLanguage);
+      initialSetRef.current = true;
+    }
+  }, [initialTargetLanguage, primaryLocale, supportedLocales, currentLanguage]);
 
   // 智能默认视图：URL参数 > 有翻译默认compare > 无翻译默认list
   const [viewMode, setViewMode] = useState(() => {
@@ -314,8 +401,10 @@ export default function ThemeDetailPage() {
     }
     return hasTranslations ? 'compare' : 'list';
   });
-  const canTranslate = resource.metadata?.canTranslate !== false;
+  // 零辅语言商店禁用翻译按钮（与通用路由保持一致）
+  const canTranslate = !hasNoSecondaryLanguages && (resource.metadata?.canTranslate !== false);
   const isLoading = fetcher.state === 'submitting';
+  const lastActionRef = useRef(null);
 
   const updateUrlView = useCallback((newView) => {
     if (typeof window !== 'undefined') {
@@ -330,37 +419,83 @@ export default function ThemeDetailPage() {
     updateUrlView(newMode);
   }, [updateUrlView]);
 
+  const showToast = useCallback((message, isError = false) => {
+    if (typeof window !== 'undefined' && window.shopify?.toast) {
+      window.shopify.toast.show(message, { isError });
+    } else if (isError) {
+      console.error(message);
+    } else {
+      console.log(message);
+    }
+  }, []);
+
   const handleRetranslate = useCallback(() => {
-    console.log('[重新翻译] 当前语言状态:', {
-      currentLanguage,
-      initialTargetLanguage,
-      resourceTranslations: resource.translations?.map(t => ({ language: t.language, status: t.status }))
-    });
+    const targetLang = currentLanguage || initialTargetLanguage;
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[重新翻译] 请求参数:', {
+        targetLang,
+        primaryLocale: primaryLocale?.locale,
+        currentLanguage,
+        initialTargetLanguage,
+        resourceTranslations: resource.translations?.map(t => ({ language: t.language, status: t.status }))
+      });
+    }
+
+    if (!targetLang) {
+      showToast('请在上方"目标语言"选择框中选择翻译语言', true);
+      return;
+    }
+
+    if (!primaryLocale?.locale) {
+      showToast('语言配置加载失败，请刷新页面后重试', true);
+      return;
+    }
+
+    if (hasNoSecondaryLanguages) {
+      showToast('请先在 Shopify 后台启用目标语言后再翻译', true);
+      return;
+    }
+
+    // 大小写安全的主语言校验
+    const primaryCode = primaryLocale?.locale?.toLowerCase();
+    const targetCode = targetLang?.toLowerCase();
+
+    if (primaryCode && targetCode === primaryCode) {
+      showToast(`不能翻译到主语言 ${primaryLocale?.name || primaryLocale?.locale}`, true);
+      return;
+    }
+
+    lastActionRef.current = 'retranslate';
     fetcher.submit(
       {
         action: "retranslate",
         resourceId: resource.id,
         resourceType: resource.resourceType,
-        language: currentLanguage
+        language: targetLang
       },
       { method: "post", action: "/api/translate-queue" }
     );
-  }, [resource.id, resource.resourceType, currentLanguage, initialTargetLanguage, resource.translations, fetcher]);
+  }, [resource.id, resource.resourceType, currentLanguage, initialTargetLanguage, resource.translations, fetcher, primaryLocale, hasNoSecondaryLanguages, showToast]);
 
   const handleSync = useCallback(() => {
+    const targetLang = currentLanguage || initialTargetLanguage;
+
+    lastActionRef.current = 'sync';
     fetcher.submit(
       {
         action: "sync",
         resourceId: resource.id,
         resourceType: resource.resourceType,
-        language: currentLanguage
+        language: targetLang
       },
       { method: "post", action: "/api/publish" }
     );
-  }, [resource.id, resource.resourceType, currentLanguage, fetcher]);
+  }, [resource.id, resource.resourceType, currentLanguage, initialTargetLanguage, fetcher]);
 
   const handleDelete = useCallback(() => {
     if (confirm('确定删除所有翻译记录吗？此操作不可恢复。')) {
+      lastActionRef.current = 'delete';
       fetcher.submit(
         {
           action: "delete",
@@ -376,16 +511,79 @@ export default function ThemeDetailPage() {
       return;
     }
 
+    if (!primaryLocale?.locale) {
+      showToast('语言配置加载失败，请刷新页面后重试', true);
+      return;
+    }
+
+    if (hasNoSecondaryLanguages) {
+      showToast('请先在 Shopify 后台启用目标语言后再翻译', true);
+      return;
+    }
+
+    // 大小写安全的主语言校验
+    const primaryCode = primaryLocale?.locale?.toLowerCase();
+    const requestLangCode = translateRequest.language?.toLowerCase();
+
+    if (primaryCode && requestLangCode === primaryCode) {
+      showToast(`无法翻译为主语言 ${primaryLocale?.name || primaryLocale?.locale}`, true);
+      return;
+    }
+
     const formData = new FormData();
     formData.append('language', translateRequest.language);
     formData.append('resourceIds', JSON.stringify([resource.id]));
     formData.append('clearCache', 'false');
 
+    lastActionRef.current = 'translate-field';
     fetcher.submit(formData, {
       method: "post",
       action: "/api/translate"
     });
-  }, [resource.id, fetcher]);
+  }, [resource.id, fetcher, primaryLocale, hasNoSecondaryLanguages, showToast]);
+
+  useEffect(() => {
+    if (fetcher.state !== 'idle') {
+      return;
+    }
+
+    const response = fetcher.data;
+    const lastAction = lastActionRef.current;
+
+    if (!lastAction || !response) {
+      return;
+    }
+
+    lastActionRef.current = null;
+
+    const { success, data, message } = response;
+    const payloadMessage = message || data?.message;
+
+    if (!success) {
+      showToast(payloadMessage || '操作失败，请重试', true);
+      return;
+    }
+
+    if (lastAction === 'retranslate' || lastAction === 'translate-field') {
+      showToast(payloadMessage || '翻译任务已创建，正在刷新...');
+      if (typeof window !== 'undefined') {
+        setTimeout(() => window.location.reload(), 1500);
+      }
+      return;
+    }
+
+    if (lastAction === 'sync') {
+      showToast(payloadMessage || '同步任务已提交');
+      return;
+    }
+
+    if (lastAction === 'delete') {
+      showToast(payloadMessage || '翻译记录已删除');
+      if (typeof window !== 'undefined') {
+        setTimeout(() => window.location.reload(), 600);
+      }
+    }
+  }, [fetcher.state, fetcher.data, showToast]);
 
   const handleSaveTranslations = useCallback((saveRequest) => {
     console.log('保存Theme翻译:', saveRequest);
@@ -491,6 +689,53 @@ export default function ThemeDetailPage() {
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
+            {/* 零辅语言警告Banner */}
+            {hasNoSecondaryLanguages && (
+              <Banner
+                title="当前商店未配置次要语言"
+                tone="warning"
+                onDismiss={undefined}
+              >
+                <p>
+                  您的商店目前只配置了主语言 ({primaryLocale?.name || primaryLocale?.locale || '未知'})，
+                  无法进行翻译操作。请先在 Shopify 设置中添加目标语言。
+                </p>
+              </Banner>
+            )}
+
+            {/* 目标语言选择器 - 始终可见 */}
+            {!hasNoSecondaryLanguages && supportedLocales && supportedLocales.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
+                  <Text variant="headingMd">目标语言</Text>
+                  <Select
+                    label="选择翻译目标语言"
+                    options={[
+                      ...supportedLocales.map(lang => ({
+                        label: lang.label,
+                        value: lang.value
+                      })),
+                      ...(primaryLocale ? [{
+                        label: `${primaryLocale.name || primaryLocale.locale} (主语言 - 不可翻译)`,
+                        value: primaryLocale.locale,
+                        disabled: true
+                      }] : [])
+                    ]}
+                    value={currentLanguage || initialTargetLanguage || ''}
+                    onChange={(value) => {
+                      console.log('[语言选择器] 切换语言:', currentLanguage, '->', value);
+                      setCurrentLanguage(value);
+                    }}
+                  />
+                  {(currentLanguage || initialTargetLanguage) && (
+                    <Text variant="bodySm" tone="subdued">
+                      当前将翻译到: {supportedLocales.find(l => l.value === (currentLanguage || initialTargetLanguage))?.label || currentLanguage || initialTargetLanguage}
+                    </Text>
+                  )}
+                </BlockStack>
+              </Card>
+            )}
+
             {/* 基本信息卡片 */}
             <Card>
               <BlockStack gap="300">
@@ -610,12 +855,13 @@ export default function ThemeDetailPage() {
                 <ThemeTranslationCompare
                   originalData={contentFields ?? {}}
                   translatedData={(() => {
+                    const targetLang = currentLanguage || initialTargetLanguage;
                     const currentTranslation = resource.translations?.find(
-                      t => t.language === currentLanguage
+                      t => t.language === targetLang
                     );
                     return normalizeThemeFields(currentTranslation?.translationFields);
                   })()}
-                  targetLanguage={currentLanguage}
+                  targetLanguage={currentLanguage || initialTargetLanguage}
                   loading={isLoading}
                   availableLanguages={availableLanguages}
                   onTranslate={handleTranslateField}
