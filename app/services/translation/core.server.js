@@ -986,6 +986,7 @@ export async function postProcessTranslation(translatedText, targetLang, origina
   const context = {
     targetLang,
     originalText,
+    tagMap: translatedText?.tagMap ?? options.tagMap,
     ...(options || {})
   };
 
@@ -2354,6 +2355,7 @@ async function translateLongTextEnhanced(text, targetLang, options = {}) {
     return {
       success: true,
       text: combined,
+      tagMap,
       isOriginal: !isTranslated,
       language: targetLang
     };

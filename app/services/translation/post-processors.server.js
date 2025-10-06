@@ -71,8 +71,15 @@ export async function applyPostProcessors(text, context = {}) {
     return text;
   }
 
-  const pipeline = buildPipeline(context);
   let current = text;
+
+  // 统一恢复 HTML 占位符（如果需要）
+  if (context.tagMap?.size && current.includes('__PROTECTED_')) {
+    const { restoreHtmlTags } = await import('./chunking.server.js');
+    current = restoreHtmlTags(current, context.tagMap);
+  }
+
+  const pipeline = buildPipeline(context);
 
   for (const processor of pipeline) {
     try {
