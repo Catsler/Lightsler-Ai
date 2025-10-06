@@ -165,9 +165,25 @@ class ResourceDetailAdapter {
   }
   
   canTranslate() {
-    // 有内容且状态允许
-    return this.resource.status !== 'processing' && 
-           (this.resource.description || this.resource.contentFields);
+    // 状态检查：不在处理中
+    if (this.resource.status === 'processing') {
+      return false;
+    }
+
+    // 内容检查：检查所有可能的内容字段
+    const hasContent = Boolean(
+      this.resource.title ||           // 基础标题（几乎所有资源都有）
+      this.resource.description ||     // 纯文本描述
+      this.resource.descriptionHtml || // 富文本描述（ARTICLE主要使用）
+      this.resource.summary ||         // 摘要（ARTICLE特有）
+      this.resource.label ||           // 标签（Filter特有）
+      this.resource.seoTitle ||        // SEO标题
+      this.resource.seoDescription ||  // SEO描述
+      this.resource.handle ||          // URL handle
+      this.resource.contentFields      // 动态字段（Theme、其他复杂资源）
+    );
+
+    return hasContent;
   }
 }
 
