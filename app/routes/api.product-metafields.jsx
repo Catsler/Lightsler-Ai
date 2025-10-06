@@ -110,8 +110,11 @@ async function handleProductMetafields({ request, admin, session, searchParams }
 
   if (localMetafields.length > 0) {
     return {
-      metafields: localMetafields,
-      source: 'database'
+      success: true,
+      data: {
+        metafields: localMetafields,
+        source: 'database'
+      }
     };
   }
 
@@ -128,8 +131,11 @@ async function handleProductMetafields({ request, admin, session, searchParams }
   }));
 
   return {
-    metafields: formattedShopifyMetafields,
-    source: 'shopify'
+    success: true,
+    data: {
+      metafields: formattedShopifyMetafields,
+      source: 'shopify'
+    }
   };
 }
 
