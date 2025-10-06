@@ -353,6 +353,22 @@ class MemoryQueue {
     this.runningTasks.clear();
     return count;
   }
+
+  async close() {
+    logger.info('[MemoryQueue] Closing queue gracefully...');
+    this.isProcessing = false;
+
+    // 等待所有运行中的任务完成
+    if (this.runningTasks.size > 0) {
+      await Promise.allSettled(Array.from(this.runningTasks));
+    }
+
+    // 清空队列和任务
+    this.jobs.clear();
+    this.queue.length = 0;
+
+    logger.info('[MemoryQueue] Queue closed');
+  }
 }
 
 export { MemoryQueue };

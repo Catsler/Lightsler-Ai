@@ -752,7 +752,7 @@ async function handleBatchTranslate(job) {
 
       const translateJob = await translationQueue.add('translateResource', singleJobPayload, {
         attempts: 3,
-        backoff: 'exponential'
+        backoff: { type: 'exponential', delay: 2000 }
         // 移除 delay 避免任务卡在 delayed 状态
       });
 
@@ -833,7 +833,7 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
   try {
     const job = await translationQueue.add('translateResource', jobData, {
       attempts: 3,
-      backoff: 'exponential',
+      backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: 10,
       removeOnFail: 5,
       ...options

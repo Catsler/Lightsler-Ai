@@ -14,16 +14,19 @@
  */
 
 import './app/load-env.server.js';
+import { getEnvWithDevOverride } from './app/utils/env.server.js';
 import { translationQueue, registerQueueProcessors } from './app/services/queue.server.js';
 import { logger } from './app/utils/logger.server.js';
 
-const SHOP_ID = process.env.SHOP_ID || 'default';
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
+const queueRole = getEnvWithDevOverride('QUEUE_ROLE', process.env.QUEUE_ROLE);
+
 
 async function startWorker() {
   try {
     logger.info(`[Worker] Starting translation worker for ${SHOP_ID}`, {
       shopId: SHOP_ID,
-      queueRole: process.env.QUEUE_ROLE,
+      queueRole,
       nodeEnv: process.env.NODE_ENV
     });
 
@@ -40,7 +43,7 @@ async function startWorker() {
     // Keep process alive
     process.on('SIGTERM', async () => {
       logger.info('[Worker] Received SIGTERM, shutting down gracefully...');
-      if (translationQueue) {
+      if (translationQueue && typeof translationQueue.close === 'function') {
         await translationQueue.close();
       }
       process.exit(0);
@@ -48,7 +51,7 @@ async function startWorker() {
 
     process.on('SIGINT', async () => {
       logger.info('[Worker] Received SIGINT, shutting down gracefully...');
-      if (translationQueue) {
+      if (translationQueue && typeof translationQueue.close === 'function') {
         await translationQueue.close();
       }
       process.exit(0);
