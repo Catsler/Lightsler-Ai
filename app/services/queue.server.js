@@ -19,6 +19,85 @@ import { getEnvWithDevOverride } from '../utils/env.server.js';
  * 实现多店铺数据隔离和自动降级
  */
 
+// ==================== 队列模式管理 ====================
+
+/**
+ * 队列模式标志键名
+ */
+const QUEUE_MODE_KEY = (shopId) => `queue:mode:${shopId}`;
+const MODE_TTL = 300; // 5分钟 TTL
+const MODE_REFRESH_INTERVAL = 240000; // 4分钟续命一次
+let modeRefreshTimer = null;
+
+/**
+ * 获取队列模式
+ * @param {Redis} redis - Redis 客户端
+ * @param {string} shopId - 店铺ID
+ * @returns {Promise<string>} 'redis' | 'memory'
+ */
+async function getQueueMode(redis, shopId) {
+  if (!redis) return 'memory';
+
+  try {
+    const mode = await redis.get(QUEUE_MODE_KEY(shopId));
+    return mode || 'redis'; // 默认 redis
+  } catch (err) {
+    logger.warn('[Queue] 获取模式失败，使用默认值 redis', { shopId, error: err.message });
+    return 'redis';
+  }
+}
+
+/**
+ * 设置队列模式
+ * @param {Redis} redis - Redis 客户端
+ * @param {string} shopId - 店铺ID
+ * @param {string} mode - 'redis' | 'memory'
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function setQueueMode(redis, shopId, mode) {
+  if (!redis) return false;
+
+  try {
+    await redis.set(QUEUE_MODE_KEY(shopId), mode, 'EX', MODE_TTL);
+    logger.info(`[Queue] 模式已设置: ${mode}`, { shopId });
+    return true;
+  } catch (err) {
+    logger.error('[Queue] 设置模式失败', { shopId, mode, error: err.message });
+    return false;
+  }
+}
+
+/**
+ * 启动模式续命定时器
+ * @param {Redis} redis - Redis 客户端
+ * @param {string} shopId - 店铺ID
+ * @param {string} currentMode - 当前模式
+ */
+function startModeRefresh(redis, shopId, currentMode) {
+  // 停止旧定时器
+  stopModeRefresh();
+
+  // 每4分钟续命一次（TTL=5分钟）
+  modeRefreshTimer = setInterval(async () => {
+    if (redis && currentMode) {
+      await setQueueMode(redis, shopId, currentMode);
+    }
+  }, MODE_REFRESH_INTERVAL);
+
+  logger.info('[Queue] 模式续命定时器已启动', { shopId, interval: MODE_REFRESH_INTERVAL });
+}
+
+/**
+ * 停止续命定时器
+ */
+function stopModeRefresh() {
+  if (modeRefreshTimer) {
+    clearInterval(modeRefreshTimer);
+    modeRefreshTimer = null;
+    logger.info('[Queue] 模式续命定时器已停止');
+  }
+}
+
 // 获取当前店铺ID（从环境变量）
 const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
 
@@ -160,6 +239,7 @@ let useMemoryQueue = false;
 let isSwitchingQueue = false;
 let healthCheckTimer = null;
 let redisRecoveryNotified = false;
+let redisClient; // 🆕 独立的 Redis 客户端用于模式管理
 
 try {
   if (config.redis.enabled && redisConfig) {
@@ -470,21 +550,149 @@ async function requestMemoryFallback(reason) {
   startHealthCheck();
 }
 
-function initializeQueue() {
-  if (!useMemoryQueue) {
-    try {
+/**
+ * 🆕 设置 Redis 事件监听器 - 实现模式切换
+ */
+function setupRedisEventListeners() {
+  if (!redisClient) return;
+
+  // 🆕 Redis 错误 → 切换到内存模式
+  redisClient.on('error', async (err) => {
+    logger.error('[Queue] Redis错误:', { message: err.message, code: err.code });
+
+    if (!useMemoryQueue && !isSwitchingQueue) {
+      logger.warn('[Queue] Redis队列出错，切换到内存模式');
+      isSwitchingQueue = true;
+
+      try {
+        // 1. 关闭旧队列
+        if (translationQueue && typeof translationQueue.close === 'function') {
+          await translationQueue.close();
+        }
+
+        // 2. 创建内存队列
+        translationQueue = createMemoryQueueInstance();
+
+        // 3. 重新注册 processors
+        registerProcessors(translationQueue);
+        attachLifecycleEvents(translationQueue);
+
+        // 4. 更新模式标志
+        await setQueueMode(redisClient, SHOP_ID, 'memory');
+        useMemoryQueue = true;
+
+        logger.info('[Queue] ✅ 已切换到内存模式并重新注册 processors');
+      } catch (switchErr) {
+        logger.error('[Queue] 切换到内存模式失败', { error: switchErr.message });
+      } finally {
+        isSwitchingQueue = false;
+      }
+    }
+  });
+
+  // 🆕 Redis 恢复 → 切换回 Redis 模式
+  redisClient.on('ready', async () => {
+    logger.info('[Queue] Redis连接成功');
+
+    if (useMemoryQueue && !isSwitchingQueue) {
+      logger.info('[Queue] 🔄 检测到Redis恢复，切换回Redis队列');
+      isSwitchingQueue = true;
+
+      try {
+        // 1. 关闭内存队列
+        if (translationQueue && typeof translationQueue.close === 'function') {
+          await translationQueue.close();
+        }
+
+        // 2. 重新创建 Redis 队列
+        logger.info('[Queue] 重新创建Bull队列...');
+        translationQueue = createBullQueue();
+
+        await translationQueue.isReady();
+
+        // 3. 重新注册 processors
+        registerProcessors(translationQueue);
+        attachLifecycleEvents(translationQueue);
+
+        // 4. 更新模式标志
+        await setQueueMode(redisClient, SHOP_ID, 'redis');
+        useMemoryQueue = false;
+
+        logger.info('[Queue] ✅ 已切回Redis模式，processors 将自动接手 backlog');
+      } catch (switchErr) {
+        logger.error('[Queue] 切换回Redis失败', { error: switchErr.message });
+        // 回退到内存模式
+        if (!translationQueue) {
+          translationQueue = createMemoryQueueInstance();
+          registerProcessors(translationQueue);
+          attachLifecycleEvents(translationQueue);
+        }
+      } finally {
+        isSwitchingQueue = false;
+      }
+    }
+  });
+}
+
+async function initializeQueue() {
+  // 🆕 如果没有 Redis 配置，直接使用内存模式
+  if (!config.redis.enabled || !redisConfig) {
+    logger.warn('[Queue] 未配置 REDIS_URL，使用内存队列');
+    translationQueue = createMemoryQueueInstance();
+    useMemoryQueue = true;
+
+    const QUEUE_ROLE = getEnvWithDevOverride('QUEUE_ROLE', '');
+    if (QUEUE_ROLE === 'worker') {
+      logger.info('[Queue] Worker模式，等待queue ready后手动注册processors');
+    } else {
+      logger.info('[Queue] 主应用模式，不注册processors');
+    }
+
+    attachLifecycleEvents(translationQueue);
+    logger.info(`🚀 翻译队列已启动: 内存模式`);
+    return;
+  }
+
+  try {
+    // 🆕 1. 创建独立的 Redis 客户端用于模式管理
+    redisClient = new Redis({
+      host: redisConfig.host,
+      port: redisConfig.port,
+      password: redisConfig.password,
+      db: redisConfig.db,
+      connectTimeout: 10000,
+      commandTimeout: 5000,
+      retryStrategy(times) {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      },
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: false
+    });
+
+    logger.info('[Queue] 模式管理 Redis 客户端已创建');
+
+    // 🆕 2. 读取初始队列模式
+    const initialMode = await getQueueMode(redisClient, SHOP_ID);
+    logger.info(`[Queue] 初始队列模式: ${initialMode}`, { shopId: SHOP_ID });
+
+    // 🆕 3. 根据初始模式创建对应队列
+    if (initialMode === 'redis') {
+      // 创建 Redis 队列
       logger.info('[Queue] 开始创建Bull队列...', {
         shopId: SHOP_ID,
-        redisConfig: redisConfig ? {
+        redisConfig: {
           host: redisConfig.host,
           port: redisConfig.port,
           db: redisConfig.db
-        } : null
+        }
       });
 
       translationQueue = createBullQueue();
+      useMemoryQueue = false;
 
-      // 🔍 异步验证连接（不阻塞模块加载）
+      // 异步验证连接
       translationQueue.isReady()
         .then(() => {
           logger.info('[Queue] ✅ Bull队列已连接到Redis', {
@@ -495,22 +703,27 @@ function initializeQueue() {
         .catch((connErr) => {
           logger.warn('[Queue] ❌ Bull队列连接Redis失败:', {
             message: connErr?.message,
-            code: connErr?.code,
-            stack: connErr?.stack
+            code: connErr?.code
           });
-          // 连接失败时的降级处理在queue.on('error')中完成
         });
-    } catch (error) {
-      logger.warn('Bull队列创建失败，使用内存模式:', {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack
-      });
+    } else {
+      // 使用内存队列
+      translationQueue = createMemoryQueueInstance();
       useMemoryQueue = true;
     }
-  }
 
-  if (useMemoryQueue || !translationQueue) {
+    // 🆕 4. 设置事件监听器（模式切换逻辑）
+    setupRedisEventListeners();
+
+    // 🆕 5. 启动模式续命定时器
+    startModeRefresh(redisClient, SHOP_ID, initialMode);
+
+  } catch (error) {
+    logger.error('[Queue] 初始化失败，降级到内存模式', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     translationQueue = createMemoryQueueInstance();
     useMemoryQueue = true;
   }
@@ -524,12 +737,6 @@ function initializeQueue() {
   }
 
   attachLifecycleEvents(translationQueue);
-
-  if (useMemoryQueue) {
-    startHealthCheck();
-  } else {
-    stopHealthCheck();
-  }
 
   const isDevelopmentRuntime = (process.env.NODE_ENV || '').toLowerCase() !== 'production';
   const shouldAutoRegister = isDevelopmentRuntime && QUEUE_ROLE !== 'worker';
@@ -565,15 +772,18 @@ async function handleTranslateResource(job) {
 
     if (!resource) {
       // 🔥 资源不存在 - 可能是跨环境访问或已删除
-      // 返回失败状态而不是抛出异常，避免任务卡住
-      const currentEnvShop = await prisma.shop.findFirst({
-        select: { id: true, domain: true }
-      });
-
-      logger.error('[Worker] 资源不存在，可能是跨环境访问', {
+      // 🆕 增强诊断信息
+      logger.error('[Worker] 资源不存在 - 详细诊断', {
         resourceId,
-        requestedShopId: shopId,
-        currentEnvShop: currentEnvShop?.domain || 'unknown',
+        jobData: {
+          shopId,
+          shopDomain,
+          language,
+          forceRelatedTranslation,  // ✅ 保留参数传递
+          userRequested              // ✅ 保留参数传递
+        },
+        queueMode: useMemoryQueue ? 'memory' : 'redis',  // 🆕 显示当前模式
+        processType: process.env.QUEUE_ROLE || 'main',
         jobId: job.id
       });
 
@@ -581,7 +791,7 @@ async function handleTranslateResource(job) {
         resourceId,
         success: false,
         error: 'RESOURCE_NOT_FOUND',
-        message: `资源不存在 - 可能是跨环境访问 (当前环境: ${currentEnvShop?.domain || 'unknown'}, 请求shopId: ${shopId})`
+        message: `资源不存在 (shopId=${shopId}, shopDomain=${shopDomain}, mode=${useMemoryQueue ? 'memory' : 'redis'})`
       };
     }
 
