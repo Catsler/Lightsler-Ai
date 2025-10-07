@@ -43,16 +43,24 @@ async function startWorker() {
     // Keep process alive
     process.on('SIGTERM', async () => {
       logger.info('[Worker] Received SIGTERM, shutting down gracefully...');
-      if (translationQueue && typeof translationQueue.close === 'function') {
-        await translationQueue.close();
+      try {
+        if (translationQueue && typeof translationQueue.close === 'function') {
+          await translationQueue.close();
+        }
+      } catch (err) {
+        logger.warn('[Worker] Error closing queue during shutdown:', err.message);
       }
       process.exit(0);
     });
 
     process.on('SIGINT', async () => {
       logger.info('[Worker] Received SIGINT, shutting down gracefully...');
-      if (translationQueue && typeof translationQueue.close === 'function') {
-        await translationQueue.close();
+      try {
+        if (translationQueue && typeof translationQueue.close === 'function') {
+          await translationQueue.close();
+        }
+      } catch (err) {
+        logger.warn('[Worker] Error closing queue during shutdown:', err.message);
       }
       process.exit(0);
     });
