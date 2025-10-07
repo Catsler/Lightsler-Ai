@@ -849,7 +849,14 @@ async function handleTranslateResource(job) {
         }
       : resource;
 
-    const translationResult = await translateResource(resourceInput, language, translationOptions);
+    // 🆕 根据资源类型条件调用翻译函数
+    let translationResult;
+    if (resource.resourceType === 'PRODUCT') {
+      const { translateProductWithRelated } = await import('./product-translation-enhanced.server.js');
+      translationResult = await translateProductWithRelated(resourceInput, language, translationOptions);
+    } else {
+      translationResult = await translateResource(resourceInput, language, translationOptions);
+    }
     job.progress(50);
 
     if (translationResult.skipped) {
