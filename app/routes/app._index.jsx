@@ -903,6 +903,13 @@ function Index() {
   const startTranslation = useCallback(() => {
     debounce('translate', () => {
       safeAsyncOperation('翻译', async () => {
+        // 提前验证：没有资源时直接返回
+        if (resources.length === 0) {
+          addLog('❌ 没有可翻译的资源', 'warning');
+          showToast('没有可翻译的资源', { isError: true });
+          return;
+        }
+
         // 检查翻译服务状态
         if (translationService && translationService.status === 'unhealthy') {
           const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
@@ -911,8 +918,15 @@ function Index() {
           return;
         }
 
-        const resourceIds = selectedResources.length > 0 ? selectedResources : [];
-        addLog(`🔄 开始翻译到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
+        // KISS：空选时使用所有可见资源
+        const resourceIds = selectedResources.length > 0
+          ? selectedResources
+          : resources.map(r => r.id);
+
+        // 准确的日志反馈
+        const count = resourceIds.length;
+        const scope = selectedResources.length > 0 ? '选中的' : '全部';
+        addLog(`🔄 开始翻译${scope} ${count} 个资源到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
 
         translateFetcher.submit({
           language: selectedLanguage,
@@ -927,7 +941,7 @@ function Index() {
         });
       })(); // 立即调用返回的函数
     }, 1000);
-  }, [selectedLanguage, selectedResources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation, shopId, shopQueryParam]);
+  }, [selectedLanguage, selectedResources, resources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation, shopId, shopQueryParam]);
 
   // 清空数据（带操作锁）
   useEffect(() => {
@@ -1327,13 +1341,17 @@ function Index() {
                   >
                     扫描所有资源
                   </Button>
-                  <Button 
-                    onClick={startTranslation} 
+                  <Button
+                    onClick={startTranslation}
                     loading={isTranslating}
                     variant="primary"
                     disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
                   >
-                    开始翻译 {selectedResources.length > 0 ? `(${selectedResources.length}项)` : ''}
+                    {selectedResources.length > 0
+                      ? `翻译选中 ${selectedResources.length} 项`
+                      : resources.length > 0
+                        ? `翻译全部 ${resources.length} 项`
+                        : '暂无资源'}
                   </Button>
                   <Button
                     onClick={publishPendingTranslations}
@@ -1478,12 +1496,22 @@ function Index() {
               
               // 所有资源使用统一路由格式
               // Theme资源保持向后兼容，其他资源使用新路由
+              // 确保lang参数始终有效
+              const targetLang = selectedLanguage ||
+                                 (supportedLanguages[0]?.value ?? supportedLanguages[0]?.locale);
+              if (!targetLang) {
+                if (typeof window !== 'undefined' && window.shopify?.toast) {
+                  window.shopify.toast.show('请先选择目标语言', { isError: true });
+                }
+                return;
+              }
+
               if (resourceType.includes('theme') || resourceType.includes('online_store')) {
                 // 保持Theme专用页面的向后兼容
-                navigate(`/app/theme/detail/${resource.id}?lang=${selectedLanguage}`);
+                navigate(`/app/theme/detail/${resource.id}?lang=${targetLang}`);
               } else {
                 // 所有其他资源使用统一路由
-                navigate(`/app/resource/${resourceType}/${resource.id}?lang=${selectedLanguage}`);
+                navigate(`/app/resource/${resourceType}/${resource.id}?lang=${targetLang}`);
               }
             }}
             onTranslateCategory={handleCategoryTranslation}
