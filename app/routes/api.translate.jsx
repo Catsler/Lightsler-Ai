@@ -5,6 +5,7 @@ import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources
 import { createApiRoute } from "../utils/base-route.server.js";
 import { getLocalizedErrorMessage } from "../utils/error-messages.server.js";
 import { getLinkConversionConfig } from "../services/market-urls.server.js";
+import { getShopLocales } from "../services/shopify-locales.server.js";
 
 /**
  * POST请求处理函数 - 核心翻译API
@@ -26,6 +27,25 @@ async function handleTranslate({ request, admin, session }) {
     }
     
     const targetLanguage = params.language;
+
+    // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+    const shopLocales = await getShopLocales(admin);
+    const primaryLocale = shopLocales.find((locale) => locale.primary);
+
+    if (primaryLocale && targetLanguage.toLowerCase() === primaryLocale.locale.toLowerCase()) {
+      console.log('[TRANSLATION] Blocked primary language request:', {
+        targetLanguage,
+        primaryLocale: primaryLocale.locale,
+        endpoint: 'api.translate',
+        shopDomain: session?.shop
+      });
+
+      throw new Error(
+        `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
+        `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+      );
+    }
+
     const clearCache = params.clearCache;
     let resourceIds;
     try {
@@ -113,7 +133,11 @@ async function handleTranslate({ request, admin, session }) {
         resourceIdsToTranslate,
         shop.id,
         targetLanguage,
-        session.shop
+        session.shop,
+        {
+          forceRelatedTranslation: params.forceRelatedTranslation || clearCache,
+          userRequested: params.userRequested || clearCache
+        }
       );
 
       // 记录队列任务创建
@@ -282,7 +306,11 @@ async function handleTranslate({ request, admin, session }) {
             resource.id,
             shop.id,
             targetLanguage,
-            session.shop
+            session.shop,
+            {
+              forceRelatedTranslation: params.forceRelatedTranslation || clearCache,
+              userRequested: params.userRequested || clearCache
+            }
           );
 
           // 返回队列结果并跳过后续同步逻辑

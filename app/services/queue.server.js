@@ -551,7 +551,7 @@ async function handleTranslateResource(job) {
   });
   
   assertJobPayload(job?.data);
-  const { resourceId, shopId, shopDomain, language } = job.data;
+  const { resourceId, shopId, shopDomain, language, forceRelatedTranslation, userRequested } = job.data;
   let resource;
 
   logger.info(`[Worker] 开始翻译: resourceId=${resourceId}, language=${language}`, { jobId: job.id, shopId });
@@ -629,7 +629,17 @@ async function handleTranslateResource(job) {
       translationOptions.linkConversion = linkConversionConfig;
     }
 
-    const translationResult = await translateResource(resource, language, translationOptions);
+    // 🆕 为 PRODUCT 类型注入关联翻译标志
+    const resourceInput = resource.resourceType === 'PRODUCT'
+      ? {
+          ...resource,
+          forceRelatedTranslation: forceRelatedTranslation || false,
+          userRequested: userRequested || false,
+          admin
+        }
+      : resource;
+
+    const translationResult = await translateResource(resourceInput, language, translationOptions);
     job.progress(50);
 
     if (translationResult.skipped) {
@@ -723,13 +733,13 @@ async function handleBatchTranslate(job) {
   logger.info('[Batch] handleBatchTranslate 被调用', { jobId: job?.id });
 
   assertBatchJobPayload(job?.data);
-  
+
   // ✅ 从 job.data 解构变量
-  const { resourceIds, shopId, shopDomain, language } = job.data;
+  const { resourceIds, shopId, shopDomain, language, forceRelatedTranslation, userRequested } = job.data;
   const total = resourceIds.length;
   const jobIds = [];
   const errors = [];
-  
+
   // ✅ 使用全局的translationQueue而不是参数传递
   if (!translationQueue || typeof translationQueue.add !== 'function') {
     throw new Error('当前队列不支持批量翻译');
@@ -745,7 +755,9 @@ async function handleBatchTranslate(job) {
         resourceId,
         shopId,
         shopDomain,
-        language
+        language,
+        forceRelatedTranslation,
+        userRequested
       };
 
       assertJobPayload(singleJobPayload);
@@ -825,7 +837,9 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
     resourceId,
     shopId,
     shopDomain,
-    language
+    language,
+    forceRelatedTranslation: options.forceRelatedTranslation || false,
+    userRequested: options.userRequested || false
   };
 
   assertJobPayload(jobData);
@@ -872,7 +886,7 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
  * @param {string} shopDomain - 店铺域名
  * @returns {Promise<Object>} 任务信息
  */
-export async function addBatchTranslationJob(resourceIds, shopId, language, shopDomain) {
+export async function addBatchTranslationJob(resourceIds, shopId, language, shopDomain, options = {}) {
   if (!translationQueue) {
     throw new Error('任务队列未配置，无法创建批量任务');
   }
@@ -888,7 +902,9 @@ export async function addBatchTranslationJob(resourceIds, shopId, language, shop
     resourceIds,
     shopId,
     shopDomain,
-    language
+    language,
+    forceRelatedTranslation: options.forceRelatedTranslation || false,
+    userRequested: options.userRequested || false
   };
 
   assertBatchJobPayload(jobData);
