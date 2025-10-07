@@ -1008,11 +1008,20 @@ initializeQueue();
 /**
  * 手动注册队列processors（供Worker进程在queue ready后调用）
  */
-export function registerQueueProcessors() {
+export async function registerQueueProcessors() {
+  // 等待队列初始化完成
   if (!translationQueue) {
-    throw new Error('队列未初始化');
+    logger.info('[Queue] 等待队列初始化...');
+    // 等待最多10秒
+    for (let i = 0; i < 100; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (translationQueue) break;
+    }
+    if (!translationQueue) {
+      throw new Error('队列初始化超时');
+    }
   }
-  
+
   logger.info('[Queue] 手动注册processors');
   registerProcessors(translationQueue);
   logger.info('[Queue] Processors注册完成');
