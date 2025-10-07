@@ -176,6 +176,9 @@ export const EXTENDED_FIELD_MAPPINGS = {
   [RESOURCE_TYPES.PRODUCT_OPTION]: {
     nameTrans: 'name'
   },
+  ['product_option']: { // 兼容小写（历史扫描数据使用了硬编码小写）
+    nameTrans: 'name'
+  },
   [RESOURCE_TYPES.PRODUCT_OPTION_VALUE]: {
     nameTrans: 'name'
   },
@@ -1101,7 +1104,7 @@ export async function fetchProductOptions(admin, maxRetries = 3) {
         id: resourceId,
         originalId: resourceId, // 添加originalId字段
         gid: resource.resourceId,
-        resourceType: 'product_option',
+        resourceType: RESOURCE_TYPES.PRODUCT_OPTION, // 使用常量而非硬编码小写
         title: content.name || '',
         description: '产品选项',
         name: content.name || '',
