@@ -849,9 +849,9 @@ async function handleTranslateResource(job) {
         }
       : resource;
 
-    // 🆕 根据资源类型条件调用翻译函数
+    // 🆕 根据资源类型条件调用翻译函数（大小写不敏感）
     let translationResult;
-    if (resource.resourceType === 'PRODUCT') {
+    if (resource.resourceType?.toUpperCase() === 'PRODUCT') {
       const { translateProductWithRelated } = await import('./product-translation-enhanced.server.js');
       translationResult = await translateProductWithRelated(resourceInput, language, translationOptions);
     } else {
