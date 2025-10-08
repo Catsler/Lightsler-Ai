@@ -168,6 +168,21 @@ sqlite3 prisma/dev.sqlite "
 
 ## 回滚方案（如出现问题）
 
+### ⚠️ 回滚触发条件（满足任一即回滚）
+
+**立即回滚**:
+- [ ] 批量发布成功率 < 90%（连续3次测试）
+- [ ] Worker 日志出现连续5次 "gid format invalid" 错误
+- [ ] 新扫描的 PRODUCT_OPTION 仍包含 `-temp` 后缀
+- [ ] PM2 进程异常重启（worker 或主进程）
+
+**观察但不回滚**:
+- 历史数据清理失败（不影响新数据流程）
+- 个别资源发布失败（可能是网络/Shopify API 限流）
+- 警告级别日志（WARN）数量增加
+
+### 回滚操作步骤
+
 ```bash
 # 1. 回滚代码
 git log --oneline -5  # 查看最近的提交
@@ -226,8 +241,8 @@ git push origin main
 # 拉取代码
 /tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && git pull origin main"
 
-# 构建
-/tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && npm run build"
+# 代码质量检查 + 构建（--no-cache 避免多节点缓存不一致）
+/tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && npm run check -- --no-cache && npm run build"
 
 # Dry-run检查（Fynony）
 /tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && node scripts/fix-option-gids.mjs --dry-run --shop=shop1"
@@ -236,7 +251,7 @@ git push origin main
 /tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && node scripts/fix-option-gids.mjs --shop=shop1"
 
 # OneWind店铺（如需要）
-/tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && git pull origin main && npm run build"
+/tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && git pull origin main && npm run check -- --no-cache && npm run build"
 /tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && node scripts/fix-option-gids.mjs --dry-run --shop=shop2"
 /tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && node scripts/fix-option-gids.mjs --shop=shop2"
 
