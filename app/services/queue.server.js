@@ -830,32 +830,58 @@ async function handleTranslateResource(job) {
       return null;  // 降级处理
     });
 
-    // 🆕 构建翻译选项
+    // ✅ 构建翻译选项（只保留可序列化字段）
     const translationOptions = {
-      admin,
-      shopId: shop.domain
+      shopId: shop.domain,
+      linkConversion: linkConversionConfig || { enabled: false }
     };
-    if (linkConversionConfig) {
-      translationOptions.linkConversion = linkConversionConfig;
-    }
 
-    // 🆕 为 PRODUCT 类型注入关联翻译标志
-    const resourceInput = resource.resourceType === 'PRODUCT'
-      ? {
-          ...resource,
-          forceRelatedTranslation: forceRelatedTranslation || false,
-          userRequested: userRequested || false,
-          admin
-        }
-      : resource;
+    // ✅ 提前normalize资源类型（防止大小写不匹配）
+    const resourceType = resource.resourceType?.toUpperCase() || '';
 
-    // 🆕 根据资源类型条件调用翻译函数（大小写不敏感）
+    // ✅ 获取产品关联翻译配置
+    const relatedTranslationEnabled =
+      getEnvWithDevOverride('ENABLE_PRODUCT_RELATED_TRANSLATION', 'false') === 'true';
+
+    // ✅ 根据资源类型条件调用翻译函数
     let translationResult;
-    if (resource.resourceType?.toUpperCase() === 'PRODUCT') {
+
+    if (resourceType === 'PRODUCT' && relatedTranslationEnabled) {
+      logger.info('[Worker] 使用产品关联翻译增强版', {
+        resourceId: resource.id,
+        relatedTranslationEnabled,
+        forceRelatedTranslation,
+        userRequested
+      });
+
+      // 构建resourceInput（不嵌入admin）
+      const resourceInput = {
+        ...resource,
+        resourceType,
+        forceRelatedTranslation: forceRelatedTranslation || false,
+        userRequested: userRequested || false
+      };
+
       const { translateProductWithRelated } = await import('./product-translation-enhanced.server.js');
-      translationResult = await translateProductWithRelated(resourceInput, language, translationOptions);
+
+      // ✅ 正确的4参数调用：(resource, lang, admin, options)
+      translationResult = await translateProductWithRelated(
+        resourceInput,
+        language,
+        admin,
+        translationOptions
+      );
     } else {
-      translationResult = await translateResource(resourceInput, language, translationOptions);
+      // 其他资源类型使用标准翻译
+      translationResult = await translateResource(
+        {
+          ...resource,
+          resourceType
+        },
+        language,
+        admin,
+        translationOptions
+      );
     }
     job.progress(50);
 
