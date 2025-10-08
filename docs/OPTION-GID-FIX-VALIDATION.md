@@ -86,20 +86,34 @@ node scripts/fix-option-gids.mjs --shop=shop1
 
 ### 5. 验证数据库
 
+#### 生产环境验证
+
+```bash
+# Fynony 店铺（shop1）
+/tmp/ssh_auto_route.sh "sqlite3 /var/www/app1-fynony/prisma/dev.sqlite \"
+  SELECT id, resourceType, gid, title
+  FROM Resource
+  WHERE resourceType = 'PRODUCT_OPTION'
+  LIMIT 5;
+\""
+
+# OneWind 店铺（shop2）
+/tmp/ssh_auto_route.sh "sqlite3 /var/www/app2-onewind/prisma/dev.sqlite \"
+  SELECT id, resourceType, gid, title
+  FROM Resource
+  WHERE resourceType = 'PRODUCT_OPTION'
+  LIMIT 5;
+\""
+```
+
+#### 本地开发环境验证
+
 ```bash
 # 方式1: Prisma Studio
 npx prisma studio
 # 打开Resource表，筛选resourceType='PRODUCT_OPTION'
 
-# 方式2: SQL查询（在服务器上）
-sqlite3 /var/www/app1-fynony/prisma/dev.sqlite "
-  SELECT id, resourceType, gid, title
-  FROM Resource
-  WHERE resourceType = 'PRODUCT_OPTION'
-  LIMIT 5;
-"
-
-# 方式3: 本地查询
+# 方式2: SQL查询
 sqlite3 prisma/dev.sqlite "
   SELECT id, resourceType, gid, title
   FROM Resource
@@ -108,7 +122,7 @@ sqlite3 prisma/dev.sqlite "
 "
 ```
 
-**预期**：
+**预期**（所有环境一致）：
 - ✅ gid字段格式：`gid://shopify/ProductOption/数字`
 - ❌ **无**包含`-temp`的gid
 - ❌ **无**cuid格式的gid（如"ckxyz123"）
@@ -183,24 +197,32 @@ sqlite3 prisma/dev.sqlite "
 
 ### 回滚操作步骤
 
+⚠️ **注意**: 以下所有操作均在生产环境执行
+
 ```bash
-# 1. 回滚代码
-git log --oneline -5  # 查看最近的提交
-git revert <commit-hash>
+# 1. 回滚代码（生产环境 - Fynony）
+/tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && git log --oneline -5"
+/tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && git revert <commit-hash>"
 
-# 2. 重新部署
-npm run build
-pm2 restart shop1-fynony shop1-worker
+# 2. 重新部署（生产环境）
+/tmp/ssh_auto_route.sh "cd /var/www/app1-fynony && npm run check -- --no-cache && npm run build"
+/tmp/ssh_auto_route.sh "pm2 restart shop1-fynony shop1-worker"
 
-# 3. 清理测试数据（如需要）
-sqlite3 prisma/dev.sqlite "
+# 3. 清理测试数据（如需要 - 生产环境）
+/tmp/ssh_auto_route.sh "sqlite3 /var/www/app1-fynony/prisma/dev.sqlite \"
   DELETE FROM Translation
   WHERE resourceId IN (
     SELECT id FROM Resource
     WHERE resourceType = 'PRODUCT_OPTION'
     AND createdAt > datetime('now', '-1 hour')
   );
-"
+\""
+
+# OneWind 店铺回滚（如需要）
+/tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && git log --oneline -5"
+/tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && git revert <commit-hash>"
+/tmp/ssh_auto_route.sh "cd /var/www/app2-onewind && npm run check -- --no-cache && npm run build"
+/tmp/ssh_auto_route.sh "pm2 restart shop2-onewind shop2-worker"
 ```
 
 ---
