@@ -12,6 +12,7 @@ import { translateResource } from './translation.server.js';
 import { fetchMetafieldsForProduct, fetchOptionsForProduct } from './shopify-graphql.server.js';
 import prisma from '../db.server.js';
 import { logger } from '../utils/logger.server.js';
+import { isValidShopifyGid } from './resource-gid-resolver.server.js';
 
 function resolveProductIdentifiers(product) {
   if (!product) {
@@ -313,8 +314,10 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
           const remoteOptions = await fetchOptionsForProduct(admin, product.gid);
           existingOptions = remoteOptions.map((option, index) => {
             const resourceId = buildDerivedResourceId(product, 'option', index);
+            const shopifyGid = option.id;  // 保存真实Shopify GID
             return {
-              id: `${resourceId}-temp`,
+              id: shopifyGid,              // 用于内存逻辑引用
+              gid: shopifyGid,             // 用于数据库保存
               resourceId,
               resourceType: 'PRODUCT_OPTION',
               shopId: product.shopId,
@@ -348,8 +351,10 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
         const remoteOptions = await fetchOptionsForProduct(admin, product.gid);
         existingOptions = remoteOptions.map((option, index) => {
           const resourceId = buildDerivedResourceId(product, 'option', index);
+          const shopifyGid = option.id;  // 保存真实Shopify GID
           return {
-            id: `${resourceId}-temp`,
+            id: shopifyGid,              // 用于内存逻辑引用
+            gid: shopifyGid,             // 用于数据库保存
             resourceId,
             resourceType: 'PRODUCT_OPTION',
             shopId: product.shopId,
@@ -465,10 +470,14 @@ async function translateProductOptionsIfExists(product, targetLang, admin) {
         } else {
           optionResourceId = option.id;
 
+          // 多级fallback + 格式验证
+          const candidateGid = option.gid ?? option.contentFields?.productGid;
+          const validGid = isValidShopifyGid(candidateGid) ? candidateGid : null;
+
           const resourceToSave = [{
             id: option.id,
             resourceType: option.resourceType || 'PRODUCT_OPTION',
-            gid: option.gid || option.id,
+            gid: validGid,  // 只保存有效GID或null
             title: option.title || '',
             description: option.contentFields?.name || '',
             contentFields: updatedContentFields,

@@ -5,7 +5,6 @@
 
 import { prisma } from '../db.server.js';
 import { collectError } from './error-collector.server.js';
-import { persistentLogger } from './log-persistence.server.js';
 import { logger } from '../utils/logger.server.js';
 
 // 告警级别
@@ -91,7 +90,7 @@ export class AlertManager {
       this.check();
     }, this.checkInterval);
     
-    persistentLogger.info('告警管理器已启动', {
+    logger.info('告警管理器已启动', {
       checkInterval: this.checkInterval,
       thresholds: ALERT_THRESHOLDS
     });
@@ -103,7 +102,7 @@ export class AlertManager {
       clearInterval(this.checkTimer);
       this.checkTimer = null;
     }
-    persistentLogger.info('告警管理器已停止');
+    logger.info('告警管理器已停止');
   }
   
   // 执行检查
@@ -126,7 +125,7 @@ export class AlertManager {
       this.cleanupExpiredAlerts();
       
     } catch (error) {
-      persistentLogger.error('告警检查失败', {
+      logger.error('告警检查失败', {
         error: error.message,
         stack: error.stack
       });
@@ -437,7 +436,7 @@ export class AlertManager {
     // 记录到数据库
     await this.persistAlert(alert);
     
-    persistentLogger.warn(`告警触发: ${message}`, {
+    logger.warn(`告警触发: ${message}`, {
       type,
       level,
       details
@@ -452,7 +451,7 @@ export class AlertManager {
       if (alert.type === type) {
         keysToRemove.push(key);
         
-        persistentLogger.info(`告警解除: ${alert.message}`, {
+        logger.info(`告警解除: ${alert.message}`, {
           type: alert.type,
           level: alert.level,
           duration: Date.now() - alert.createdAt.getTime()
@@ -553,7 +552,7 @@ export class AlertManager {
     for (const [key, alert] of this.alerts.entries()) {
       if (now - alert.lastOccurrence.getTime() > expirationTime) {
         this.alerts.delete(key);
-        persistentLogger.info(`告警过期自动清除: ${alert.message}`);
+        logger.info(`告警过期自动清除: ${alert.message}`);
       }
     }
   }
@@ -573,7 +572,7 @@ export class AlertManager {
     for (const alert of this.alerts.values()) {
       if (alert.id === alertId) {
         alert.acknowledged = true;
-        persistentLogger.info(`告警已确认: ${alert.message}`);
+        logger.info(`告警已确认: ${alert.message}`);
         return true;
       }
     }

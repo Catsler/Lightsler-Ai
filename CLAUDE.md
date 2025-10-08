@@ -26,6 +26,93 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
 - ✅ 项目启动前必须获得用户明确授权
 - ✅ 如必须启动，使用指定命令：`shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000`
 
+## 🔴 生产部署红线警告
+
+### 致命禁区（违反必究）
+
+**❌ 绝对禁止的操作**:
+1. **禁止覆盖生产配置文件**
+   - 禁止同步 `.env` 到生产服务器
+   - 禁止同步 `shopify.app.toml` 到生产服务器
+   - 禁止同步数据库文件（`prisma/dev.sqlite`）到生产服务器
+   - 禁止同步 Redis 队列数据
+
+2. **禁止混淆环境**
+   - 本地开发配置（devshop, DB 13）≠ 生产配置（shop1/shop2, DB 11/12）
+   - Fynony 使用 Redis DB 11，OneWind 使用 Redis DB 12
+   - 每个店铺有独立的 SHOPIFY_API_KEY 和认证信息
+
+3. **禁止未经授权的生产操作**
+   - 所有生产部署必须先获得用户明确授权
+   - 禁止自主重启生产服务（PM2 restart）
+   - 禁止自主修改生产数据库
+
+### ✅ 正确的部署流程
+
+**安全部署步骤**:
+```bash
+# 1. 提交代码到 Git
+git add .
+git commit -m "feat: 功能描述"
+git push origin main
+
+# 2. SSH到服务器（选择目标）
+# Fynony: /var/www/app1-fynony
+# OneWind: /var/www/app2-onewind
+
+# 3. 服务器上拉取代码并构建
+cd /var/www/app1-fynony
+git pull origin main
+npm run build  # ⚠️ 必须：重新构建
+
+# 4. 重启进程
+pm2 restart shop1-fynony shop1-worker
+
+# 5. 验证
+pm2 logs shop1-fynony --lines 20 --nostream
+```
+
+**使用安全部署脚本**:
+```bash
+# 脚本位置：/tmp/safe-deploy-to-production.sh
+# 包含交互式确认和环境选择
+./tmp/safe-deploy-to-production.sh
+```
+
+### ⚠️ 生产配置备份位置
+
+**配置备份文件**（只读参考，禁止修改）:
+- Fynony: `/Users/elie/Downloads/translate/Lightsler-Ai/阿里云轻量服务器部署文件/app1-fynony-production.env`
+- OneWind: `/Users/elie/Downloads/translate/Lightsler-Ai/阿里云轻量服务器部署文件/app2-onewind-production.env`
+
+**生产配置关键信息**:
+```bash
+# Fynony (shop1)
+SHOPIFY_API_KEY=f97170933cde079c914f7df7e90cd806
+REDIS_URL=redis://...39953/11
+SHOP_ID=shop1
+
+# OneWind (shop2)
+SHOPIFY_API_KEY=（OneWind专用key）
+REDIS_URL=redis://...39953/12
+SHOP_ID=shop2
+```
+
+### 🛡️ 防御措施
+
+**在执行任何生产操作前，必须检查**:
+1. 是否获得用户明确授权？
+2. 操作是否会影响配置文件？
+3. 是否使用了正确的环境标识（shop1/shop2）？
+4. 是否有回滚方案？
+
+**如违反红线**:
+- 立即停止操作
+- 检查服务器当前状态（只读）
+- 从备份文件恢复正确配置
+- 重启服务并验证
+- 向用户报告并记录事故
+
 ### 关键配置信息
 - **应用URL**: https://translate.ease-joy.fun
 - **Client ID**: fa2e9f646301c483f81570613924c495
@@ -429,15 +516,350 @@ sqlite3 prisma/dev.db "SELECT errorCode, message, context FROM ErrorLog WHERE er
 - ✅ 测试关键功能流程（扫描→翻译→同步）
 - ✅ 使用 `npm run test:e2e` 运行端到端测试
 - ✅ 代码评审：使用 `createApiRoute` 的处理器需确认遵循 `RouteContext` 契约（优先使用 `params`，如需 `.get()` 直接引用 `searchParams`，避免重复解析 URL）
+- ✅ 提交信息遵循 Conventional Commits 格式：`feat(scope): description` 或 `fix(scope): description`
+- ✅ 服务层和工具函数测试覆盖率 ≥80% (Vitest)
+- ✅ 涉及数据库的测试使用 `--runInBand` 串行执行
+
+## 生产部署
+
+### 服务器架构 (47.79.77.128)
+
+**多租户部署**:
+- **Shop1 (Fynony)**: `/var/www/app1-fynony`
+  - 主进程: `shop1-fynony`
+  - Worker: `shop1-worker`
+  - 数据库: Redis DB 11
+- **Shop2 (OneWind)**: `/var/www/app2-onewind`
+  - 主进程: `shop2-onewind`
+  - Worker: `shop2-worker`
+  - 数据库: Redis DB 12
+
+### 部署流程
+
+**本地到生产**:
+```bash
+# 1. 本地开发和测试
+npm run check                    # 代码检查
+npm run build                    # 本地构建验证
+
+# 2. 提交代码
+git add .
+git commit -m "feat(service): 功能描述"
+git push origin main
+
+# 3. 服务器部署（以 Fynony 为例）
+ssh root@47.79.77.128
+cd /var/www/app1-fynony
+git pull origin main
+npm run build                    # ⚠️ 必须：服务器重新构建
+pm2 restart shop1-fynony shop1-worker
+
+# 4. 验证部署
+pm2 status
+pm2 logs shop1-fynony --lines 50 --nostream
+```
+
+**⚠️ 关键注意事项**:
+- 代码修改后必须在服务器上运行 `npm run build`（特别是前端组件修改）
+- 同时重启主进程和 worker 避免代码版本不一致
+- 部署时只修改代码，不要同步 `.env`、数据库、`shopify.app.toml`
+
+### SSH 智能连接（绕过VPN）
+
+```bash
+# 智能检测物理网卡IP，自动绕过VPN
+detect_bypass_vpn_ip() {
+    local target_ip="${1:-47.79.77.128}"
+    local interface=$(route -n get "$target_ip" 2>/dev/null | grep 'interface:' | awk '{print $2}')
+
+    if [ -n "$interface" ] && [[ ! "$interface" =~ ^utun ]]; then
+        local bind_ip=$(ifconfig "$interface" 2>/dev/null | grep "inet " | grep -v "inet6" | awk '{print $2}')
+        if [ -n "$bind_ip" ]; then
+            echo "$bind_ip"
+            return 0
+        fi
+    fi
+}
+
+# SSH连接
+ssh_cmd() {
+    local BIND_IP=$(detect_bypass_vpn_ip "47.79.77.128")
+    if [ -n "$BIND_IP" ]; then
+        ssh -b "$BIND_IP" -i /Users/elie/Downloads/shopify.pem -o StrictHostKeyChecking=no root@47.79.77.128 "$@"
+    else
+        ssh -i /Users/elie/Downloads/shopify.pem -o StrictHostKeyChecking=no root@47.79.77.128 "$@"
+    fi
+}
+```
+
+### PM2 进程管理
+
+```bash
+# 查看进程状态
+pm2 status
+pm2 list
+
+# 重启进程
+pm2 restart shop1-fynony shop1-worker    # Fynony
+pm2 restart shop2-onewind shop2-worker   # OneWind
+
+# 查看日志
+pm2 logs shop1-fynony --lines 100 --nostream
+pm2 logs shop1-worker --err              # 只看错误日志
+
+# 监控
+pm2 monit
+```
+
+## API 开发规范
+
+### 使用 createApiRoute
+
+**标准API路由包装器** (`app/utils/base-route.server.js`):
+
+```javascript
+import { createApiRoute } from "../utils/base-route.server.js";
+
+export const action = createApiRoute(
+  async (context) => {
+    const { params, admin, session, request } = context;
+
+    // 推荐：使用 params 获取参数（query + body 合并）
+    const { resourceId, language } = params;
+
+    // 兼容：需要 URLSearchParams 方法时使用 searchParams
+    const hasFlag = context.searchParams.get('flag');
+
+    // 业务逻辑
+    const result = await someService(resourceId, language);
+
+    return { success: true, data: result };
+  },
+  {
+    requireAuth: true,              // 是否需要Shopify认证
+    operationName: '资源翻译',       // 操作名称（日志）
+    metricKey: 'api.translate',     // 监控指标键
+    timeout: 30000                  // 超时时间（毫秒）
+  }
+);
+```
+
+**RouteContext 契约**:
+```typescript
+{
+  request: Request,              // 原始请求对象
+  requestId: string,             // 唯一请求ID
+  admin?: object,                // Shopify Admin API (需认证)
+  session?: object,              // 店铺会话信息 (需认证)
+  params: Record<string, any>,   // query + body 合并对象
+  searchParams: URLSearchParams, // 原始 URLSearchParams
+  routeParams: Record<string, string> // Remix 路由参数
+}
+```
+
+**最佳实践**:
+- ✅ 优先使用 `params` 获取参数（简洁一致）
+- ✅ 返回普通对象，框架自动包装为标准响应
+- ✅ 抛出错误会自动捕获并记录
+- ❌ 避免重复解析 URL 或 body
+- ❌ 不要在处理函数中手动包装 JSON 响应
+
+## 常见 Bug 模式与解决方案
+
+### 对象 vs 字符串混合返回
+
+**问题**: 函数返回类型不一致导致前端显示 `[object Object]`
+
+**案例**: `translateText()` 有时返回 `string`，有时返回 `{text, skipped, skipReason}`
+
+**解决方案**:
+1. **后端统一处理** - 在后处理函数中统一提取值：
+```javascript
+// app/services/translation/core.server.js
+export async function postProcessTranslation(translatedText, targetLang, originalText = '') {
+  let textToProcess = translatedText;
+
+  // 统一处理两种返回格式
+  if (translatedText && typeof translatedText === 'object') {
+    textToProcess = translatedText.text ?? translatedText.value ?? originalText ?? '';
+  }
+
+  if (typeof textToProcess !== 'string') {
+    return originalText;
+  }
+
+  return applyPostProcessors(textToProcess, context);
+}
+```
+
+2. **前端安全提取** - 处理对象/字符串混合数组：
+```javascript
+// app/components/ResourceDetail.jsx
+const extractValue = (item) => {
+  if (item && typeof item === 'object') {
+    return item.text ?? item.value ?? item.original ?? '';
+  }
+  return item ?? '';
+};
+
+const values = array.map(extractValue).filter(Boolean).join(', ');
+```
+
+**关键教训**:
+- 使用 KISS 原则：单点修复优于散弹式补丁
+- 后端集中处理，所有调用方自动受益
+- 前端防御性编程，处理边界情况
+
+### 服务器构建缓存问题
+
+**问题**: 代码已部署但前端仍显示旧行为
+
+**原因**:
+- 服务器运行旧的构建产物（`build/` 目录）
+- 前端组件修改需要重新编译
+
+**解决方案**:
+```bash
+# 服务器上必须重新构建
+cd /var/www/app1-fynony
+npm run build                    # 生成新的 build/
+pm2 restart shop1-fynony shop1-worker
+
+# 用户端清除浏览器缓存
+# Mac: Cmd + Shift + R
+# Windows: Ctrl + Shift + F5
+```
+
+**预防措施**:
+- 部署检查清单中包含服务器构建步骤
+- 验证 `build/` 目录时间戳
+- 检查 Network 面板确认加载新版本 JS
+
+### PRODUCT_OPTION GID 保存错误
+
+**问题**: 产品关联翻译功能在创建PRODUCT_OPTION资源时，错误地将Shopify真实GID替换为临时字符串
+
+**表现**:
+- 批量发布失败，日志显示"RESOURCE_GID_UNRESOLVED"
+- Resource表的gid字段包含`-temp`后缀或cuid格式
+
+**根因**:
+1. GraphQL fallback创建临时对象时用`id: ${resourceId}-temp`覆盖真实GID
+2. 保存数据库时`gid: option.id`保存了错误的临时字符串
+3. 批量发布时ensureValidResourceGid检查失败
+
+**修复** (`product-translation-enhanced.server.js`):
+1. **文件顶部**: 添加静态导入 `import { isValidShopifyGid } from './resource-gid-resolver.server.js';`
+2. **第315-333行**: 临时对象保持真实GID
+   ```javascript
+   const shopifyGid = option.id;  // 保存真实GID
+   return {
+     id: shopifyGid,    // 用于内存逻辑
+     gid: shopifyGid,   // 用于DB保存
+     isTemporary: true  // 控制保存行为
+   };
+   ```
+3. **第349-368行**: 同上修改
+4. **第470行**: 非临时分支添加GID验证
+   ```javascript
+   const candidateGid = option.gid ?? option.contentFields?.productGid;
+   const validGid = isValidShopifyGid(candidateGid) ? candidateGid : null;
+   ```
+
+**验证**: 参考 `docs/OPTION-GID-FIX-VALIDATION.md`
+
+**数据清理**:
+```bash
+# Dry-run检查
+node scripts/fix-option-gids.mjs --dry-run
+
+# 按店铺清理
+node scripts/fix-option-gids.mjs --shop=shop1
+```
+
+**修复日期**: 2025-10-08
+
+**影响范围**: PRODUCT_OPTION资源（约609个），PRODUCT_METAFIELD不受影响
 
 ## 重要文件位置
 
 ### 核心服务 (app/services/)
-- `translation.server.js` - 翻译核心引擎
-- `shopify-graphql.server.js` - Shopify API封装
-- `queue.server.js` - Redis队列系统
-- `sync-to-shopify.server.js` - 同步服务
-- `error-analyzer.server.js` - 错误分析
+
+**翻译管道** (核心流程):
+- `translation.server.js` - 翻译引擎主入口
+- `translation/core.server.js` - 核心翻译逻辑（`translateText`, `postProcessTranslation`）
+- `translation/` - 翻译子模块目录
+- `shopify-graphql.server.js` - Shopify GraphQL API封装
+- `database.server.js` - 数据库操作抽象层
+- `queue.server.js` / `queue-manager.server.js` - Redis队列系统
+- `sync-to-shopify.server.js` - 翻译结果同步到Shopify
+
+**智能决策系统** (Sequential Thinking):
+- `sequential-thinking-core.server.js` - 核心决策引擎
+- `intelligent-skip-engine.server.js` - 智能跳过决策（避免重复翻译）
+- `version-detection.server.js` - 内容版本检测
+- `error-prevention-guard.server.js` - 错误预防守卫
+- `auto-recovery.server.js` - 自动恢复机制
+
+**增强功能**:
+- `product-translation-enhanced.server.js` - 产品关联翻译（options, metafields）
+- `theme-translation.server.js` - 主题翻译
+- `incremental-translation.server.js` - 增量翻译
+- `link-converter.server.js` - 链接本地化转换
+
+**错误处理体系**:
+- `error-handler.server.js` - 统一错误处理（`withErrorHandling`, `captureError`）
+- `error-analyzer.server.js` - 错误模式分析
+- `error-collector.server.js` - 错误收集聚合
+- `error-recovery.server.js` - 错误恢复策略
+- `error-toolkit.server.js` - 错误工具集
+
+**钩子系统**:
+- `hooks-manager.server.js` - 钩子管理器
+- `translation-hooks-manager.server.js` - 翻译钩子管理
+- `hooks-plugins/` - 钩子插件目录
+
+**监控与分析**:
+- `api-monitor.server.js` - API监控（性能、失败率）
+- `performance-monitor.server.js` - 性能监控
+- `quality-error-analyzer.server.js` - 质量错误分析
+- `log-persistence.server.js` - 日志持久化
+
+**其他关键服务**:
+- `language-coverage.server.js` - 语言覆盖率统计
+- `content-digest-tracker.server.js` - 内容摘要追踪
+- `translation-session-manager.server.js` - 翻译会话管理（断点续传）
+- `webhook-manager.server.js` / `webhook-cleanup.server.js` - Webhook管理
+- `market-urls.server.js` - Markets多语言URL管理
+- `brand-dictionary.server.js` - 品牌词典
+
+### 工具层 (app/utils/)
+
+**API与路由**:
+- `base-route.server.js` - `createApiRoute` 统一路由包装
+- `api.server.js` - API调用封装（翻译API）
+- `api-response.server.js` - 响应格式标准化
+
+**日志系统**:
+- `logger.server.js` - 主日志器（`apiLogger`）
+- `unified-logger.server.js` - 统一日志
+- `base-logger.server.js` - 日志基类
+
+**配置与环境**:
+- `config.server.js` - 配置管理
+- `env.server.js` - 环境变量加载
+
+**错误处理**:
+- `error-handler.server.js` - 错误处理工具
+- `error-fingerprint.server.js` - 错误指纹生成
+- `error-messages.server.js` - 错误消息格式化
+
+**其他工具**:
+- `resource-adapters.js` - 资源适配器（26种资源类型）
+- `resource-filters.js` - 资源过滤工具
+- `metafields.js` - Metafield处理
+- `redis-parser.server.js` - Redis数据解析
+- `pipeline.server.js` - 管道工具
 
 ### 数据模型
 - `prisma/schema.prisma` - 数据库模式定义
@@ -446,3 +868,4 @@ sqlite3 prisma/dev.db "SELECT errorCode, message, context FROM ErrorLog WHERE er
 ### 配置文件
 - `shopify.app.toml` - Shopify应用权限配置
 - `.env` - 环境变量（本地创建）
+- `ecosystem-workers.config.js` - PM2 worker配置

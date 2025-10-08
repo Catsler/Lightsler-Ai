@@ -1407,7 +1407,7 @@ export async function translateTextEnhanced(text, targetLang, options = {}) {
         });
 
         // 🆕 [METRICS] 结构化日志
-        console.log('[METRICS]', {
+        logger.info('[METRICS] placeholder_fallback', {
           type: 'placeholder_fallback',
           language: targetLang,
           text_length: text.length,

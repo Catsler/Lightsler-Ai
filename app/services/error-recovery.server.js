@@ -5,7 +5,7 @@
 
 import { prisma } from '../db.server.js';
 import { collectError } from './error-collector.server.js';
-import { persistentLogger } from './log-persistence.server.js';
+import { logger } from '../utils/logger.server.js';
 import { performanceMonitor } from './performance-monitor.server.js';
 
 // 恢复策略类型
@@ -87,7 +87,7 @@ export class ErrorRecoveryManager {
       this.checkAndRecover();
     }, this.checkInterval);
     
-    persistentLogger.info('错误自动恢复服务已启动');
+    logger.info('错误自动恢复服务已启动');
   }
   
   // 停止自动恢复
@@ -97,7 +97,7 @@ export class ErrorRecoveryManager {
       this.checkTimer = null;
     }
     
-    persistentLogger.info('错误自动恢复服务已停止');
+    logger.info('错误自动恢复服务已停止');
   }
   
   // 检查并恢复错误
@@ -114,7 +114,7 @@ export class ErrorRecoveryManager {
       this.cleanupRecoveryHistory();
       
     } catch (error) {
-      persistentLogger.error('错误恢复检查失败', {
+      logger.error('错误恢复检查失败', {
         error: error.message,
         stack: error.stack
       });
@@ -155,7 +155,7 @@ export class ErrorRecoveryManager {
     try {
       const config = RECOVERY_CONFIG[error.errorCode];
       if (!config) {
-        persistentLogger.warn('没有找到恢复策略', { errorCode: error.errorCode });
+        logger.warn('没有找到恢复策略', { errorCode: error.errorCode });
         return;
       }
       
@@ -163,7 +163,7 @@ export class ErrorRecoveryManager {
       
       if (result.success) {
         await this.markErrorRecovered(error, result);
-        persistentLogger.info('错误恢复成功', {
+        logger.info('错误恢复成功', {
           errorId: error.id,
           errorCode: error.errorCode,
           strategy: config.strategy,
@@ -171,7 +171,7 @@ export class ErrorRecoveryManager {
         });
       } else {
         await this.handleRecoveryFailure(error, result);
-        persistentLogger.warn('错误恢复失败', {
+        logger.warn('错误恢复失败', {
           errorId: error.id,
           errorCode: error.errorCode,
           reason: result.reason
@@ -179,7 +179,7 @@ export class ErrorRecoveryManager {
       }
       
     } catch (recoveryError) {
-      persistentLogger.error('恢复过程出错', {
+      logger.error('恢复过程出错', {
         errorId: error.id,
         recoveryError: recoveryError.message
       });
@@ -272,7 +272,7 @@ export class ErrorRecoveryManager {
         }
         
       } catch (retryError) {
-        persistentLogger.debug(`重试失败 (${attempt}/${maxRetries})`, {
+        logger.debug(`重试失败 (${attempt}/${maxRetries})`, {
           errorId: error.id,
           error: retryError.message
         });
@@ -318,7 +318,7 @@ export class ErrorRecoveryManager {
         delay = Math.min(delay * backoffFactor, maxDelay);
         
       } catch (retryError) {
-        persistentLogger.debug(`指数退避重试失败 (${attempt}/${maxRetries})`, {
+        logger.debug(`指数退避重试失败 (${attempt}/${maxRetries})`, {
           errorId: error.id,
           delay,
           error: retryError.message
@@ -397,7 +397,7 @@ export class ErrorRecoveryManager {
         circuit.state = 'OPEN';
         circuit.nextAttempt = Date.now() + timeout;
         
-        persistentLogger.warn('熔断器开启', {
+        logger.warn('熔断器开启', {
           errorCode: error.errorCode,
           failures: circuit.failures,
           nextAttempt: new Date(circuit.nextAttempt)
@@ -576,7 +576,7 @@ export class ErrorRecoveryManager {
   // 服务重启策略（慎用）
   async serviceRestartStrategy(error, config) {
     // 这个策略应该非常谨慎使用
-    persistentLogger.error('服务重启策略被触发', {
+    logger.error('服务重启策略被触发', {
       errorId: error.id,
       errorCode: error.errorCode
     });
@@ -629,7 +629,7 @@ export class ErrorRecoveryManager {
           return false;
       }
     } catch (retryError) {
-      persistentLogger.debug('重试操作失败', {
+      logger.debug('重试操作失败', {
         errorId: error.id,
         operation: error.operation,
         error: retryError.message
@@ -717,25 +717,25 @@ export class ErrorRecoveryManager {
   // 辅助函数：处理延迟任务
   async processDelayedTask(error) {
     // 实现延迟任务处理逻辑
-    persistentLogger.info('处理延迟任务', { errorId: error.id });
+    logger.info('处理延迟任务', { errorId: error.id });
   }
   
   // 辅助函数：清理应用缓存
   async clearApplicationCache() {
     // 实现缓存清理逻辑
-    persistentLogger.info('清理应用缓存');
+    logger.info('清理应用缓存');
   }
   
   // 辅助函数：清理临时文件
   async cleanupTempFiles() {
     // 实现临时文件清理逻辑
-    persistentLogger.info('清理临时文件');
+    logger.info('清理临时文件');
   }
   
   // 辅助函数：重置连接池
   async resetConnectionPools() {
     // 实现连接池重置逻辑
-    persistentLogger.info('重置连接池');
+    logger.info('重置连接池');
   }
   
   // 辅助函数：获取内存统计

@@ -167,12 +167,12 @@ export function logApiOperation(operation, shopDomain, details = {}, success = t
   const logData = {
     operation,
     shopDomain,
-    details,
+    details: sanitizeForJson(details),
     success,
     timestamp: new Date().toISOString()
   };
-  
-  console[logLevel](`API操作 - ${operation}:`, logData);
+
+  apiLogger[logLevel](`API操作 - ${operation}:`, logData);
 }
 
 /**

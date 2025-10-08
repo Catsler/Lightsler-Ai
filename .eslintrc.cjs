@@ -74,5 +74,19 @@ module.exports = {
         "no-console": "error"
       }
     },
+    // 统一日志出口允许导入底层实现（架构层例外）
+    {
+      files: ["app/services/unified-logger.server.js"],
+      rules: {
+        "no-restricted-imports": "off"
+      }
+    },
+    // 日志持久化底层实现允许使用console（不能调用自己）
+    {
+      files: ["app/services/log-persistence.server.js"],
+      rules: {
+        "no-console": "off"
+      }
+    }
   ],
 };
