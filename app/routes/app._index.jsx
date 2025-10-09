@@ -27,6 +27,36 @@ import {
 import { getShopLocales } from "../services/shopify-locales.server.js";
 import prisma from "../db.server";
 
+const RESOURCE_TYPE_LABELS = {
+  PRODUCT: '产品',
+  COLLECTION: '集合',
+  PRODUCT_OPTION: '产品选项',
+  PRODUCT_METAFIELD: '产品元字段',
+  PRODUCT_OPTION_VALUE: '产品选项值',
+  ARTICLE: '博客文章',
+  BLOG: '博客',
+  PAGE: '页面',
+  FILTER: '筛选条件',
+  MENU: '菜单',
+  LINK: '链接',
+  SHOP: '店铺',
+  SHOP_POLICY: '店铺政策',
+  ONLINE_STORE_THEME: '主题资源',
+  ONLINE_STORE_THEME_JSON_TEMPLATE: '主题模板',
+  ONLINE_STORE_THEME_SETTINGS_CATEGORY: '主题设置',
+  ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS: '主题区块',
+  ONLINE_STORE_THEME_SECTION_GROUP: '主题区块组',
+  ONLINE_STORE_THEME_APP_EMBED: '主题App嵌入',
+  ONLINE_STORE_THEME_LOCALE_CONTENT: '主题语言内容',
+  SELLING_PLAN: '订阅计划',
+  SELLING_PLAN_GROUP: '订阅计划组'
+};
+
+function getResourceTypeLabel(type) {
+  const normalized = String(type || '').toUpperCase();
+  return RESOURCE_TYPE_LABELS[normalized] || normalized || 'UNKNOWN';
+}
+
 // 添加全局错误监听
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
@@ -654,10 +684,40 @@ function Index() {
     }
 
     if (responseData.success) {
-      const { published = 0, total = 0, successRate = '0%' } = responseData;
+      const {
+        published = 0,
+        total = 0,
+        successRate = '0%',
+        byType = {},
+        errors = []
+      } = responseData;
 
-      addLog(`✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`, 'success');
+      let detailMessage = `✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`;
+
+      const typeEntries = Object.entries(byType);
+      if (typeEntries.length > 0) {
+        const hiddenTypes = new Set(['PRODUCT_OPTION', 'PRODUCT_METAFIELD', 'PRODUCT_OPTION_VALUE']);
+        detailMessage += '\n\n按类型统计:';
+        typeEntries
+          .sort(([a], [b]) => a.localeCompare(b))
+          .forEach(([type, stats]) => {
+            const successCount = stats?.success ?? 0;
+            const failedCount = stats?.failed ?? 0;
+            const suffix = hiddenTypes.has(type) ? ' (自动处理)' : '';
+            detailMessage += `\n  • ${getResourceTypeLabel(type)}: ${successCount} 成功`;
+            if (failedCount > 0) {
+              detailMessage += `, ${failedCount} 失败`;
+            }
+            detailMessage += suffix;
+          });
+      }
+
+      addLog(detailMessage, 'success');
       showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
+
+      if (Array.isArray(errors) && errors.length > 0) {
+        addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
+      }
 
       // 刷新状态
       loadStatus();
@@ -980,6 +1040,22 @@ function Index() {
       addLog(`⚠️ ${failureCount} 个资源翻译失败，请检查日志`, 'warning');
       showToast(`${failureCount} 个资源翻译失败`, { isError: true });
     }
+
+    // 🆕 阶段1：消费 relatedSummary（产品关联内容自动处理）
+    if (success && data?.relatedSummary) {
+      const { options = {}, metafields = {} } = data.relatedSummary;
+      const optionsCount = (options.translated || 0) + (options.skipped || 0);
+      const metafieldsCount = (metafields.translated || 0) + (metafields.skipped || 0);
+      const totalRelated = optionsCount + metafieldsCount;
+
+      if (totalRelated > 0) {
+        addLog(
+          `ℹ️ 自动处理了 ${totalRelated} 个关联内容（选项: ${optionsCount}，元字段: ${metafieldsCount}）`,
+          'info'
+        );
+      }
+    }
+    // NOTE: 如果 relatedSummary 不存在（旧任务），静默跳过
 
     loadStatus();
   }, [translateFetcher.state, translateFetcher.data, addLog, showToast, loadStatus]);
@@ -1333,57 +1409,89 @@ function Index() {
                   />
                 </Box>
                 
-                <InlineStack gap="200">
-                  <Button 
-                    onClick={scanAllResources} 
-                    loading={isScanning}
-                    variant="primary"
-                  >
-                    扫描所有资源
-                  </Button>
-                  <Button
-                    onClick={startTranslation}
-                    loading={isTranslating}
-                    variant="primary"
-                    disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
-                  >
-                    {selectedResources.length > 0
-                      ? `翻译选中 ${selectedResources.length} 项`
-                      : resources.length > 0
-                        ? `翻译全部 ${resources.length} 项`
-                        : '暂无资源'}
-                  </Button>
-                  <Button
-                    onClick={publishPendingTranslations}
-                    loading={isPublishing}
-                    variant="primary"
-                    tone="success"
-                    disabled={!stats.pendingTranslations}
-                  >
-                    发布翻译 (当前语言 {stats.pendingTranslations || 0})
-                  </Button>
-                  <Button
-                    onClick={publishAllPending}
-                    loading={isPublishing}
-                    variant="secondary"
-                    tone="success"
-                    disabled={!stats.totalPendingTranslations}
-                  >
-                    批量发布 (所有语言 {stats.totalPendingTranslations || 0})
-                  </Button>
-                  <Button
-                    onClick={clearData}
-                    loading={isClearing}
-                    variant="tertiary"
-                    tone="critical"
-                  >
-                    清空数据
-                  </Button>
-                </InlineStack>
+                <BlockStack gap="300">
+                  <InlineStack gap="200">
+                    <Button
+                      onClick={scanAllResources}
+                      loading={isScanning}
+                      variant="primary"
+                    >
+                      扫描所有资源
+                    </Button>
+                    <Button
+                      onClick={startTranslation}
+                      loading={isTranslating}
+                      variant="primary"
+                      disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
+                    >
+                      {selectedResources.length > 0
+                        ? `翻译选中 ${selectedResources.length} 项`
+                        : resources.length > 0
+                          ? `翻译全部 ${resources.length} 项`
+                          : '暂无资源'}
+                    </Button>
+                    <Button
+                      onClick={clearData}
+                      loading={isClearing}
+                      variant="tertiary"
+                      tone="critical"
+                    >
+                      清空数据
+                    </Button>
+                  </InlineStack>
+
+                  <BlockStack gap="200">
+                    <Text variant="headingSm">发布选项</Text>
+                    <InlineStack gap="200">
+                      <BlockStack gap="100">
+                        <Button
+                          onClick={publishPendingTranslations}
+                          loading={isPublishing}
+                          variant="primary"
+                          tone="success"
+                          disabled={!stats.pendingTranslations}
+                        >
+                          立即发布 (当前语言 {stats.pendingTranslations || 0})
+                        </Button>
+                        <Text variant="bodySm" tone="subdued">
+                          直接同步，适用所有数据（包括旧记录）
+                        </Text>
+                      </BlockStack>
+                      <BlockStack gap="100">
+                        <Button
+                          onClick={publishAllPending}
+                          loading={isPublishing}
+                          variant="secondary"
+                          tone="success"
+                          disabled={!stats.totalPendingTranslations}
+                        >
+                          批量发布 (所有语言 {stats.totalPendingTranslations || 0})
+                        </Button>
+                        <Text variant="bodySm" tone="subdued">
+                          批量高级发布，支持进度跟踪（已优化验证）
+                        </Text>
+                      </BlockStack>
+                    </InlineStack>
+                  </BlockStack>
+                </BlockStack>
               </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>
+
+        {/* 🆕 阶段1：产品翻译说明 Banner */}
+        {stats.total > 0 && resources.some(r => r.resourceType === 'PRODUCT') && (
+          <Layout>
+            <Layout.Section>
+              <Banner tone="info" title="💡 产品翻译说明">
+                <Text variant="bodySm">
+                  翻译产品时会自动处理产品选项（Options）和元字段（Metafields）。
+                  可在翻译日志和发布日志中查看处理详情。
+                </Text>
+              </Banner>
+            </Layout.Section>
+          </Layout>
+        )}
 
         {/* 智能提示Banner */}
         {stats.translated === 0 && viewMode === 'all' && resources.length > 0 && (
