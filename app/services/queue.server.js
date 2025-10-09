@@ -233,6 +233,7 @@ function createAdminClient(shopDomain, accessToken) {
 
 const processorDefinitions = [];
 const attachedQueues = new WeakSet();
+const registeredQueues = new WeakSet(); // 🆕 防止重复注册processor
 let processorsInitialized = false;
 let translationQueue;
 let useMemoryQueue = false;
@@ -311,6 +312,14 @@ function registerProcessors(queue) {
     return;
   }
 
+  // 🆕 幂等性检查：防止重复注册
+  if (registeredQueues.has(queue)) {
+    logger.info('[Queue] Processors already registered for this queue, skipping', {
+      queueType: queue?.constructor?.name
+    });
+    return;
+  }
+
   const definitions = ensureProcessorDefinitions();
 
   for (const definition of definitions) {
@@ -329,6 +338,8 @@ function registerProcessors(queue) {
     queue.process(definition.name, concurrency, boundHandler);
   }
 
+  // 🆕 标记此队列已注册
+  registeredQueues.add(queue);
   logger.info('[Queue] All processors registered successfully');
 }
 
@@ -617,6 +628,9 @@ function setupRedisEventListeners() {
         // 4. 更新模式标志
         await setQueueMode(redisClient, SHOP_ID, 'redis');
         useMemoryQueue = false;
+
+        // 🆕 停止健康检查定时器（对称性：恢复Redis时应停止监测）
+        stopHealthCheck();
 
         logger.info('[Queue] ✅ 已切回Redis模式，processors 将自动接手 backlog');
       } catch (switchErr) {
@@ -1040,9 +1054,10 @@ initializeQueue();
 
 /**
  * 手动注册队列processors（供Worker进程在queue ready后调用）
+ * 🆕 增强：等待Bull连接就绪 + 重试 + 降级 + 状态同步
  */
 export async function registerQueueProcessors() {
-  // 等待队列初始化完成
+  // 1️⃣ 等待队列对象创建（现有逻辑）
   if (!translationQueue) {
     logger.info('[Queue] 等待队列初始化...');
     // 等待最多10秒
@@ -1055,9 +1070,96 @@ export async function registerQueueProcessors() {
     }
   }
 
-  logger.info('[Queue] 手动注册processors');
+  // 2️⃣ 🆕 等待 Bull queue 连接 Redis（关键改进）
+  if (!useMemoryQueue && translationQueue && typeof translationQueue.isReady === 'function') {
+    const MAX_RETRIES = 3;
+    const READY_TIMEOUT = 10000; // 10秒超时
+    let connected = false;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        logger.info(`[Queue] 等待Bull连接Redis (尝试 ${attempt}/${MAX_RETRIES})...`);
+
+        // 🔑 关键：同步等待 Bull 的 isReady() 完成
+        await Promise.race([
+          translationQueue.isReady(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Queue ready timeout')), READY_TIMEOUT)
+          )
+        ]);
+
+        logger.info('[Queue] ✅ Bull队列已连接到Redis');
+        connected = true;
+        break;
+
+      } catch (error) {
+        logger.warn(`[Queue] ⚠️ Bull连接失败 (尝试 ${attempt}/${MAX_RETRIES})`, {
+          error: error.message,
+          shopId: SHOP_ID
+        });
+
+        // 最后一次尝试失败 → 降级到内存队列
+        if (attempt === MAX_RETRIES) {
+          logger.error('[Queue] ❌ Redis连接失败达上限，降级到内存队列');
+
+          try {
+            // 关闭失败的 Redis 队列
+            if (translationQueue && typeof translationQueue.close === 'function') {
+              await translationQueue.close();
+            }
+          } catch (closeErr) {
+            logger.warn('[Queue] 关闭Redis队列失败', { error: closeErr.message });
+          }
+
+          // 🆕 完整的降级流程（修复状态同步问题）
+          const oldQueue = translationQueue;
+          translationQueue = createMemoryQueueInstance();
+          useMemoryQueue = true;
+
+          // 🆕 重新绑定事件监听器（关键！）
+          attachLifecycleEvents(translationQueue);
+
+          // 🆕 更新 Redis 模式标志
+          if (redisClient) {
+            try {
+              await setQueueMode(redisClient, SHOP_ID, 'memory');
+            } catch (modeErr) {
+              logger.warn('[Queue] 更新Redis模式标志失败', { error: modeErr.message });
+            }
+          }
+
+          // 🆕 停止健康检查定时器（如果使用内存队列不需要）
+          stopHealthCheck();
+
+          logger.info('[Queue] ✅ 已完整降级到内存队列', {
+            oldQueueType: oldQueue?.constructor?.name,
+            newQueueType: translationQueue?.constructor?.name,
+            shopId: SHOP_ID
+          });
+          break;
+        }
+
+        // 重试前等待
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    // 3️⃣ 验证最终队列状态
+    if (!connected && !useMemoryQueue) {
+      throw new Error('队列连接验证失败且未成功降级');
+    }
+  }
+
+  // 4️⃣ 注册 processors（自动幂等性保护）
+  logger.info('[Queue] 手动注册processors', {
+    queueType: translationQueue?.constructor?.name,
+    mode: useMemoryQueue ? 'memory' : 'redis',
+    shopId: SHOP_ID
+  });
+
   registerProcessors(translationQueue);
-  logger.info('[Queue] Processors注册完成');
+
+  logger.info('[Queue] ✅ Processors注册完成');
 }
 
 export { translationQueue, handleTranslateResource, handleBatchTranslate };
