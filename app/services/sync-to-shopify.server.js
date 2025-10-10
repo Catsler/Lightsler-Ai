@@ -16,6 +16,9 @@ const syncLogger = {
   debug: (message, meta = {}) => baseLogger.debug(message, { service: 'sync-to-shopify', ...meta })
 };
 
+// 诊断开关
+const DIAGNOSE_OPTION = process.env.DIAGNOSE_PRODUCT_OPTION === 'true';
+
 /**
  * 获取待同步的翻译记录
  * @param {string} shopId - 店铺ID
@@ -215,7 +218,28 @@ async function syncResourceTranslations(admin, resourceData, batchIndex = 0) {
       
       // 准备翻译数据
       const translationData = prepareTranslationData(langTranslations[0], resource);
-      
+
+      // PRODUCT_OPTION 诊断日志
+      if (DIAGNOSE_OPTION && resource.resourceType?.toUpperCase() === 'PRODUCT_OPTION') {
+        const translationFieldsKeys = translationData?.translationFields
+          ? Object.keys(translationData.translationFields)
+          : [];
+
+        syncLogger.debug('[PRODUCT_OPTION诊断-CHECKPOINT-1] 发布前数据:', {
+          resourceId: resource.id,
+          resourceGid: resource.gid,
+          language,
+          translationFieldsKeys,
+          translationFieldsSummary: translationData?.translationFields
+            ? Object.entries(translationData.translationFields).map(([k, v]) => ({
+                key: k,
+                type: typeof v,
+                length: typeof v === 'string' ? v.length : Array.isArray(v) ? v.length : 'N/A'
+              }))
+            : []
+        });
+      }
+
       // 调用Shopify API（使用新的批量处理函数）
       const result = await updateResourceTranslationBatch(
         admin,

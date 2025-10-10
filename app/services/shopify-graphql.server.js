@@ -12,6 +12,9 @@
  */
 import { logger } from '../utils/logger.server.js';
 
+// 诊断开关
+const DIAGNOSE_OPTION = process.env.DIAGNOSE_PRODUCT_OPTION === 'true';
+
 function sanitizeTranslationValue(value, fallback = null) {
   // 处理字符串类型
   if (typeof value === 'string') {
@@ -1310,7 +1313,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
 
     const translatableContent = data.data.translatableResource?.translatableContent || [];
     logger.debug(`✅ 获取到可翻译内容: ${translatableContent.length} 个字段`);
-    
+
     // 详细输出可翻译内容
     logger.debug('📝 可翻译内容详情:');
     translatableContent.forEach((item, index) => {
@@ -1319,6 +1322,20 @@ export async function updateResourceTranslation(admin, resourceGid, translations
       logger.debug(`     Digest: ${item.digest}`);
       logger.debug(`     Locale: ${item.locale}`);
     });
+
+    // PRODUCT_OPTION 诊断：translatableContent 结构
+    const normalizedType = (resourceType || '').toUpperCase();
+    if (DIAGNOSE_OPTION && normalizedType === 'PRODUCT_OPTION') {
+      logger.debug('[PRODUCT_OPTION诊断-CHECKPOINT-2] translatableResource 查询结果:', {
+        resourceGid,
+        targetLocale,
+        translatableContentCount: translatableContent.length,
+        translatableContentKeys: translatableContent.map(c => c?.key || '').filter(Boolean),
+        providedTranslationFieldsKeys: translations?.translationFields
+          ? Object.keys(translations.translationFields)
+          : []
+      });
+    }
 
     // 第二步：准备翻译输入
     logger.debug('🔧 第二步：准备翻译输入...');
@@ -1550,6 +1567,20 @@ export async function updateResourceTranslation(admin, resourceGid, translations
     logger.debug(`🎯 准备注册 ${translationInputsFinal.length} 个翻译`);
     logger.debug('📤 翻译输入详情:', JSON.stringify(translationInputsFinal, null, 2));
 
+    // PRODUCT_OPTION 诊断：准备的 translationInputs
+    if (DIAGNOSE_OPTION && normalizedType === 'PRODUCT_OPTION') {
+      logger.debug('[PRODUCT_OPTION诊断-CHECKPOINT-3] 准备的 translationInputs:', {
+        resourceGid,
+        targetLocale,
+        inputsCount: translationInputsFinal.length,
+        inputsSummary: translationInputsFinal.map(t => ({
+          key: t?.key || '',
+          valueLength: t?.value?.length || 0,
+          hasDigest: !!t?.translatableContentDigest
+        }))
+      });
+    }
+
     // 第三步：注册翻译（分批处理）
     logger.debug('💾 第三步：注册翻译到Shopify...');
     
@@ -1580,9 +1611,23 @@ export async function updateResourceTranslation(admin, resourceGid, translations
             translations: chunk
           }
         );
-        
+
         logger.debug(`📊 第 ${i + 1} 批翻译注册响应:`, JSON.stringify(registerData, null, 2));
-        
+
+        // PRODUCT_OPTION 诊断：API 响应
+        if (DIAGNOSE_OPTION && normalizedType === 'PRODUCT_OPTION') {
+          logger.debug(`[PRODUCT_OPTION诊断-CHECKPOINT-4] 批次 ${i + 1} API 响应:`, {
+            resourceGid,
+            targetLocale,
+            batchIndex: i + 1,
+            chunkSize: chunk.length,
+            hasUserErrors: (registerData?.data?.translationsRegister?.userErrors || []).length > 0,
+            userErrors: registerData?.data?.translationsRegister?.userErrors || [],
+            translationsCount: (registerData?.data?.translationsRegister?.translations || []).length,
+            translationsKeys: (registerData?.data?.translationsRegister?.translations || []).map(t => t?.key || '').filter(Boolean)
+          });
+        }
+
         if (registerData.data.translationsRegister.userErrors.length > 0) {
           logger.error(`❌ 第 ${i + 1} 批翻译注册用户错误:`, registerData.data.translationsRegister.userErrors);
           errors.push({
