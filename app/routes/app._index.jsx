@@ -658,7 +658,9 @@ function Index() {
       // 刷新状态
       loadStatus();
     } else {
-      const errorMsg = responseData.error || '发布失败';
+      // 🔍 调试：保留原始响应结构供排查
+      console.debug('[Publish Error] Raw response:', responseData);
+      const errorMsg = responseData.error || responseData.message || '发布失败';
       addLog(`❌ 发布失败: ${errorMsg}`, 'error');
       showToast(`发布失败: ${errorMsg}`, { isError: true });
     }
@@ -722,7 +724,9 @@ function Index() {
       // 刷新状态
       loadStatus();
     } else {
-      const errorMsg = responseData.error || '批量发布失败';
+      // 🔍 调试：保留原始响应结构供排查
+      console.debug('[Batch Publish Error] Raw response:', responseData);
+      const errorMsg = responseData.error || responseData.message || '批量发布失败';
       addLog(`❌ 批量发布失败: ${errorMsg}`, 'error');
       showToast(`批量发布失败: ${errorMsg}`, { isError: true });
     }

@@ -735,6 +735,42 @@ pm2 restart shop1-fynony shop1-worker
 - 验证 `build/` 目录时间戳
 - 检查 Network 面板确认加载新版本 JS
 
+### 错误字段不匹配导致通用错误消息
+
+**问题**: 批量发布或单语言发布失败时显示 "❌ 发布失败: 发布失败"（通用错误，无详情）
+
+**根因**:
+- 后端 `createApiRoute` 返回: `{success: false, message: "具体错误原因"}`
+- 前端只检查 `responseData.error`，导致 fallback 到通用消息
+- 错误字段名称不一致：后端用 `message`，前端期望 `error`
+
+**修复** (2025-10-10):
+- 前端兼容两种字段：`responseData.error || responseData.message || '发布失败'`
+- 添加 `console.debug` 保留原始响应供排查其他未知字段
+- 影响位置：
+  - `app/routes/app._index.jsx:661-665` (单语言发布 publishFetcher)
+  - `app/routes/app._index.jsx:727-731` (批量发布 batchPublishFetcher)
+
+**验证**:
+```javascript
+// 修复前
+❌ 批量发布失败: 批量发布失败
+
+// 修复后（显示真实错误）
+❌ 批量发布失败: 资源标识解析失败: RESOURCE_GID_UNRESOLVED
+❌ 批量发布失败: Request timeout
+```
+
+**调试技巧**:
+- 打开浏览器 DevTools Console
+- 查看 `[Publish Error] Raw response:` 或 `[Batch Publish Error] Raw response:`
+- 检查完整响应结构，确认所有可能的错误字段
+
+**关键教训**:
+- 前后端错误字段命名需要统一约定
+- 前端应兼容多种错误字段格式（防御性编程）
+- 保留调试日志有助于排查未知响应结构
+
 ### PRODUCT_OPTION GID 保存错误
 
 **问题**: 产品关联翻译功能在创建PRODUCT_OPTION资源时，错误地将Shopify真实GID替换为临时字符串
