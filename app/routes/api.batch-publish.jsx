@@ -59,8 +59,11 @@ async function handleBatchPublish({ request, admin }) {
       total: allTranslations.length,
       processed: 0,
       published: 0,
+      skipped: 0,
+      skippedReasons: {},
       errors: [],
-      batches: []
+      batches: [],
+      byType: {}
     };
 
     const resourceResolutionCache = new Map();
@@ -96,44 +99,78 @@ async function handleBatchPublish({ request, admin }) {
 
           if (!resolution?.success || !resolution.gid) {
             const reason = resolution?.reason || 'RESOURCE_GID_RESOLUTION_FAILED';
-            console.warn('⚠️ 批量发布时资源GID解析失败，跳过该条', {
-              translationId: translation.id,
-              resourceTitle: resource?.title,
-              resourceType: resource?.resourceType,
-              reason,
-              details: resolution?.details || {},
-              batch: batchIndex + 1
-            });
+            const resourceType = (resource?.resourceType || '').toUpperCase();
 
-            const errorInfo = {
-              translationId: translation.id,
-              resourceTitle: resource?.title,
-              language: translation.language,
-              error: `资源标识解析失败: ${reason}`
-            };
+            // 🔧 Fallback: For OPTION/METAFIELD with existing valid GID, use it directly
+            const isOptionOrMetafield = resourceType === 'PRODUCT_OPTION' || resourceType === 'PRODUCT_METAFIELD';
+            const hasValidGid = resource?.gid && typeof resource.gid === 'string' && resource.gid.startsWith('gid://shopify/');
+            const isNullContentFieldsIssue = reason === 'PRODUCT_GID_UNAVAILABLE';
 
-            batchResult.errors.push(errorInfo);
-            results.errors.push(errorInfo);
+            if (isOptionOrMetafield && hasValidGid && isNullContentFieldsIssue) {
+              console.warn('⚠️ GID解析失败但资源有有效GID，使用直接发布模式', {
+                translationId: translation.id,
+                resourceTitle: resource?.title,
+                resourceType: resource?.resourceType,
+                gid: resource.gid,
+                reason: 'NULL_CONTENTFIELDS_FALLBACK',
+                batch: batchIndex + 1
+              });
 
-            await collectError({
-              errorType: ERROR_TYPES.SYNC,
-              errorCategory: 'BATCH_PUBLISH_ERROR',
-              errorCode: 'RESOURCE_GID_UNRESOLVED',
-              message: `Unable to resolve gid for resource ${translation.resourceId}: ${reason}`,
-              stack: null,
-              operation: 'api.batch-publish',
-              resourceId: translation.resourceId,
-              resourceType: resource?.resourceType,
-              language: translation.language,
-              shopId: translation.shopId,
-              batchIndex: batchIndex + 1
-            });
+              // 使用资源自身的 GID 继续发布流程
+              // 不返回 false，让代码继续执行到发布逻辑
+            } else {
+              // 其他类型的失败仍然跳过
+              console.warn('⚠️ 批量发布时资源GID解析失败，跳过该条', {
+                translationId: translation.id,
+                resourceTitle: resource?.title,
+                resourceType: resource?.resourceType,
+                reason,
+                details: resolution?.details || {},
+                batch: batchIndex + 1
+              });
 
-            return { success: false, translationId: translation.id, error: reason };
+              const errorInfo = {
+                translationId: translation.id,
+                resourceTitle: resource?.title,
+                language: translation.language,
+                error: `资源标识解析失败: ${reason}`
+              };
+
+              batchResult.errors.push(errorInfo);
+              results.errors.push(errorInfo);
+
+              // 增加跳过计数和原因统计
+              results.skipped++;
+              const skipReason = `GID解析失败: ${reason}`;
+              results.skippedReasons[skipReason] = (results.skippedReasons[skipReason] || 0) + 1;
+
+              if (!results.byType[resourceType]) {
+                results.byType[resourceType] = { success: 0, failed: 0 };
+              }
+              results.byType[resourceType].failed++;
+
+              await collectError({
+                errorType: ERROR_TYPES.SYNC,
+                errorCategory: 'BATCH_PUBLISH_ERROR',
+                errorCode: 'RESOURCE_GID_UNRESOLVED',
+                message: `Unable to resolve gid for resource ${translation.resourceId}: ${reason}`,
+                stack: null,
+                operation: 'api.batch-publish',
+                resourceId: translation.resourceId,
+                resourceType: resource?.resourceType,
+                language: translation.language,
+                shopId: translation.shopId,
+                batchIndex: batchIndex + 1
+              });
+
+              return { success: false, translationId: translation.id, error: reason };
+            }
           }
 
-          if (resource) {
-            resource.gid = resolution.gid;
+          // 使用解析成功的 GID，或 fallback 到资源自身的 GID
+          const finalGid = resolution?.gid || resource?.gid;
+          if (resource && finalGid) {
+            resource.gid = finalGid;
           }
 
           // 标记为处理中
@@ -163,6 +200,8 @@ async function handleBatchPublish({ request, admin }) {
             (translation.resource.resourceType || '').toUpperCase()
           );
 
+          const resourceType = (translation.resource?.resourceType || '').toUpperCase() || 'UNKNOWN';
+
           // 标记为已同步
           await prisma.translation.update({
             where: { id: translation.id },
@@ -174,6 +213,11 @@ async function handleBatchPublish({ request, admin }) {
 
           batchResult.published++;
           results.published++;
+
+          if (!results.byType[resourceType]) {
+            results.byType[resourceType] = { success: 0, failed: 0 };
+          }
+          results.byType[resourceType].success++;
           console.log(`✅ 批次${batchIndex + 1}: ${translation.resource.title} -> ${translation.language}`);
 
           return { success: true, translationId: translation.id };
@@ -202,6 +246,8 @@ async function handleBatchPublish({ request, admin }) {
             batchIndex: batchIndex + 1
           });
 
+          const resourceType = (translation.resource?.resourceType || '').toUpperCase() || 'UNKNOWN';
+
           const errorInfo = {
             translationId: translation.id,
             resourceTitle: translation.resource.title,
@@ -211,6 +257,11 @@ async function handleBatchPublish({ request, admin }) {
 
           batchResult.errors.push(errorInfo);
           results.errors.push(errorInfo);
+
+          if (!results.byType[resourceType]) {
+            results.byType[resourceType] = { success: 0, failed: 0 };
+          }
+          results.byType[resourceType].failed++;
 
           return { success: false, translationId: translation.id, error: error.message };
         }
@@ -238,10 +289,27 @@ async function handleBatchPublish({ request, admin }) {
 
     console.log(`🎯 ${message}`);
 
+    // 显示跳过统计
+    if (results.skipped > 0) {
+      console.log(`⏭️  跳过: ${results.skipped} 条`);
+      Object.entries(results.skippedReasons).forEach(([reason, count]) => {
+        console.log(`   - ${reason}: ${count}条`);
+      });
+    }
+
+    // 显示失败统计（不包括已计入跳过的）
+    const pureFailures = results.errors.length - results.skipped;
+    if (pureFailures > 0) {
+      console.log(`❌ 失败: ${pureFailures} 条（同步错误）`);
+    }
+
     return {
       message,
       ...results,
+      byType: results.byType,
       successRate: `${successRate}%`,
+      skipped: results.skipped,
+      skippedReasons: results.skippedReasons,
       processingTime: new Date() - (results.batches[0]?.startTime || new Date())
     };
 }
