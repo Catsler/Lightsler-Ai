@@ -6,12 +6,13 @@
  */
 
 import Bull from 'bull';
+import { getEnvWithDevOverride } from '../app/utils/env.server.js';
 import { logger } from '../app/utils/logger.server.js';
 import { handleTranslateResource, handleBatchTranslate } from '../app/services/queue.server.js';
 
-const SHOP_ID = process.env.SHOP_ID || 'unknown';
-const QUEUE_ROLE = process.env.QUEUE_ROLE || 'unknown';
-const REDIS_URL = process.env.REDIS_URL;
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'unknown');
+const QUEUE_ROLE = getEnvWithDevOverride('QUEUE_ROLE', 'unknown');
+const REDIS_URL = getEnvWithDevOverride('REDIS_URL');
 
 // ✅ 启动时验证环境变量
 logger.info('[Worker] Translation queue worker starting', {
@@ -19,7 +20,7 @@ logger.info('[Worker] Translation queue worker starting', {
   queueRole: QUEUE_ROLE,
   nodeEnv: process.env.NODE_ENV,
   hasRedisUrl: !!REDIS_URL,
-  redisEnabled: process.env.REDIS_ENABLED
+  redisEnabled: getEnvWithDevOverride('REDIS_ENABLED', process.env.REDIS_ENABLED)
 });
 
 if (QUEUE_ROLE !== 'worker') {

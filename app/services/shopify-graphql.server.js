@@ -11,6 +11,8 @@
  * @returns {{value: string, skipped: boolean, reason?: string}} 清洗结果
  */
 import { logger } from '../utils/logger.server.js';
+import { captureError } from '../utils/error-handler.server.js';
+import { createSyncWarning } from '../utils/sync-error-helper.server.js';
 
 // 诊断开关
 const DIAGNOSE_OPTION = process.env.DIAGNOSE_PRODUCT_OPTION === 'true';
@@ -1249,10 +1251,13 @@ export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
  * @param {Object} translations - 翻译内容
  * @param {string} targetLocale - 目标语言
  * @param {Array} fieldMapping - 字段映射配置
- * @returns {Promise<Object>} 注册结果
+ * @returns {Promise<{success: boolean, warnings: Array}>} 注册结果（包含成功标志和警告列表）
  */
 export async function updateResourceTranslation(admin, resourceGid, translations, targetLocale, resourceType) {
   try {
+    // 收集发布过程中的警告（如字段因Shopify API限制无法发布）
+    const warningsCollector = [];
+
     // 如果传入的是资源类型字符串，获取对应的字段映射
     let fieldMapping = typeof resourceType === 'string' 
       ? (ALL_FIELD_MAPPINGS[resourceType] || FIELD_MAPPINGS[resourceType])
@@ -1511,7 +1516,38 @@ export async function updateResourceTranslation(admin, resourceGid, translations
               valuePreview: sanitizedValue.value.substring(0, 50) + '...'
             });
           } else {
-            logger.debug(`⚠️ 标准动态字段未找到可翻译内容: "${fieldKey}"`);
+            // 收集警告：字段因Shopify API限制无法发布
+            warningsCollector.push(
+              createSyncWarning(fieldKey, 'FIELD_NOT_IN_TRANSLATABLE_CONTENT')
+            );
+
+            // 升级为警告级别，明确告知用户 Shopify 平台限制
+            logger.warn(
+              `⚠️ 字段 "${fieldKey}" 无法发布到 Shopify`,
+              {
+                resourceType: normalizedType,
+                resourceGid,
+                field: fieldKey,
+                locale: targetLocale,
+                reason: 'FIELD_NOT_IN_TRANSLATABLE_CONTENT',
+                message: `Shopify API 的 translatableContent 中不包含此字段，这是平台已知限制`,
+                impact: '翻译已保存在数据库中，可在应用内显示，但无法同步到 Shopify 店铺前台'
+              }
+            );
+
+            // 记录到 ErrorLog 供后续监控和 Shopify API 更新对比
+            await captureError(new Error('Field not publishable'), {
+              errorCode: 'FIELD_NOT_IN_TRANSLATABLE_CONTENT',
+              errorType: 'TRANSLATION_PUBLISH',
+              errorCategory: 'WARNING',
+              resourceType: normalizedType,
+              resourceGid,
+              field: fieldKey,
+              locale: targetLocale,
+              shopifyApiLimitation: true,
+              message: `Shopify API 的 translatableContent 中不包含字段 "${fieldKey}"`,
+              impact: '翻译已保存在数据库中，可在应用内显示，但无法同步到 Shopify 店铺前台'
+            });
           }
         }
       }
@@ -1673,6 +1709,7 @@ export async function updateResourceTranslation(admin, resourceGid, translations
 
     return {
       success: true,
+      warnings: warningsCollector,  // 返回警告列表（如字段因Shopify API限制无法发布）
       translations: allTranslations,
       details: {
         processedInputs: translationInputs.length,

@@ -6,9 +6,10 @@
 
 import { logger } from '../utils/logger.server.js';
 import { config } from '../utils/config.server.js';
+import { getEnvWithDevOverride } from '../utils/env.server.js';
 
 // 获取当前店铺ID
-const SHOP_ID = process.env.SHOP_ID || 'default';
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
 
 class MemoryCache {
   constructor() {

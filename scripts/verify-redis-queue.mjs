@@ -6,9 +6,10 @@
 
 import Redis from 'ioredis';
 import { parseRedisUrl } from '../app/utils/redis-parser.server.js';
+import { getEnvWithDevOverride } from '../app/utils/env.server.js';
 
-const REDIS_URL = process.env.REDIS_URL;
-const SHOP_ID = process.env.SHOP_ID || 'default';
+const REDIS_URL = getEnvWithDevOverride('REDIS_URL');
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
 
 if (!REDIS_URL) {
   console.error('❌ 请设置 REDIS_URL 环境变量');

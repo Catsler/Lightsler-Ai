@@ -117,9 +117,9 @@ model Translation {
   seoDescTrans String?
   translationFields Json? // 存储其他类型特定的翻译字段
   status     String   // pending, completed, failed
-  syncStatus String   @default("pending") // pending, syncing, synced, failed
+  syncStatus String   @default("pending") // pending, syncing, synced, partial, failed
   syncedAt   DateTime? // 同步到Shopify的时间
-  syncError  String?   // 同步失败的错误信息
+  syncError  String?   // 同步错误或warnings（兼容格式：字符串 或 JSON {message, warnings}）
   syncBatch  Int?      // 批次号，用于追踪
   
   // Sequential thinking扩展字段 - 版本追踪和智能跳过

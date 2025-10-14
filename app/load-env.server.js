@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getEnvWithDevOverride } from './utils/env.server.js';
 
 // 使用import.meta.url获取当前文件的绝对路径
 const __filename = fileURLToPath(import.meta.url);
@@ -14,7 +15,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
  * - 验证必需环境变量
  */
 export function loadEnvironment() {
-  const shopId = process.env.SHOP_ID;
+  let shopId = getEnvWithDevOverride('SHOP_ID');
 
   // 提供降级策略：允许无SHOP_ID的本地开发/测试环境
   if (!shopId) {
@@ -56,6 +57,8 @@ export function loadEnvironment() {
   // eslint-disable-next-line no-console
   console.log(`✅ Loaded ${shopId} config: ${shopPath}`);
 
+  shopId = getEnvWithDevOverride('SHOP_ID', shopId);
+
   // 3. 验证必需环境变量
   const required = [
     'SHOPIFY_API_KEY',
@@ -66,20 +69,25 @@ export function loadEnvironment() {
     'REDIS_URL'
   ];
 
-  const missing = required.filter(key => !process.env[key]);
+  const missing = required.filter((key) => !getEnvWithDevOverride(key));
   if (missing.length > 0) {
     throw new Error(`❌ Missing required environment variables: ${missing.join(', ')}`);
   }
 
   // 4. 验证Redis DB配置（数据隔离）
-  const redisDb = process.env.REDIS_URL.split('/').pop();
+  const resolvedRedisUrl = getEnvWithDevOverride('REDIS_URL', process.env.REDIS_URL || '');
+  const redisDb = resolvedRedisUrl ? resolvedRedisUrl.split('/').pop() : '';
+
+  const resolvedAppUrl = getEnvWithDevOverride('SHOPIFY_APP_URL', process.env.SHOPIFY_APP_URL);
+  const resolvedPort = getEnvWithDevOverride('PORT', process.env.PORT);
+  const resolvedDatabase = getEnvWithDevOverride('DATABASE_URL', process.env.DATABASE_URL);
 
   // eslint-disable-next-line no-console
   console.log(`
 ✅ Environment loaded for: ${shopId}
-   - App URL: ${process.env.SHOPIFY_APP_URL}
-   - Port: ${process.env.PORT}
-   - Database: ${process.env.DATABASE_URL}
+   - App URL: ${resolvedAppUrl}
+   - Port: ${resolvedPort}
+   - Database: ${resolvedDatabase}
    - Redis DB: ${redisDb}
   `);
 

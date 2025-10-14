@@ -2,6 +2,7 @@ import { getOrCreateShop, getAllResources } from "../services/database.server.js
 import { addBatchTranslationJob, addTranslationJob } from "../services/queue.server.js";
 import { createApiRoute } from "../utils/base-route.server.js";
 import { validateRequiredParams } from "../utils/api-response.server.js";
+import { getShopLocales } from "../services/shopify-locales.server.js";
 
 /**
  * 使用队列的异步翻译API
@@ -24,6 +25,18 @@ async function handleTranslateQueue({ request, admin, session }) {
     }
     
     const targetLanguage = params.language;
+
+    // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+    const shopLocales = await getShopLocales(admin);
+    const primaryLocale = shopLocales.find((locale) => locale.primary);
+
+    if (primaryLocale && targetLanguage.toLowerCase() === primaryLocale.locale.toLowerCase()) {
+      throw new Error(
+        `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
+        `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+      );
+    }
+
     let resourceIds;
 
     // 处理重新翻译按钮传递的单个资源ID

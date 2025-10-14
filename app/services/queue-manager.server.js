@@ -8,9 +8,10 @@ import { config } from '../utils/config.server.js';
 import { MemoryQueue } from './memory-queue.server.js';
 import { prisma } from './database.server.js';
 import { collectError, ERROR_TYPES } from './error-collector.server.js';
+import { getEnvWithDevOverride } from '../utils/env.server.js';
 import Bull from 'bull';
 
-const SHOP_ID = process.env.SHOP_ID || 'default';
+const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
 
 class QueueManager {
   constructor() {

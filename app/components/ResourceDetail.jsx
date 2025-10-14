@@ -9,10 +9,12 @@ import {
   Button,
   Divider,
   Box,
-  Checkbox
+  Checkbox,
+  Banner
 } from '@shopify/polaris';
 import { createResourceAdapter } from '../utils/resource-adapters';
 import { STANDARD_TRANSLATION_MAP } from '../routes/api.resource-detail';
+import { getSyncErrorMessage } from '../utils/sync-error-helper.js';
 
 /**
  * 通用资源详情组件 - Linus哲学实现
@@ -66,11 +68,23 @@ const TranslationCard = ({ translations, currentLanguage }) => {
           <Badge tone={translation.status === 'completed' ? 'success' : 'warning'}>
             {translation.status}
           </Badge>
-          <Badge tone={translation.syncStatus === 'synced' ? 'success' : 'info'}>
+          <Badge tone={
+            translation.syncStatus === 'synced' ? 'success' :
+            translation.syncStatus === 'partial' ? 'warning' :
+            translation.syncStatus === 'failed' ? 'critical' :
+            'info'
+          }>
             同步: {translation.syncStatus}
           </Badge>
           <Text variant="bodySm">质量评分: {(translation.qualityScore * 100).toFixed(0)}%</Text>
         </InlineStack>
+        {(translation.syncStatus === 'partial' || translation.syncStatus === 'failed') && translation.syncError && (
+          <Box paddingBlockStart="200">
+            <Text variant="bodySm" tone={translation.syncStatus === 'failed' ? 'critical' : 'caution'}>
+              {getSyncErrorMessage(translation.syncError)}
+            </Text>
+          </Box>
+        )}
         <Divider />
         <BlockStack gap="200">
           {Object.entries(translation.fields).map(([key, value]) => (
@@ -551,7 +565,16 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                 </InlineStack>
 
                 {showOptions && (
-                  <BlockStack gap="150">
+                  <BlockStack gap="300">
+                    {/* Shopify API 限制说明 */}
+                    <Banner tone="info">
+                      <p><strong>ℹ️ 关于产品选项翻译的重要说明</strong></p>
+                      <p>由于 Shopify API 限制，产品选项（Product Options）的 <strong>values 字段</strong>（如 "S, M, L" 等选项值）<strong>无法通过翻译 API 发布到 Shopify</strong>。</p>
+                      <p>✅ 可发布：选项名称（name）- 如 "Size"、"Color"<br/>
+                      ❌ 无法发布：选项值（values）- 如 "Small, Medium, Large"</p>
+                      <p>发布时这些记录会显示为 <Badge tone="warning">partial</Badge> 状态，表示部分字段成功发布。这是 Shopify 平台的限制，并非系统错误。</p>
+                    </Banner>
+
                     {optionsState.loading ? (
                       <Text variant="bodySm" tone="subdued">加载选项中...</Text>
                     ) : optionsState.data.length > 0 ? (

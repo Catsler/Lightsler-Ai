@@ -717,6 +717,17 @@ function Index() {
       addLog(detailMessage, 'success');
       showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
 
+      // 检查是否有 PRODUCT_OPTION 相关发布，添加友好说明
+      if (byType && byType['PRODUCT_OPTION']) {
+        const optionStats = byType['PRODUCT_OPTION'];
+        if (optionStats.success > 0) {
+          addLog(
+            `ℹ️ 产品选项翻译说明: 已发布 ${optionStats.success} 个选项名称。选项值（如 S/M/L）因 Shopify API 限制无法发布，这些记录会显示为 partial 状态（部分成功），这是正常现象。`,
+            'info'
+          );
+        }
+      }
+
       if (Array.isArray(errors) && errors.length > 0) {
         addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
       }

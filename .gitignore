@@ -48,6 +48,13 @@ archive/*.tar.gz
 阿里云轻量服务器部署文件/*-env.txt
 阿里云轻量服务器部署文件/shop*.env*
 阿里云轻量服务器部署文件/.env.*
+阿里云轻量服务器部署文件/*.env
+阿里云轻量服务器部署文件/app*-production.env
+阿里云轻量服务器部署文件/shopify-app-configs.md
+
+# Maintenance archives
+maintenance-scripts.tar.gz
+*.tar.gz
 
 # Build artifacts
 build/
@@ -55,6 +62,7 @@ coverage/
 test-results/
 
 # Database backups
+backups/
 *.backup-*
 *.db.backup
 dev.sqlite.backup*

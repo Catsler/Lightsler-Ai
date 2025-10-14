@@ -265,6 +265,158 @@ if (successRate < 0.6 && total > 10) {
 - 了解 PM2 进程管理命令
 - 掌握 VPN 绕过方法（静态路由配置）
 
+## PRODUCT_OPTION 翻译限制（已知平台限制）
+
+### 问题描述
+
+**症状**:
+- 翻译记录显示为 `partial` 状态（黄色警告Badge）
+- syncError 包含警告：`部分字段发布成功`
+- 仅 PRODUCT_OPTION 类型资源出现此状态
+
+**根本原因**:
+这是 **Shopify Translation API 的平台限制**，非系统Bug：
+- ✅ PRODUCT_OPTION 的 `name` 字段（如 "Size"、"Color"）**可以发布**
+- ❌ PRODUCT_OPTION 的 `values` 字段（如 "S, M, L"）**无法发布**
+
+**技术原因**:
+Shopify Translation API 的 `translatableContent` 中，PRODUCT_OPTION 类型只包含 `name` 字段，不包含 `values` 字段：
+
+```graphql
+translatableContent {
+  key: "name"
+  value: "Size"  # ✅ 可翻译
+  locale: "en"
+}
+# values: ["S", "M", "L"]  # ❌ 不在 translatableContent 中，无法通过API发布
+```
+
+### 系统行为
+
+从 **2025-10-14** 起，系统引入了 **partial 同步状态** 来正确反映这一限制：
+
+1. **翻译阶段**：
+   - 系统会翻译所有字段（包括 name 和 values）
+   - Translation 记录保存完整的翻译结果
+
+2. **发布阶段**：
+   - `name` 字段成功发布到 Shopify ✅
+   - `values` 字段被 API 拒绝，系统智能跳过 ⚠️
+   - Translation 记录标记为 `partial` 状态（部分成功）
+
+3. **错误记录**：
+   ```json
+   {
+     "message": "部分字段发布成功",
+     "warnings": [
+       {
+         "field": "values",
+         "reason": "FIELD_NOT_IN_TRANSLATABLE_CONTENT",
+         "message": "字段 values 不在 Shopify translatableContent 中，已跳过"
+       }
+     ]
+   }
+   ```
+
+### UI 表现
+
+**主页翻译列表**:
+- 显示黄色 `partial` Badge（警告色调）
+- 状态含义：部分字段成功发布
+
+**资源详情页**:
+- Product Options 展开区域有友好的 Banner 说明
+- 详细解释哪些字段可发布、哪些不可发布
+- 明确说明这是 Shopify 平台限制，非系统错误
+
+**批量发布结果**:
+- 成功发布后显示说明消息
+- 例如：`ℹ️ 产品选项翻译说明: 已发布 15 个选项名称。选项值（如 S/M/L）因 Shopify API 限制无法发布，这些记录会显示为 partial 状态（部分成功），这是正常现象。`
+
+### 诊断步骤
+
+1. **确认是否为预期行为**:
+   ```bash
+   # 查询 partial 状态的 PRODUCT_OPTION 翻译
+   sqlite3 prisma/dev.db "
+     SELECT r.resourceType, t.language, t.syncStatus, t.syncError
+     FROM Translation t
+     JOIN Resource r ON t.resourceId = r.id
+     WHERE t.syncStatus = 'partial'
+     AND r.resourceType = 'PRODUCT_OPTION'
+     LIMIT 5;
+   "
+   ```
+
+2. **查看警告详情**:
+   ```bash
+   # 解析 syncError JSON
+   sqlite3 prisma/dev.db "
+     SELECT json_extract(syncError, '$.warnings')
+     FROM Translation
+     WHERE syncStatus = 'partial'
+     LIMIT 1;
+   "
+   ```
+
+3. **验证 name 字段已发布**:
+   - 在 Shopify Admin 中打开对应产品
+   - 切换到目标语言
+   - 确认选项名称（如 "Size" → "Taille"）已正确翻译
+   - 选项值保持原语言（这是预期行为）
+
+### 替代方案
+
+由于这是 Shopify API 限制，目前无程序化解决方案：
+
+1. **手动翻译选项值**:
+   - 在 Shopify Admin 中手动编辑产品
+   - 修改选项值为目标语言
+
+2. **接受限制**:
+   - 选项值通常是标准化的（S/M/L、颜色名等）
+   - 国际通用，可能不需要翻译
+   - `partial` 状态表示系统已尽力发布
+
+3. **向 Shopify 反馈**:
+   - 在 [Shopify Community](https://community.shopify.com/) 提交功能请求
+   - 请求 Translation API 支持 PRODUCT_OPTION values 字段
+
+### 与其他发布问题的区别
+
+| 问题类型 | syncStatus | 原因 | 解决方案 |
+|---------|-----------|------|---------|
+| GID 格式错误 | `failed` | 临时GID保存错误 | 运行 `fix-option-gids.mjs` |
+| API 权限不足 | `failed` | Shopify权限配置问题 | 检查 `shopify.app.toml` |
+| **values 字段限制** | **`partial`** | **Shopify API 限制** | **无法解决，这是预期行为** |
+| 网络超时 | `failed` | 网络或API响应慢 | 重试发布 |
+
+**关键区分**:
+- `failed` = 错误，需要修复
+- `partial` = 警告，部分成功，通常是平台限制
+
+### 统计与影响
+
+运行以下查询了解影响范围：
+
+```bash
+# 统计 partial 状态的 PRODUCT_OPTION 数量
+sqlite3 prisma/dev.db "
+  SELECT
+    COUNT(*) as partial_count,
+    COUNT(DISTINCT t.resourceId) as affected_resources
+  FROM Translation t
+  JOIN Resource r ON t.resourceId = r.id
+  WHERE t.syncStatus = 'partial'
+  AND r.resourceType = 'PRODUCT_OPTION';
+"
+```
+
+**预期影响**:
+- 每个产品的每个选项在每个语言都会有一个 `partial` 记录
+- 例如：1个产品 × 2个选项 × 3个语言 = 6个 `partial` 记录
+- 这不影响其他字段的翻译，只是 values 无法发布
+
 ## 相关文档
 
 - [诊断脚本使用指南](../../scripts/diagnostics/README.md)

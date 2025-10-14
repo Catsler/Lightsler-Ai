@@ -18,6 +18,7 @@ import ThemeTranslationCompare from '../components/ThemeTranslationCompare';
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
 
 const DEFAULT_LANGUAGES = [
   { code: 'zh-CN', name: '中文' },
@@ -611,12 +612,26 @@ export default function ThemeDetailPage() {
                   <Badge tone={translation.status === 'completed' ? 'success' : 'warning'}>
                     {translation.status}
                   </Badge>
-                  <Badge tone={translation.syncStatus === 'synced' ? 'success' : 'caution'}>
+                  <Badge tone={
+                    translation.syncStatus === 'synced' ? 'success' :
+                    translation.syncStatus === 'partial' ? 'warning' :
+                    translation.syncStatus === 'failed' ? 'critical' :
+                    'caution'
+                  }>
                     {translation.syncStatus}
                   </Badge>
                 </InlineStack>
               </InlineStack>
-              
+
+              {/* 显示同步警告或错误信息 */}
+              {(translation.syncStatus === 'partial' || translation.syncStatus === 'failed') && translation.syncError && (
+                <Box paddingBlockStart="200">
+                  <Text variant="bodySm" tone={translation.syncStatus === 'failed' ? 'critical' : 'caution'}>
+                    {getSyncErrorMessage(translation.syncError)}
+                  </Text>
+                </Box>
+              )}
+
               {translation.titleTrans && (
                 <InlineStack align="space-between">
                   <Text variant="bodySm" fontWeight="semibold">标题翻译:</Text>

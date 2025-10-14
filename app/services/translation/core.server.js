@@ -81,6 +81,15 @@ import {
 // 🆕 占位符回退统计（内存存储，重启清空）
 const placeholderFallbackStats = new Map();
 
+// 产品选项字段白名单：这些字段不进行品牌词检测
+// 避免误判常见选项名（如Size/Color）为品牌词
+const SKIP_BRAND_CHECK_FIELDS = [
+  'name',           // PRODUCT_OPTION.name
+  'value',          // PRODUCT_OPTION_VALUE.name
+  'optionName',     // contentFields.optionName
+  'valueName'       // contentFields.valueName
+];
+
 const translationLogger = createTranslationLogger('TRANSLATION');
 
 const translationApiCache = createInMemoryCache({ ttlSeconds: config.translation.cacheTTL ?? 3600 });
@@ -1122,6 +1131,12 @@ function checkBrandWords(text, options = {}) {
     return { shouldSkip: false };
   }
 
+  // 白名单字段跳过品牌词检测
+  // 避免误判产品选项名称（Size/Color/Material等）为品牌词
+  if (options.fieldName && SKIP_BRAND_CHECK_FIELDS.includes(options.fieldName)) {
+    return { shouldSkip: false };
+  }
+
   // 1. 产品Vendor字段保护
   if (options.fieldName === 'vendor' && trimmedText.length > 0) {
     return {
@@ -2145,7 +2160,7 @@ export async function translateResource(resource, targetLang, options = {}) {
           // 使用安全转换函数处理 name 字段（可能是对象或其他类型）
           const normalizedName = normalizeOptionValue(contentFields.name);
           if (normalizedName) {
-            dynamicTranslationFields.name = await translateText(normalizedName, targetLang);
+            dynamicTranslationFields.name = await translateText(normalizedName, targetLang, { fieldName: 'name' });
             dynamicTranslationFields.name = await postProcessTranslation(
               dynamicTranslationFields.name,
               targetLang,
@@ -2176,7 +2191,7 @@ export async function translateResource(resource, targetLang, options = {}) {
               continue;
             }
 
-            const translatedValue = await translateText(normalizedValue, targetLang);
+            const translatedValue = await translateText(normalizedValue, targetLang, { fieldName: 'value' });
             dynamicTranslationFields.values.push(
               await postProcessTranslation(translatedValue, targetLang, normalizedValue, { linkConversion: options.linkConversion })
             );

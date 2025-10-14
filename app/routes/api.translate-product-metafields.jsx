@@ -2,6 +2,7 @@ import { createApiRoute } from "../utils/base-route.server.js";
 import { translateText } from "../services/translation.server.js";
 import { shouldTranslateMetafield, analyzeMetafields } from "../utils/metafields.js";
 import { getLinkConversionConfig } from "../services/market-urls.server.js";
+import { getShopLocales } from "../services/shopify-locales.server.js";
 
 async function handleTranslateProductMetafields({ request, admin, session }) {
   const formData = await request.formData();
@@ -18,6 +19,25 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
   }
 
   const { productGid, targetLanguage, analyzeOnly } = params;
+
+  // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+  const shopLocales = await getShopLocales(admin);
+  const primaryLocale = shopLocales.find((locale) => locale.primary);
+
+  if (primaryLocale && targetLanguage.toLowerCase() === primaryLocale.locale.toLowerCase()) {
+    console.log('[TRANSLATION] Blocked primary language request:', {
+      targetLanguage,
+      primaryLocale: primaryLocale.locale,
+      endpoint: 'api.translate-product-metafields',
+      shopDomain: session?.shop,
+      productGid
+    });
+
+    throw new Error(
+      `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
+      `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+    );
+  }
 
   try {
     const mode = analyzeOnly ? '分析' : '翻译';

@@ -388,6 +388,83 @@ npm run dev                      # 启动开发服务器（自动集成）
 - ✅ Themes (`themes/publish`, `themes/update`)
 - ✅ Locales (`locales/create`, `locales/update`)
 
+### PRODUCT_OPTION 翻译限制
+
+**核心限制**：
+- ❌ **PRODUCT_OPTION 的 values 字段无法通过 Shopify Translation API 发布**
+- ✅ **PRODUCT_OPTION 的 name 字段可以正常发布**
+
+**技术原因**：
+Shopify Translation API 的 `translatableContent` 中，PRODUCT_OPTION 类型只包含 `name` 字段，不包含 `values` 字段：
+```graphql
+translatableContent {
+  key: "name"
+  value: "Size"  # ✅ 可翻译
+  locale: "en"
+}
+# values: ["S", "M", "L"]  # ❌ 不在 translatableContent 中
+```
+
+**系统行为**：
+1. **翻译阶段**：系统会翻译所有字段（包括 name 和 values）
+2. **发布阶段**：
+   - `name` 字段成功发布到 Shopify ✅
+   - `values` 字段被跳过（API限制）⚠️
+   - Translation 记录标记为 `partial` 状态（部分成功）
+   - syncError 包含警告信息：`{"message": "部分字段发布成功", "warnings": [{"field": "values", "reason": "FIELD_NOT_IN_TRANSLATABLE_CONTENT"}]}`
+
+**用户体验**：
+- UI 显示黄色 `partial` Badge（警告色调）
+- 详细错误信息显示受影响的字段
+- ResourceDetail 页面有 Banner 说明此限制
+- 批量发布后有友好提示说明 partial 状态的原因
+
+**数据模型支持**：
+```prisma
+model Translation {
+  syncStatus String  // "pending" | "syncing" | "synced" | "partial" | "failed"
+  syncError  String? // JSON: {message, warnings: [{field, reason, message}]}
+  syncedAt   DateTime?
+}
+```
+
+**API 行为**：
+- `POST /api/publish` - 发布单个翻译，检测 warnings 并设置 partial 状态
+- `POST /api/batch-publish` - 批量发布，统计 partial 结果并提示用户
+- `GET /api/status` - 状态查询，区分 synced/partial/failed
+
+**排查步骤**：
+1. 确认 Translation 记录的 `syncStatus` 为 `partial`
+2. 查看 `syncError` 字段的 JSON 内容：
+   ```javascript
+   {
+     "message": "部分字段发布成功",
+     "warnings": [
+       {
+         "field": "values",
+         "reason": "FIELD_NOT_IN_TRANSLATABLE_CONTENT",
+         "message": "字段 values 不在 Shopify translatableContent 中，已跳过"
+       }
+     ]
+   }
+   ```
+3. 确认 `name` 字段已正常发布（Shopify Admin 中验证）
+4. 接受 `values` 字段无法发布的平台限制
+
+**替代方案**：
+- **手动操作**：在 Shopify Admin 中手动编辑产品选项值
+- **API 限制**：目前无 API 可绕过此限制
+- **功能请求**：向 Shopify 提交 API 功能增强请求
+
+**相关文件**：
+- `app/utils/sync-error-helper.server.js` - 警告对象创建和格式化
+- `app/utils/sync-error-helper.js` - 客户端警告解析和显示
+- `app/services/shopify-graphql.server.js:1488-1534` - 发布逻辑，收集 warnings
+- `app/routes/api.publish.jsx:181-192` - 单翻译发布，设置 partial 状态
+- `app/routes/api.batch-publish.jsx:206-217` - 批量发布，设置 partial 状态
+- `app/components/ResourceDetail.jsx:567-576` - 用户友好 Banner 说明
+- `app/routes/app._index.jsx:720-729` - 批量发布结果提示
+
 ## 翻译错误排查
 
 ### 错误代码说明

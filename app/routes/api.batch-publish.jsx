@@ -3,6 +3,7 @@ import prisma from "../db.server.js";
 import { updateResourceTranslation } from "../services/shopify-graphql.server.js";
 import { ensureValidResourceGid } from "../services/resource-gid-resolver.server.js";
 import { createApiRoute } from "../utils/base-route.server.js";
+import { formatSyncError } from "../utils/sync-error-helper.server.js";
 
 /**
  * 批量发布API处理函数 - 支持更高级的批量发布功能
@@ -192,7 +193,7 @@ async function handleBatchPublish({ request, admin }) {
           };
 
           // 调用Shopify API
-          await updateResourceTranslation(
+          const updateResult = await updateResourceTranslation(
             admin,
             resolution.gid,
             translationData,
@@ -202,11 +203,15 @@ async function handleBatchPublish({ request, admin }) {
 
           const resourceType = (translation.resource?.resourceType || '').toUpperCase() || 'UNKNOWN';
 
-          // 标记为已同步
+          // 检查是否有警告（如字段因Shopify API限制无法发布）
+          const hasWarnings = updateResult.warnings && updateResult.warnings.length > 0;
+
+          // 标记为已同步或部分同步
           await prisma.translation.update({
             where: { id: translation.id },
             data: {
-              syncStatus: 'synced',
+              syncStatus: hasWarnings ? 'partial' : 'synced',
+              syncError: hasWarnings ? formatSyncError(updateResult.warnings) : null,
               syncedAt: new Date()
             }
           });

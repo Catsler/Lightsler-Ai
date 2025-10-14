@@ -5,6 +5,54 @@ import { logger } from "../utils/logger.server.js";
 const prisma = new PrismaClient();
 
 /**
+ * 递归清洗 translationFields 对象
+ * 移除 {text, skipped, skipReason} 结构，提取纯文本
+ *
+ * @param {any} obj - 需要清洗的对象
+ * @returns {any} 清洗后的对象
+ */
+function deepCleanTranslationFields(obj) {
+  // null/undefined 直接返回
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // 基本类型直接返回
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+
+  // 检测跳过对象结构：{text, skipped, skipReason}
+  if (obj.skipped === true && typeof obj.text === 'string') {
+    // 跳过的翻译返回 null，避免保存无效数据
+    return null;
+  }
+
+  // 检测部分跳过对象（只有 text 和 skipReason）
+  if (obj.text !== undefined && obj.skipReason !== undefined && !obj.skipped) {
+    return null;
+  }
+
+  // 数组递归处理
+  if (Array.isArray(obj)) {
+    return obj.map(deepCleanTranslationFields).filter(item => item !== null);
+  }
+
+  // 对象递归处理
+  const cleaned = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const cleanedValue = deepCleanTranslationFields(value);
+    // 只保留非 null 的值
+    if (cleanedValue !== null) {
+      cleaned[key] = cleanedValue;
+    }
+  }
+
+  // 如果清洗后对象为空，返回 null
+  return Object.keys(cleaned).length > 0 ? cleaned : null;
+}
+
+/**
  * 数据库操作服务
  */
 
@@ -223,7 +271,7 @@ export async function saveTranslation(resourceId, shopId, language, translations
     labelTrans: extractText(actualTranslations.labelTrans),
     seoTitleTrans: extractText(actualTranslations.seoTitleTrans),
     seoDescTrans: extractText(actualTranslations.seoDescTrans),
-    translationFields: actualTranslations.translationFields || null,
+    translationFields: deepCleanTranslationFields(actualTranslations.translationFields),
     status: 'completed',
     syncStatus: 'pending' // 新翻译默认为待同步状态
   };

@@ -1,8 +1,9 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { getEnvWithDevOverride } from "../app/utils/env.server.js";
 
-const uri = process.env.REDIS_URL || "redis://localhost:6379";
-const shopId = process.env.SHOP_ID || "default";
+const uri = getEnvWithDevOverride('REDIS_URL', 'redis://localhost:6379');
+const shopId = getEnvWithDevOverride('SHOP_ID', 'default');
 const dbIndex = Number(getDatabaseIndex(shopId));
 
 function getDatabaseIndex(shopIdentifier) {

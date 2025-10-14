@@ -27,6 +27,7 @@ import {
 } from "@shopify/polaris";
 import { getSyncStatusStats } from "../services/sync-to-shopify.server.js";
 import prisma from "../db.server.js";
+import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
 
 /**
  * Loader函数：获取发布状态数据
@@ -154,7 +155,7 @@ export default function SyncManagementPage() {
     <Badge status="critical">{item.resource.resourceType}</Badge>,
     item.language,
     <Text variant="bodyMd" as="p" tone="critical">
-      {item.syncError || "未知错误"}
+      {getSyncErrorMessage(item.syncError)}
     </Text>,
     new Date(item.updatedAt).toLocaleString('zh-CN')
   ]);

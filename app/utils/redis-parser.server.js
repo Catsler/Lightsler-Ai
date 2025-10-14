@@ -152,6 +152,8 @@ function getShopIndex(shopId) {
     'lightsler-ai.myshopify.com': 10,
     'lightsler-ai': 10,
     'lightsler': 10,
+    'devshop': 13,
+    'devshop-local': 13,
 
     // 远程服务器 shop1
     'fynony.myshopify.com': 11,
