@@ -282,22 +282,37 @@ export { translationLogger };
  * @param {Object} options - fetch选项
  * @param {number} timeout - 超时时间（毫秒），默认30秒
  */
-async function fetchWithTimeout(url, options, timeout = 30000) {
+async function fetchWithTimeout(url, options = {}, timeout = 30000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
+  const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), timeout);
+
+  const { signal: userSignal, ...restOptions } = options ?? {};
+  let signal = controller.signal;
+
+  if (userSignal) {
+    if (userSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw userSignal.reason ?? new Error('请求被取消');
+    }
+
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.any) {
+      signal = AbortSignal.any([userSignal, controller.signal]);
+    } else {
+      userSignal.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
+    }
+  }
+
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
+    const response = await fetch(url, { ...restOptions, signal });
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error(`请求超时（${timeout/1000}秒）`);
+
+    if (error && (error.name === 'AbortError' || error.message === 'timeout') && !(userSignal?.aborted)) {
+      throw new Error(`请求超时（${timeout / 1000}秒）`);
     }
+
     throw error;
   }
 }
@@ -683,11 +698,8 @@ export async function translateUrlHandle(handle, targetLang, retryCount = 0) {
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.translation.apiKey}`,
+      'api-key': config.translation.apiKey
     };
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), config.translation.timeout);
-    
     // 构建专门的URL handle翻译提示词
     const systemPrompt = `你是专业的URL handle翻译和语义分析专家。请将用户输入的文本翻译成${getLanguageName(targetLang)}，生成URL友好的标识符。
 
@@ -726,73 +738,65 @@ Intel|AMD|NVIDIA|Qualcomm|Bluetooth|WiFi|USB|HDMI|4K|5G|AI|ML|VR|AR|NFT等。
 - "Smart Home Security Camera" → "${targetLang === 'zh-CN' ? '智能家居 安防摄像头' : targetLang === 'ja' ? 'スマートホーム セキュリティ カメラ' : 'Smart Home Security Camera'}"
 - "Organic Green Tea" → "${targetLang === 'zh-CN' ? '有机绿茶' : targetLang === 'ja' ? 'オーガニック 緑茶' : 'Organic Green Tea'}"`;
     
-    try {
-      logger.debug(`正在翻译URL handle: "${normalizedHandle}" -> ${getLanguageName(targetLang)}`);
-      
-      const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: config.translation.model,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: normalizedHandle
-            }
-          ],
-          temperature: 0.2, // 更低的温度确保一致性
-          max_tokens: Math.floor(100), // URL handle不需要太长
-          top_p: 1,
-          frequency_penalty: 0,
-          presence_penalty: 0
-        }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
+    logger.debug(`正在翻译URL handle: "${normalizedHandle}" -> ${getLanguageName(targetLang)}`);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`URL handle翻译API调用失败: ${response.status} ${response.statusText} - ${errorText}`);
-      }
+    const handleTimeout = Math.min(config.translation.timeout ?? 30000, 15000);
+    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.translation.model,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: normalizedHandle
+          }
+        ],
+        temperature: 0.2, // 更低的温度确保一致性
+        max_tokens: Math.floor(100), // URL handle不需要太长
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
+      })
+    }, handleTimeout);
 
-      // 安全地解析 JSON 响应
-      let result;
-      const responseText = await response.text();
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        logger.error('URL handle JSON 解析错误', { error: parseError.message, targetLang });
-        logger.error('响应内容前1000字符', { sample: responseText.substring(0, 1000) });
-        throw new Error(`URL handle API响应JSON解析失败: ${parseError.message}`);
-      }
-      
-      if (result.choices && result.choices[0] && result.choices[0].message) {
-        const translatedText = result.choices[0].message.content.trim();
-        
-        // 清理翻译结果，移除乱码和冗余词
-        const cleanedText = cleanTranslationResult(translatedText, targetLang);
-        
-        // 应用智能断句规则
-        const segmentedText = intelligentSegmentation(cleanedText, targetLang);
-        
-        // 标准化为URL friendly格式
-        const finalHandle = normalizeHandle(segmentedText);
-        
-        logger.debug('URL handle翻译完成', { handle, finalHandle, targetLang });
-        return finalHandle;
-      }
-      
-      throw new Error('URL handle翻译API响应格式异常');
-      
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      throw fetchError;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`URL handle翻译API调用失败: ${response.status} ${response.statusText} - ${errorText}`);
     }
+
+    // 安全地解析 JSON 响应
+    let result;
+    const responseText = await response.text();
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      logger.error('URL handle JSON 解析错误', { error: parseError.message, targetLang });
+      logger.error('响应内容前1000字符', { sample: responseText.substring(0, 1000) });
+      throw new Error(`URL handle API响应JSON解析失败: ${parseError.message}`);
+    }
+    
+    if (result.choices && result.choices[0] && result.choices[0].message) {
+      const translatedText = result.choices[0].message.content.trim();
+      
+      // 清理翻译结果，移除乱码和冗余词
+      const cleanedText = cleanTranslationResult(translatedText, targetLang);
+      
+      // 应用智能断句规则
+      const segmentedText = intelligentSegmentation(cleanedText, targetLang);
+      
+      // 标准化为URL friendly格式
+      const finalHandle = normalizeHandle(segmentedText);
+      
+      logger.debug('URL handle翻译完成', { handle, finalHandle, targetLang });
+      return finalHandle;
+    }
+    
+    throw new Error('URL handle翻译API响应格式异常');
     
   } catch (error) {
     logger.error(`URL handle翻译服务错误 (尝试 ${retryCount + 1}/${config.translation.maxRetries}):`, error);
@@ -1560,18 +1564,38 @@ export async function validateTranslation(originalText, translatedText, targetLa
  * 翻译服务健康检查和配置验证
  */
 // 配置验证缓存
+const HEALTHY_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+const UNHEALTHY_CACHE_TTL = 30 * 1000;   // 30秒，确保异常场景快速复查
+
 let configValidationCache = {
   result: null,
-  timestamp: 0,
-  ttl: 5 * 60 * 1000 // 5分钟缓存
+  timestamp: 0
 };
 
 export async function validateTranslationConfig(forceRefresh = false) {
   // 检查缓存是否有效
   const now = Date.now();
-  if (!forceRefresh && configValidationCache.result && 
-      (now - configValidationCache.timestamp) < configValidationCache.ttl) {
-    return configValidationCache.result;
+  if (!forceRefresh && configValidationCache.result) {
+    const ttl = configValidationCache.result.valid ? HEALTHY_CACHE_TTL : UNHEALTHY_CACHE_TTL;
+    const cacheAge = now - configValidationCache.timestamp;
+    if (cacheAge < ttl) {
+      logger.debug('📦 [validateTranslationConfig] 使用缓存结果', {
+        cacheAge: `${Math.floor(cacheAge / 1000)}秒`,
+        ttl: `${Math.floor(ttl / 1000)}秒`,
+        valid: configValidationCache.result.valid,
+        apiConnectable: configValidationCache.result.apiConnectable
+      });
+      return configValidationCache.result;
+    } else {
+      logger.debug('⏰ [validateTranslationConfig] 缓存已过期，重新验证', {
+        cacheAge: `${Math.floor(cacheAge / 1000)}秒`,
+        ttl: `${Math.floor(ttl / 1000)}秒`
+      });
+    }
+  } else if (forceRefresh) {
+    logger.info('🔄 [validateTranslationConfig] 强制刷新验证', { forceRefresh });
+  } else {
+    logger.debug('🆕 [validateTranslationConfig] 首次验证（无缓存）');
   }
 
   const result = {
@@ -1646,14 +1670,20 @@ export async function validateTranslationConfig(forceRefresh = false) {
  */
 async function testTranslationAPI() {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
-    
+    logger.info('🧪 [testTranslationAPI] 开始测试 API 连接', {
+      apiUrl: config.translation.apiUrl,
+      model: config.translation.model,
+      timeout: Math.min(config.translation.timeout ?? 30000, 10000),
+      apiKeyConfigured: !!config.translation.apiKey,
+      apiKeyPrefix: config.translation.apiKey ? config.translation.apiKey.substring(0, 10) : 'MISSING'
+    });
+
     const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.translation.apiKey}`,
+        ...(config.translation.apiKey ? { 'api-key': config.translation.apiKey } : {})
       },
       body: JSON.stringify({
         model: config.translation.model,
@@ -1665,11 +1695,14 @@ async function testTranslationAPI() {
         ],
         max_tokens: Math.floor(10),
         temperature: 0
-      }),
-      signal: controller.signal,
+      })
+    }, Math.min(config.translation.timeout ?? 30000, 10000));
+
+    logger.info('✅ [testTranslationAPI] 收到响应', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
     });
-    
-    clearTimeout(timeoutId);
     
     if (response.ok) {
       // 安全地解析 JSON 响应
@@ -1709,20 +1742,27 @@ async function testTranslationAPI() {
       };
     }
   } catch (error) {
+    logger.error('❌ [testTranslationAPI] 测试失败', {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack?.substring(0, 500),
+      errorCause: error.cause
+    });
+
     if (error.name === 'AbortError') {
-      return { 
-        success: false, 
-        error: 'API连接超时' 
+      return {
+        success: false,
+        error: 'API连接超时'
       };
     } else if (error.message.includes('fetch failed')) {
-      return { 
-        success: false, 
-        error: '无法连接到翻译API服务器' 
+      return {
+        success: false,
+        error: '无法连接到翻译API服务器'
       };
     } else {
-      return { 
-        success: false, 
-        error: `连接测试失败: ${error.message}` 
+      return {
+        success: false,
+        error: `连接测试失败: ${error.message}`
       };
     }
   }
