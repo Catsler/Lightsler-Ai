@@ -28,6 +28,7 @@ import {
 import { getSyncStatusStats } from "../services/sync-to-shopify.server.js";
 import prisma from "../db.server.js";
 import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
+import { useAppRefresh } from "../utils/use-app-refresh.client";
 
 /**
  * Loader函数：获取发布状态数据
@@ -88,6 +89,7 @@ export default function SyncManagementPage() {
   const submit = useSubmit();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
+  const { refresh } = useAppRefresh(); // App Bridge 安全刷新
   
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [selectedResourceType, setSelectedResourceType] = useState("");
@@ -173,7 +175,7 @@ export default function SyncManagementPage() {
       secondaryActions={[
         {
           content: "刷新状态",
-          onAction: () => window.location.reload()
+          onAction: () => refresh()
         }
       ]}
     >

@@ -8,6 +8,7 @@ import { ResourceDetail } from "../components/ResourceDetail";
 import { CoverageCard } from "../components/CoverageCard";
 import { ResourceDetailAdapter } from "./api.resource-detail";
 import prisma from "../db.server";
+import { useAppRefresh } from "../utils/use-app-refresh.client";
 
 /**
  * 通用资源详情页路由 - Linus哲学实现
@@ -130,6 +131,7 @@ export default function ResourceDetailPage() {
   const metafieldsFetcher = useFetcher();
   const translateFetcher = useFetcher();
   const coverageFetcher = useFetcher();
+  const { refresh } = useAppRefresh(); // App Bridge 安全刷新
   const shopQueryParam = shop ? `shop=${encodeURIComponent(shop)}` : '';
 
   // 合并覆盖率数据（优先使用 fetcher 的最新数据）
@@ -207,7 +209,7 @@ export default function ResourceDetailPage() {
         );
       }, 2000);
       setTimeout(() => {
-        window.location.reload();
+        refresh(); // 使用 App Bridge 安全刷新
       }, 1000);
       return;
     }
@@ -359,7 +361,7 @@ export default function ResourceDetailPage() {
     },
     {
       content: '刷新',
-      onAction: () => window.location.reload()
+      onAction: () => refresh() // 使用 App Bridge 安全刷新
     }
   ];
   
@@ -442,7 +444,8 @@ export default function ResourceDetailPage() {
 // 错误边界
 export function ErrorBoundary({ error }) {
   const navigate = useNavigate();
-  
+  const { refresh } = useAppRefresh(); // App Bridge 安全刷新
+
   return (
     <Page
       backAction={{ content: '返回', onAction: () => navigate('/app') }}
@@ -456,7 +459,7 @@ export function ErrorBoundary({ error }) {
           <Text variant="bodyMd">
             {error?.message || '未知错误'}
           </Text>
-          <Button onClick={() => window.location.reload()}>
+          <Button onClick={() => refresh()}>
             重试
           </Button>
         </BlockStack>

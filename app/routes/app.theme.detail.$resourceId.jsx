@@ -19,6 +19,7 @@ import { ArrowLeftIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
+import { useAppRefresh } from "../utils/use-app-refresh.client";
 
 const DEFAULT_LANGUAGES = [
   { code: 'zh-CN', name: '中文' },
@@ -258,6 +259,7 @@ export default function ThemeDetailPage() {
   const { resource, queryInfo, primaryLocale, supportedLocales, hasNoSecondaryLanguages } = useLoaderData();
   const navigate = useNavigate();
   const fetcher = useFetcher();
+  const { hardRefresh } = useAppRefresh(); // 使用 hardRefresh 清除主题缓存
 
   // Theme资源数据归一化函数 - 提取实际的模块化数据并扁平化复杂结构
   const normalizeThemeFields = (fields) => {
@@ -567,9 +569,7 @@ export default function ThemeDetailPage() {
 
     if (lastAction === 'retranslate' || lastAction === 'translate-field') {
       showToast(payloadMessage || '翻译任务已创建，正在刷新...');
-      if (typeof window !== 'undefined') {
-        setTimeout(() => window.location.reload(), 1500);
-      }
+      setTimeout(() => hardRefresh(), 1500);
       return;
     }
 
@@ -580,9 +580,7 @@ export default function ThemeDetailPage() {
 
     if (lastAction === 'delete') {
       showToast(payloadMessage || '翻译记录已删除');
-      if (typeof window !== 'undefined') {
-        setTimeout(() => window.location.reload(), 600);
-      }
+      setTimeout(() => hardRefresh(), 600);
     }
   }, [fetcher.state, fetcher.data, showToast]);
 
