@@ -3,6 +3,7 @@ import { addBatchTranslationJob, addTranslationJob } from "../services/queue.ser
 import { createApiRoute } from "../utils/base-route.server.js";
 import { validateRequiredParams } from "../utils/api-response.server.js";
 import { getShopLocales } from "../services/shopify-locales.server.js";
+import { logger } from "../utils/logger.server.js";
 
 /**
  * 使用队列的异步翻译API
@@ -85,8 +86,21 @@ async function handleTranslateQueue({ request, admin, session }) {
     
     if (mode === 'batch') {
       // 批量翻译模式
+      logger.info('[批量翻译] 开始创建队列任务', {
+        resourceCount: resourceIdsToTranslate.length,
+        shopId: shop.id,
+        targetLanguage
+      });
+      const startTime = Date.now();
+
       jobResult = await addBatchTranslationJob(resourceIdsToTranslate, shop.id, targetLanguage, shopDomain);
-      
+
+      logger.info('[批量翻译] 队列任务创建完成', {
+        jobId: jobResult.jobId,
+        resourceCount: jobResult.resourceCount,
+        duration: Date.now() - startTime
+      });
+
       return {
         jobId: jobResult.jobId,
         mode: 'batch',
@@ -120,5 +134,6 @@ async function handleTranslateQueue({ request, admin, session }) {
 
 export const action = createApiRoute(handleTranslateQueue, {
   requireAuth: true,
-  operationName: '队列翻译'
+  operationName: '队列翻译',
+  timeout: 90000  // 增加超时到90秒，解决Bull队列写入Redis时超时问题
 });
