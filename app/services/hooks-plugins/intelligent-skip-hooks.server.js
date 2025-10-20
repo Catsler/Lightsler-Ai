@@ -91,9 +91,21 @@ export const intelligentSkipHooks = {
         logger.warn('品牌词检查失败，继续翻译', { error: error.message });
       }
 
-      // 6. 技术字段检查
-      const TECH_FIELDS = ['sku', 'barcode', 'handle', 'variant_id'];
-      if (TECH_FIELDS.includes(context.fieldName)) {
+      // 6. 技术字段检查（支持字符串和正则）
+      const TECH_FIELDS = [
+        'sku', 'barcode', 'handle', 'variant_id',
+        /digest$/i,          // 匹配 *_digest
+        /^social_/i,         // 匹配 social_*
+        /_(url|id)$/i        // 匹配 *_url, *_id
+      ];
+      const isTechnicalField = TECH_FIELDS.some(pattern => {
+        if (pattern instanceof RegExp) {
+          return pattern.test(context.fieldName);
+        }
+        return pattern === context.fieldName;
+      });
+
+      if (isTechnicalField) {
         logger.debug('跳过技术字段', {
           fieldName: context.fieldName,
           text: context.text.substring(0, 50)

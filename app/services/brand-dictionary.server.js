@@ -43,6 +43,17 @@ class BrandCache {
 const brandCache = new BrandCache();
 
 /**
+ * 通用词黑名单 - 这些词不应被视为品牌词
+ * 来源：常见的店铺装饰词、通用类别词
+ */
+const GENERIC_VENDOR_BLACKLIST = new Set([
+  'home', 'shop', 'new', 'sale', 'collection', 'featured',
+  'best', 'top', 'trending', 'popular', 'gift', 'gifts',
+  'store', 'official', 'general', 'default', 'brand', 'custom',
+  'main', 'premium', 'deluxe', 'limited', 'exclusive', 'special'
+]);
+
+/**
  * 获取品牌词典
  * @param {Object} admin - Shopify Admin API客户端
  * @param {string} shopDomain - 店铺域名
@@ -73,9 +84,14 @@ export async function getBrandDictionary(admin, shopDomain) {
     
     // 2. 从产品Vendor字段收集（限制数量避免性能问题）
     const vendors = await getVendorsFromProducts(1000);
+    let filteredCount = 0;
     vendors.forEach(vendor => {
-      if (vendor && vendor.length > 1) {
-        brandSet.add(vendor.toLowerCase());
+      const normalized = vendor.toLowerCase().trim();
+      // 过滤通用词和过短的词
+      if (normalized.length > 2 && !GENERIC_VENDOR_BLACKLIST.has(normalized)) {
+        brandSet.add(normalized);
+      } else {
+        filteredCount++;
       }
     });
     
@@ -83,7 +99,8 @@ export async function getBrandDictionary(admin, shopDomain) {
       shopDomain,
       totalBrands: brandSet.size,
       fromDomain: shopName ? 1 : 0,
-      fromVendors: vendors.size
+      fromVendors: vendors.size,
+      filteredGeneric: filteredCount
     });
     
     // 缓存结果
@@ -182,23 +199,29 @@ export function isBrandMatch(text, brandSet) {
   if (!text || !brandSet || brandSet.size === 0) {
     return false;
   }
-  
+
   const normalized = text.trim().toLowerCase();
-  
-  // 精确匹配
+
+  // 1. 精确匹配（最严格）
   if (brandSet.has(normalized)) {
     return true;
   }
-  
-  // 包含匹配（仅对短文本，避免误判）
-  if (text.length < 50) {
+
+  // 2. 词边界匹配（避免误判，仅对长度 >= 4 的品牌词）
+  if (text.length < 100) {
     for (const brand of brandSet) {
-      if (normalized.includes(brand)) {
-        return true;
+      // 只对足够长的品牌词进行词边界检查
+      if (brand.length >= 4) {
+        // 转义正则特殊字符
+        const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedBrand}\\b`, 'i');
+        if (regex.test(text)) {
+          return true;
+        }
       }
     }
   }
-  
+
   return false;
 }
 

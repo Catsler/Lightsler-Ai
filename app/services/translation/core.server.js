@@ -19,6 +19,12 @@ import {
   createRequestDeduplicator
 } from './api-client.server.js';
 import {
+  quickApiConnectivityCheck,
+  runTranslationDiagnostics
+} from './diagnostics.server.js';
+
+export { runTranslationDiagnostics } from './diagnostics.server.js';
+import {
   chunkText,
   protectHtmlTags,
   restoreHtmlTags,
@@ -1604,7 +1610,8 @@ export async function validateTranslationConfig(forceRefresh = false) {
     apiConnectable: false,
     supportedLanguages: [],
     error: null,
-    warnings: []
+    warnings: [],
+    diagnostics: null
   };
 
   try {
@@ -1640,6 +1647,7 @@ export async function validateTranslationConfig(forceRefresh = false) {
       result.supportedLanguages = [
         'zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'de', 'es'
       ];
+      result.diagnostics = testResult.diagnostics ?? null;
       // 只在状态变化时输出日志
       if (!configValidationCache.result || !configValidationCache.result.apiConnectable) {
         logger.debug('✅ 翻译API配置验证通过');
@@ -1647,6 +1655,7 @@ export async function validateTranslationConfig(forceRefresh = false) {
     } else {
       result.error = testResult.error;
       result.warnings.push('API连接失败，翻译功能可能不稳定');
+      result.diagnostics = testResult.diagnostics ?? null;
       // 只在状态变化时输出日志
       if (!configValidationCache.result || configValidationCache.result.apiConnectable !== false) {
         logger.debug('❌ 翻译API连接失败:', testResult.error);
@@ -1669,103 +1678,43 @@ export async function validateTranslationConfig(forceRefresh = false) {
  * 测试翻译API连通性
  */
 async function testTranslationAPI() {
-  try {
-    logger.info('🧪 [testTranslationAPI] 开始测试 API 连接', {
-      apiUrl: config.translation.apiUrl,
-      model: config.translation.model,
-      timeout: Math.min(config.translation.timeout ?? 30000, 10000),
-      apiKeyConfigured: !!config.translation.apiKey,
-      apiKeyPrefix: config.translation.apiKey ? config.translation.apiKey.substring(0, 10) : 'MISSING'
-    });
+  logger.info('🧪 [testTranslationAPI] 触发翻译服务连通性诊断', {
+    apiUrl: config.translation.apiUrl,
+    model: config.translation.model,
+    timeout: config.translation.timeout ?? 30000,
+    apiKeyConfigured: !!config.translation.apiKey
+  });
 
-    const response = await fetchWithTimeout(`${config.translation.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.translation.apiKey}`,
-        ...(config.translation.apiKey ? { 'api-key': config.translation.apiKey } : {})
-      },
-      body: JSON.stringify({
-        model: config.translation.model,
-        messages: [
-          {
-            role: 'user',
-            content: 'Test'
-          }
-        ],
-        max_tokens: Math.floor(10),
-        temperature: 0
-      })
-    }, Math.min(config.translation.timeout ?? 30000, 10000));
+  const result = await quickApiConnectivityCheck();
 
-    logger.info('✅ [testTranslationAPI] 收到响应', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
+  if (result.success) {
+    logger.info('✅ [testTranslationAPI] 翻译服务可用', {
+      endpoint: result.endpoint,
+      model: result.model
     });
-    
-    if (response.ok) {
-      // 安全地解析 JSON 响应
-      let data;
-      const responseText = await response.text();
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        logger.error('API测试 JSON 解析错误:', parseError.message);
-        logger.error('响应内容前1000字符', { sample: responseText.substring(0, 1000) });
-        return { 
-          success: false, 
-          error: `API响应JSON解析失败: ${parseError.message}` 
-        };
-      }
-      
-      return { 
-        success: true, 
-        model: data.model,
-        usage: data.usage 
-      };
-    } else if (response.status === 401) {
-      return { 
-        success: false, 
-        error: 'API密钥无效或已过期' 
-      };
-    } else if (response.status === 429) {
-      return { 
-        success: false, 
-        error: 'API调用频率限制，但连接正常' 
-      };
-    } else {
-      const errorText = await response.text();
-      return { 
-        success: false, 
-        error: `API调用失败: ${response.status} ${response.statusText} - ${errorText}` 
-      };
-    }
-  } catch (error) {
-    logger.error('❌ [testTranslationAPI] 测试失败', {
-      errorName: error.name,
-      errorMessage: error.message,
-      errorStack: error.stack?.substring(0, 500),
-      errorCause: error.cause
-    });
-
-    if (error.name === 'AbortError') {
-      return {
-        success: false,
-        error: 'API连接超时'
-      };
-    } else if (error.message.includes('fetch failed')) {
-      return {
-        success: false,
-        error: '无法连接到翻译API服务器'
-      };
-    } else {
-      return {
-        success: false,
-        error: `连接测试失败: ${error.message}`
-      };
-    }
+    return {
+      success: true,
+      model: result.model,
+      endpoint: result.endpoint,
+      diagnostics: result.diagnostics
+    };
   }
+
+  const diagnostics = result.diagnostics;
+  const primaryEndpoint = diagnostics?.endpoints?.[0];
+
+  logger.error('❌ [testTranslationAPI] 连通性诊断失败', {
+    summary: diagnostics?.summary,
+    primaryStatus: primaryEndpoint?.status,
+    primarySummary: primaryEndpoint?.summary,
+    recommendations: diagnostics?.recommendations
+  });
+
+  return {
+    success: false,
+    error: result.error || diagnostics?.summary || '翻译服务诊断失败',
+    diagnostics
+  };
 }
 
 /**
@@ -1783,7 +1732,9 @@ export async function getTranslationServiceStatus(options = {}) {
       apiUrl: config.translation.apiUrl,
       model: config.translation.model,
       timeout: config.translation.timeout,
-      maxRetries: config.translation.maxRetries
+      maxRetries: config.translation.maxRetries,
+      maxRequestsPerMinute: config.translation.maxRequestsPerMinute,
+      minRequestIntervalMs: config.translation.minRequestIntervalMs
     },
     connectivity: {
       reachable: configCheck.apiConnectable,
@@ -1791,7 +1742,8 @@ export async function getTranslationServiceStatus(options = {}) {
     },
     supportedLanguages: configCheck.supportedLanguages,
     errors: configCheck.error ? [configCheck.error] : [],
-    warnings: configCheck.warnings
+    warnings: configCheck.warnings,
+    diagnostics: configCheck.diagnostics
   };
 }
 

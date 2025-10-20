@@ -83,7 +83,10 @@ class QueueManager {
           }
         },
         settings: {
-          stalledInterval: 30000,
+          lockDuration: 120000,      // 120秒锁定时间（翻译任务可能较慢）
+          lockRenewTime: 30000,      // 每30秒自动续期锁
+          stalledInterval: 60000,    // 60秒检查间隔（之前30秒太短）
+          maxStalledCount: 2,        // 最多标记2次（降低误判）
           retryProcessDelay: 5000,
         }
       });
