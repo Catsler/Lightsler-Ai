@@ -6,6 +6,8 @@
 
 import { translateTextWithFallback, postProcessTranslation } from './translation/core.server.js';
 import { logger } from '../utils/logger.server.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { collectErrorBatch, ERROR_TYPES, ERROR_CATEGORIES } from './error-collector.server.js';
 
 // 验证必需函数是否正确导入
 if (typeof translateTextWithFallback !== 'function') {
@@ -13,6 +15,228 @@ if (typeof translateTextWithFallback !== 'function') {
 }
 if (typeof postProcessTranslation !== 'function') {
   throw new Error('postProcessTranslation未正确导入，请检查translation.server.js的导出');
+}
+
+const themeErrorContextStorage = new AsyncLocalStorage();
+
+/**
+ * 主题翻译错误上下文，用于在整个翻译流程中汇总错误与跳过统计
+ */
+class ThemeErrorContext {
+  constructor(resource, targetLang) {
+    this.resource = resource;
+    this.targetLang = targetLang;
+    this.translatedCount = 0;
+    this.skipCounts = {
+      technical: 0,
+      empty: 0,
+      patternMismatch: 0,
+      liquid: 0,
+      brand: 0,
+      other: 0
+    };
+    this.skipSamples = {
+      technical: [],
+      patternMismatch: [],
+      liquid: [],
+      brand: []
+    };
+    this.errors = [];
+  }
+
+  recordTranslation(_field) {
+    this.translatedCount += 1;
+  }
+
+  recordSkip(reason, field, value) {
+    const category = this._categorize(reason);
+    this.skipCounts[category] = (this.skipCounts[category] || 0) + 1;
+
+    // patternMismatch 采样日志（10% 采样率）
+    if (category === 'patternMismatch' && Math.random() < 0.1) {
+      const segments = field.split(/[._-]/);
+      const fieldPrefix = segments[0] || 'unknown';
+      const fieldSecondary = segments[1] || '';
+
+      logger.debug('[Theme翻译] 模式不匹配字段样本', {
+        resourceType: this.resource?.resourceType,
+        fieldKey: field,
+        fieldPrefix,
+        fieldSecondary,
+        fieldValue: typeof value === 'string' ? value.substring(0, 50) : String(value).substring(0, 50),
+        skipCategory: category
+      });
+    }
+
+    if (this.skipSamples[category] && this.skipSamples[category].length < 5) {
+      const alreadyRecorded = this.skipSamples[category].some(
+        (sample) => sample.field === field && sample.reason === reason
+      );
+
+      if (!alreadyRecorded) {
+        const truncatedField =
+          typeof field === 'string' && field.length > 80 ? `${field.slice(0, 77)}...` : field;
+        const valueStr = String(value ?? '').replace(/\s+/g, ' ');
+        const truncatedValue = valueStr.length > 100 ? `${valueStr.slice(0, 97)}...` : valueStr;
+
+        this.skipSamples[category].push({
+          field: truncatedField,
+          value: truncatedValue,
+          reason: reason || '其他原因'
+        });
+      }
+    }
+  }
+
+  recordError(error, context = {}) {
+    this.errors.push({
+      error,
+      context,
+      timestamp: Date.now()
+    });
+  }
+
+  async flush() {
+    const batch = [];
+    const { totalFields, translatedFields, skipStats } = this.getTotals();
+    const totalSkips = totalFields - translatedFields;
+
+    const diagnostics = {
+      skipStats,
+      samples: JSON.parse(JSON.stringify(this.skipSamples)),
+      totalFields,
+      translatedFields
+    };
+
+    if (totalSkips > 0) {
+      batch.push({
+        data: {
+          errorType: ERROR_TYPES.TRANSLATION,
+          category: ERROR_CATEGORIES.WARNING,
+          errorCode: 'THEME_FIELD_SKIPPED',
+          message: `主题翻译跳过 ${totalSkips} 个字段 (技术:${this.skipCounts.technical}, 模式:${this.skipCounts.patternMismatch}, 品牌:${this.skipCounts.brand}, Liquid:${this.skipCounts.liquid}, 空值:${this.skipCounts.empty}, 其他:${this.skipCounts.other})`,
+          isTranslationError: true
+        },
+        context: {
+          resourceId: this.resource?.id ?? null,
+          resourceType: this.resource?.resourceType ?? null,
+          targetLang: this.targetLang,
+          shopId: this.resource?.shopId ?? null,
+          diagnostics
+        }
+      });
+    }
+
+    for (const { error, context } of this.errors) {
+      batch.push({
+        data: {
+          errorType: ERROR_TYPES.TRANSLATION,
+          category: ERROR_CATEGORIES.ERROR,
+          errorCode: error?.code || 'THEME_TRANSLATION_ERROR',
+          message: error?.message || 'Theme翻译过程中发生未知错误',
+          stack: error?.stack || null,
+          isTranslationError: true
+        },
+        context: {
+          resourceId: this.resource?.id ?? null,
+          resourceType: this.resource?.resourceType ?? null,
+          targetLang: this.targetLang,
+          shopId: this.resource?.shopId ?? null,
+          ...context
+        }
+      });
+    }
+
+    if (batch.length === 0) {
+      return;
+    }
+
+    try {
+      const result = await collectErrorBatch(batch);
+      if (result?.failed > 0) {
+        logger.warn(`[Theme翻译] ${result.failed}/${batch.length} 条错误记录写入失败`, {
+          errors: result.errors
+        });
+      }
+    } catch (error) {
+      logger.error('[Theme翻译] 错误批量提交失败', { error: error?.message || error });
+    }
+  }
+
+  /**
+   * 获取翻译统计汇总数据
+   * @returns {Object} 包含 totalFields, translatedFields, skipStats, coverage 的统计对象
+   */
+  getTotals() {
+    const translatedCount = this.translatedCount;
+    const totalSkips = Object.values(this.skipCounts).reduce((sum, count) => sum + (count || 0), 0);
+    const totalFields = translatedCount + totalSkips;
+    const coverage = totalFields > 0 ? (translatedCount / totalFields * 100).toFixed(1) : '0.0';
+
+    return {
+      totalFields,
+      translatedFields: translatedCount,
+      skipStats: { ...this.skipCounts },
+      coverage: `${coverage}%`
+    };
+  }
+
+  /**
+   * 将reason字符串分类到预定义的类别
+   *
+   * 分类规则（关键字匹配，不区分大小写）：
+   * - technical: '技术' OR '数字' OR '颜色' OR 'url'
+   * - empty: '空'
+   * - patternMismatch: '模式'
+   * - liquid: 'liquid'
+   * - brand: '品牌'
+   * - other: 以上都不匹配
+   *
+   * 对应的reason字符串来源：
+   * - technical类: '技术字段', '数字或颜色值', '纯URL'
+   * - empty类: '空值或非字符串'
+   * - patternMismatch类: '不匹配翻译模式'
+   * - liquid类: 'Liquid模板'
+   * - brand类: '品牌名'
+   */
+  _categorize(reason) {
+    if (!reason) {
+      return 'other';
+    }
+
+    const normalized = reason.toLowerCase();
+
+    if (
+      normalized.includes('技术') ||
+      normalized.includes('数字') ||
+      normalized.includes('颜色') ||
+      normalized.includes('url')
+    ) {
+      return 'technical';
+    }
+
+    if (normalized.includes('空')) {
+      return 'empty';
+    }
+
+    if (normalized.includes('模式')) {
+      return 'patternMismatch';
+    }
+
+    if (normalized.includes('liquid')) {
+      return 'liquid';
+    }
+
+    if (normalized.includes('品牌')) {
+      return 'brand';
+    }
+
+    return 'other';
+  }
+}
+
+function getErrorContext() {
+  return themeErrorContextStorage.getStore();
 }
 
 async function translateThemeValue(text, targetLang) {
@@ -60,78 +284,6 @@ function flattenTranslationFields(translationFields) {
   }
 
   return flattened;
-}
-
-/**
- * 深度遍历JSON对象并翻译可翻译字段
- * @param {Object} obj - 要遍历的对象
- * @param {string} targetLang - 目标语言
- * @param {string} keyPrefix - 键前缀，用于路径跟踪
- * @param {number} depth - 当前深度，防止无限递归
- * @returns {Promise<Object>} 翻译后的对象
- */
-async function translateObjectRecursively(obj, targetLang, keyPrefix = '', depth = 0) {
-  // 防止过深递归
-  if (depth > 10) {
-    logger.warn(`[Theme翻译] 递归深度超限，停止处理: ${keyPrefix}`);
-    return obj;
-  }
-
-  if (!obj || typeof obj !== 'object') {
-    return obj;
-  }
-
-  // 处理数组
-  if (Array.isArray(obj)) {
-    const translatedArray = [];
-    for (let i = 0; i < obj.length; i++) {
-      const item = obj[i];
-      const itemKey = `${keyPrefix}[${i}]`;
-
-      if (typeof item === 'string' && shouldTranslateThemeField(itemKey, item)) {
-        try {
-          const { protectedText, protectedMap } = protectLiquidVariables(item);
-          let translatedText = await translateThemeValue(protectedText, targetLang);
-          translatedText = restoreLiquidVariables(translatedText, protectedMap);
-          translatedArray.push(translatedText);
-          logger.debug(`[Theme翻译] 翻译数组项: ${itemKey}`);
-        } catch (error) {
-          logger.error(`[Theme翻译] 数组项翻译失败 ${itemKey}:`, error);
-          translatedArray.push(item);
-        }
-      } else if (typeof item === 'object') {
-        translatedArray.push(await translateObjectRecursively(item, targetLang, itemKey, depth + 1));
-      } else {
-        translatedArray.push(item);
-      }
-    }
-    return translatedArray;
-  }
-
-  // 处理对象
-  const translatedObj = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const fullKey = keyPrefix ? `${keyPrefix}.${key}` : key;
-
-    if (typeof value === 'string' && shouldTranslateThemeField(fullKey, value)) {
-      try {
-        const { protectedText, protectedMap } = protectLiquidVariables(value);
-        let translatedText = await translateThemeValue(protectedText, targetLang);
-        translatedText = restoreLiquidVariables(translatedText, protectedMap);
-        translatedObj[key] = translatedText;
-        logger.debug(`[Theme翻译] 翻译字段: ${fullKey}`);
-      } catch (error) {
-        logger.error(`[Theme翻译] 字段翻译失败 ${fullKey}:`, error);
-        translatedObj[key] = value;
-      }
-    } else if (typeof value === 'object' && value !== null) {
-      translatedObj[key] = await translateObjectRecursively(value, targetLang, fullKey, depth + 1);
-    } else {
-      translatedObj[key] = value;
-    }
-  }
-
-  return translatedObj;
 }
 
 // Theme可翻译字段规则 - 基于Shopify官方文档和最佳实践
@@ -223,10 +375,13 @@ const THEME_TECHNICAL_PATTERNS = [
   // 标识符和键值
   /^(.+\.)?(id|key|handle|slug|type|kind|variant)$/i,
   /^(.+\.)?(class|className|style|css|scss)$/i,
-  
+
   // URL和路径
   /^(.+\.)?(url|href|src|path|endpoint|route|link)$/i,
   /^(.+\.)?(asset|assets|file|filename|image|icon)$/i,
+
+  // 明确匹配所有 video_url 字段（防止特殊处理逻辑绕过）
+  /^(.+_)?video_url$/i,
   
   // 样式和布局
   /^(.+\.)?(color|colour|background|bg|font|font_size)$/i,
@@ -355,89 +510,90 @@ function checkDefaultThemeContent(resource) {
   };
 }
 
-function shouldTranslateThemeField(key, value) {
-  // 1. 跳过非字符串值
+function shouldTranslateThemeFieldWithReason(key, value) {
   if (typeof value !== 'string' || !value.trim()) {
-    return false;
+    logger.debug(`[Theme翻译] 跳过非字符串字段: ${key}`);
+    return { shouldTranslate: false, reason: '空值或非字符串' };
   }
-  
-  // 2. 跳过技术字段（优先级高于可翻译字段）
-  if (THEME_TECHNICAL_PATTERNS.some(pattern => pattern.test(key))) {
+
+  if (THEME_TECHNICAL_PATTERNS.some((pattern) => pattern.test(key))) {
     logger.debug(`[Theme翻译] 跳过技术字段: ${key}`);
-    return false;
+    return { shouldTranslate: false, reason: '技术字段' };
   }
-  
-  // 3. 跳过Liquid模板变量和标签
+
   if (value.includes('{{') || value.includes('{%')) {
     logger.debug(`[Theme翻译] 跳过Liquid模板: ${key}`);
-    return false;
+    return { shouldTranslate: false, reason: 'Liquid模板' };
   }
-  
-  // 4. 跳过纯数字或特殊格式
+
   if (/^\d+$/.test(value) || /^#[0-9A-Fa-f]{3,6}$/.test(value)) {
     logger.debug(`[Theme翻译] 跳过数字/颜色值: ${key}`);
-    return false;
+    return { shouldTranslate: false, reason: '数字或颜色值' };
   }
-  
-  // 5. 跳过URL（但不跳过包含URL的文本）
+
   if (/^https?:\/\//.test(value) && !value.includes(' ')) {
     logger.debug(`[Theme翻译] 跳过纯URL: ${key}`);
-    return false;
+    return { shouldTranslate: false, reason: '纯URL' };
   }
-  
-  // 6. 检查是否匹配可翻译模式
-  const isTranslatable = THEME_TRANSLATABLE_PATTERNS.some(pattern => pattern.test(key));
-  
+
+  const isTranslatable = THEME_TRANSLATABLE_PATTERNS.some((pattern) => pattern.test(key));
   if (isTranslatable) {
     logger.debug(`[Theme翻译] 需要翻译字段: ${key}`);
-    return true;
+    return { shouldTranslate: true, reason: null };
   }
-  
-  // 7. 检查是否为需要翻译的占位符文本
+
   const placeholderTexts = [
-    'Your content', 'Paragraph', 'Image with text', 
-    'Subheading', 'Easy Setup', 'rear went mesh',
-    'Item', 'Content', 'Title', 'Description'
+    'Your content',
+    'Paragraph',
+    'Image with text',
+    'Subheading',
+    'Easy Setup',
+    'rear went mesh',
+    'Item',
+    'Content',
+    'Title',
+    'Description'
   ];
-  
+
   if (placeholderTexts.includes(value)) {
     logger.debug(`[Theme翻译] 检测到占位符文本，需要翻译: ${key} = "${value}"`);
-    return true;
+    return { shouldTranslate: true, reason: null };
   }
-  
-  // 8. 对于未匹配的字段，如果包含实际文本内容，也考虑翻译
+
   if (value.length >= 2 && /[a-zA-Z]/.test(value)) {
-    // 检查是否为品牌名（包含®、™符号或常见品牌名）
     if (/[®™]/.test(value) || /^(Onewind|Shopify|Amazon|Google|Facebook|Apple|Microsoft)/i.test(value)) {
       logger.debug(`[Theme翻译] 跳过品牌名: ${key} = "${value}"`);
-      return false;
+      return { shouldTranslate: false, reason: '品牌名' };
     }
 
-    // 对于有多个单词的文本，考虑翻译
     if (value.split(' ').length > 1) {
       logger.debug(`[Theme翻译] 检测到多词文本内容，需要翻译: ${key} = "${value}"`);
-      return true;
+      return { shouldTranslate: true, reason: null };
     }
 
-    // 对于单个词但看起来像占位符的，也考虑翻译
     if (value.length >= 4 && /^[A-Z][a-z]+/.test(value)) {
       logger.debug(`[Theme翻译] 检测到可能的UI文本，需要翻译: ${key} = "${value}"`);
-      return true;
+      return { shouldTranslate: true, reason: null };
     }
 
-    // 9. 新增：对于短文本也考虑翻译（提高覆盖率）
-    // 只要不是明显的技术值，就考虑翻译
-    if (value.length >= 2 && value.length <= 20 &&
-        !/^[0-9#.]/.test(value) && // 不是数字或颜色
-        !/^\w+\.(jpg|png|gif|svg|webp|css|js)$/i.test(value) && // 不是文件名
-        !/^(true|false|null|undefined)$/i.test(value)) { // 不是布尔值
+    if (
+      value.length >= 2 &&
+      value.length <= 20 &&
+      !/^[0-9#.]/.test(value) &&
+      !/^\w+\.(jpg|png|gif|svg|webp|css|js)$/i.test(value) &&
+      !/^(true|false|null|undefined)$/i.test(value)
+    ) {
       logger.debug(`[Theme翻译] 检测到短文本，考虑翻译: ${key} = "${value}"`);
-      return true;
+      return { shouldTranslate: true, reason: null };
     }
   }
 
   logger.debug(`[Theme翻译] 跳过字段: ${key} = "${value}"`);
-  return false;
+  return { shouldTranslate: false, reason: '不匹配翻译模式' };
+}
+
+function shouldTranslateThemeField(key, value) {
+  return shouldTranslateThemeFieldWithReason(key, value).shouldTranslate;
 }
 
 /**
@@ -497,47 +653,84 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
     return data;
   }
 
-  // 处理数组
   if (Array.isArray(data)) {
-    return Promise.all(
-      data.map((item, index) =>
-        translateThemeJsonData(item, targetLang, `${parentKey}[${index}]`, options)
-      )
-    );
+    const translatedArray = [];
+
+    for (let index = 0; index < data.length; index++) {
+      const item = data[index];
+      const itemKey = `${parentKey}[${index}]`;
+
+      if (typeof item === 'string') {
+        const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(itemKey, item);
+
+        if (shouldTranslate) {
+          const ctx = getErrorContext();
+          try {
+            const { protectedText, protectedMap } = protectLiquidVariables(item);
+            let translatedText = await translateThemeValue(protectedText, targetLang);
+            translatedText = restoreLiquidVariables(translatedText, protectedMap);
+            translatedText = await postProcessTranslation(translatedText, targetLang, item, {
+              linkConversion: options?.linkConversion
+            });
+            ctx?.recordTranslation(itemKey);
+            translatedArray.push(translatedText);
+            logger.debug(`[Theme翻译] 成功翻译 ${itemKey}: "${item.substring(0, 50)}..."`);
+          } catch (error) {
+            logger.error(`[Theme翻译] 翻译失败 ${itemKey}:`, error?.message || error);
+            ctx?.recordError(error, { fieldPath: itemKey });
+            translatedArray.push(item);
+          }
+        } else {
+          const ctx = getErrorContext();
+          ctx?.recordSkip(reason, itemKey, item);
+          translatedArray.push(item);
+        }
+      } else if (item && typeof item === 'object') {
+        translatedArray.push(await translateThemeJsonData(item, targetLang, itemKey, options));
+      } else {
+        translatedArray.push(item);
+      }
+    }
+
+    return translatedArray;
   }
 
-  // 处理对象
   const translated = {};
-  
+
   for (const [key, value] of Object.entries(data)) {
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
-    
-    // 判断是否需要翻译
-    if (shouldTranslateThemeField(fullKey, value)) {
-      try {
-        // 保护Liquid变量
-        const { protectedText, protectedMap } = protectLiquidVariables(value);
-        
-        // 翻译文本
-        let translatedText = await translateThemeValue(protectedText, targetLang);
-        
-        // 恢复Liquid变量
-        translatedText = restoreLiquidVariables(translatedText, protectedMap);
 
-        // 后处理
-        translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options?.linkConversion });
+    if (typeof value === 'string') {
+      const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(fullKey, value);
 
-        translated[key] = translatedText;
-        logger.debug(`[Theme翻译] 成功翻译 ${fullKey}: "${value.substring(0, 50)}..." -> "${translatedText.substring(0, 50)}..."`);
-      } catch (error) {
-        logger.error(`[Theme翻译] 翻译失败 ${fullKey}:`, error.message);
-        translated[key] = value; // 失败时保留原值
+      if (shouldTranslate) {
+        const ctx = getErrorContext();
+        try {
+          const { protectedText, protectedMap } = protectLiquidVariables(value);
+          let translatedText = await translateThemeValue(protectedText, targetLang);
+          translatedText = restoreLiquidVariables(translatedText, protectedMap);
+          translatedText = await postProcessTranslation(translatedText, targetLang, value, {
+            linkConversion: options?.linkConversion
+          });
+
+          translated[key] = translatedText;
+          ctx?.recordTranslation(fullKey);
+          logger.debug(
+            `[Theme翻译] 成功翻译 ${fullKey}: "${value.substring(0, 50)}..." -> "${translatedText.substring(0, 50)}..."`
+          );
+        } catch (error) {
+          logger.error(`[Theme翻译] 翻译失败 ${fullKey}:`, error?.message || error);
+          ctx?.recordError(error, { fieldPath: fullKey });
+          translated[key] = value;
+        }
+      } else {
+        const ctx = getErrorContext();
+        ctx?.recordSkip(reason, fullKey, value);
+        translated[key] = value;
       }
-    } else if (typeof value === 'object' && value !== null) {
-      // 递归处理嵌套对象
+    } else if (value && typeof value === 'object') {
       translated[key] = await translateThemeJsonData(value, targetLang, fullKey, options);
     } else {
-      // 保留原值
       translated[key] = value;
     }
   }
@@ -552,250 +745,333 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
  * @returns {Promise<Object>} 翻译结果
  */
 export async function translateThemeResource(resource, targetLang, options = {}) {
-  logger.debug(`[Theme翻译] 开始翻译Theme资源: ${resource.resourceType} - ${resource.id}`);
+  const errorContext = new ThemeErrorContext(resource, targetLang);
 
-  // 检查是否为Shopify默认主题内容（需要跳过）
-  const defaultThemeCheck = checkDefaultThemeContent(resource);
-  if (defaultThemeCheck.shouldSkip) {
-    logger.warn('[Theme翻译] 跳过Shopify默认主题内容', {
-      resourceId: resource.id,
-      reason: defaultThemeCheck.reason,
-      title: resource.title?.slice(0, 50)
-    });
+  return themeErrorContextStorage.run(errorContext, async () => {
+    try {
+      logger.debug(`[Theme翻译] 开始翻译Theme资源: ${resource.resourceType} - ${resource.id}`);
 
-    return {
-      titleTrans: resource.title,
-      descTrans: null,
-      handleTrans: null,
-      seoTitleTrans: null,
-      seoDescTrans: null,
-      translationFields: {},
-      skipped: true,
-      skipReason: defaultThemeCheck.reason
-    };
-  }
+      const defaultThemeCheck = checkDefaultThemeContent(resource);
+      if (defaultThemeCheck.shouldSkip) {
+        errorContext.recordSkip(defaultThemeCheck.reason, 'theme', resource.title);
+        logger.warn('[Theme翻译] 跳过Shopify默认主题内容', {
+          resourceId: resource.id,
+          reason: defaultThemeCheck.reason,
+          title: resource.title?.slice(0, 50)
+        });
 
-  const result = {
-    titleTrans: resource.title, // Theme资源的标题通常是文件名，保持原样
-    descTrans: null,
-    handleTrans: null,
-    seoTitleTrans: null,
-    seoDescTrans: null,
-    translationFields: {}
-  };
-
-  // 获取contentFields
-  const contentFields = resource.contentFields || {};
-
-  // 验证contentFields是否有数据
-  if (!contentFields || Object.keys(contentFields).length === 0) {
-    logger.error(`[Theme翻译] 错误：Theme资源缺少contentFields数据: ${resource.id}`);
-    throw new Error(`Theme资源缺少必要的contentFields数据。请重新扫描Theme资源。`);
-  }
-  
-  // 处理不同类型的Theme资源
-  const resourceType = resource.resourceType.toUpperCase();
-  
-  switch (resourceType) {
-    case 'ONLINE_STORE_THEME':
-    case 'ONLINE_STORE_THEME_JSON_TEMPLATE':
-    case 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS':
-      logger.debug(`[Theme翻译] 处理JSON模板类型资源`);
-      
-      // 处理themeData字段（JSON内容）
-      if (contentFields.themeData) {
-        // 检查themeData是否为空或为0
-        const hasValidThemeData = contentFields.themeData && 
-          contentFields.themeData !== 0 && 
-          contentFields.themeData !== '0' &&
-          String(contentFields.themeData).trim() !== '';
-          
-        if (!hasValidThemeData && contentFields.dynamicFields) {
-          logger.warn(`[Theme翻译] Theme资源缺少有效themeData，跳过翻译: ${resource.id}`);
-          // 直接返回跳过状态，避免报错
-          return {
-            ...result,
-            skipped: true,
-            skipReason: 'Theme资源结构不匹配(无有效themeData)'
-          };
-        }
-        
-        try {
-          logger.debug(`[Theme翻译] 解析并翻译themeData`);
-          const themeData = typeof contentFields.themeData === 'string' 
-            ? JSON.parse(contentFields.themeData) 
-            : contentFields.themeData;
-          
-          const translatedData = await translateThemeJsonData(themeData, targetLang, '', options);
-          result.translationFields.themeData = JSON.stringify(translatedData, null, 2);
-          logger.debug(`[Theme翻译] themeData翻译完成`);
-        } catch (error) {
-          logger.error('[Theme翻译] 处理themeData失败:', error);
-          // 保留原始数据
-          result.translationFields.themeData = contentFields.themeData;
-        }
+        return {
+          titleTrans: resource.title,
+          descTrans: null,
+          handleTrans: null,
+          seoTitleTrans: null,
+          seoDescTrans: null,
+          translationFields: {},
+          skipped: true,
+          skipReason: defaultThemeCheck.reason
+        };
       }
-      
-      // 处理dynamicFields（动态字段）
-      if (contentFields.dynamicFields) {
-        logger.debug(`[Theme翻译] 处理dynamicFields，共${Object.keys(contentFields.dynamicFields).length}个字段`);
-        const translatedDynamic = {};
-        
-        for (const [key, fieldData] of Object.entries(contentFields.dynamicFields)) {
-          // 使用hasOwnProperty避免空字符串被误判为falsy
-          const fieldValue = Object.prototype.hasOwnProperty.call(fieldData, 'value')
-            ? fieldData.value
-            : fieldData;
-          
-          // 对Theme JSON Template使用更宽松的翻译策略
-          let shouldTranslate = shouldTranslateThemeField(key, fieldValue);
-          
-          // 如果是JSON Template类型，对某些特定内容强制翻译
-          if (!shouldTranslate && resourceType === 'ONLINE_STORE_THEME_JSON_TEMPLATE') {
-            // 检查是否为常见的UI文本，即使字段名不匹配也要翻译
-            if (typeof fieldValue === 'string' && fieldValue.length >= 2 && /[a-zA-Z]/.test(fieldValue)) {
-              // 排除技术内容和品牌名
-              const isTechnical = /^(https?:\/\/|#[0-9A-Fa-f]{3,6}|[\d]+px|[\d]+%)$/.test(fieldValue);
-              const isBrand = /[®™]/.test(fieldValue) || /^(Onewind|Shopify)/i.test(fieldValue);
-              
-              if (!isTechnical && !isBrand && !fieldValue.includes('{{') && !fieldValue.includes('{%')) {
-                logger.debug(`[Theme翻译] JSON Template特殊处理，强制翻译: ${key} = "${fieldValue}"`);
-                shouldTranslate = true;
+
+      const result = {
+        titleTrans: resource.title,
+        descTrans: null,
+        handleTrans: null,
+        seoTitleTrans: null,
+        seoDescTrans: null,
+        translationFields: {}
+      };
+
+      const contentFields = resource.contentFields || {};
+
+      if (!contentFields || Object.keys(contentFields).length === 0) {
+        logger.error(`[Theme翻译] 错误：Theme资源缺少contentFields数据: ${resource.id}`);
+        throw new Error(`Theme资源缺少必要的contentFields数据。请重新扫描Theme资源。`);
+      }
+
+      const resourceType = resource.resourceType.toUpperCase();
+
+      switch (resourceType) {
+        case 'ONLINE_STORE_THEME':
+        case 'ONLINE_STORE_THEME_JSON_TEMPLATE':
+        case 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': {
+          logger.debug(`[Theme翻译] 处理JSON模板类型资源`);
+
+          if (contentFields.themeData) {
+            const hasValidThemeData =
+              contentFields.themeData &&
+              contentFields.themeData !== 0 &&
+              contentFields.themeData !== '0' &&
+              String(contentFields.themeData).trim() !== '';
+
+            if (!hasValidThemeData && contentFields.dynamicFields) {
+              const reason = 'Theme资源结构不匹配(无有效themeData)';
+              errorContext.recordSkip(reason, 'themeData', contentFields.themeData);
+              logger.warn(`[Theme翻译] Theme资源缺少有效themeData，跳过翻译: ${resource.id}`);
+              return {
+                ...result,
+                skipped: true,
+                skipReason: reason
+              };
+            }
+
+            try {
+              logger.debug(`[Theme翻译] 解析并翻译themeData`);
+              const themeData =
+                typeof contentFields.themeData === 'string'
+                  ? JSON.parse(contentFields.themeData)
+                  : contentFields.themeData;
+
+              const translatedData = await translateThemeJsonData(themeData, targetLang, '', options);
+              result.translationFields.themeData = JSON.stringify(translatedData, null, 2);
+              logger.debug(`[Theme翻译] themeData翻译完成`);
+            } catch (error) {
+              logger.error('[Theme翻译] 处理themeData失败:', error);
+              errorContext.recordError(error, { fieldPath: 'themeData', phase: 'themeData' });
+              result.translationFields.themeData = contentFields.themeData;
+            }
+          }
+
+          if (contentFields.dynamicFields) {
+            logger.debug(
+              `[Theme翻译] 处理dynamicFields，共${Object.keys(contentFields.dynamicFields).length}个字段`
+            );
+            const translatedDynamic = {};
+
+            for (const [key, fieldData] of Object.entries(contentFields.dynamicFields)) {
+              const fieldValue = Object.prototype.hasOwnProperty.call(fieldData, 'value')
+                ? fieldData.value
+                : fieldData;
+
+              let decision =
+                typeof fieldValue === 'string'
+                  ? shouldTranslateThemeFieldWithReason(key, fieldValue)
+                  : { shouldTranslate: false, reason: '空值或非字符串' };
+
+              let { shouldTranslate, reason } = decision;
+
+              // 技术字段（如 url、id、class）不进入 JSON Template override，避免错误翻译导致 Shopify 验证失败
+              if (!shouldTranslate && reason !== '技术字段' && resourceType === 'ONLINE_STORE_THEME_JSON_TEMPLATE') {
+                if (
+                  typeof fieldValue === 'string' &&
+                  fieldValue.length >= 2 &&
+                  /[a-zA-Z]/.test(fieldValue)
+                ) {
+                  const isTechnical = /^(https?:\/\/|#[0-9A-Fa-f]{3,6}|[\d]+px|[\d]+%)$/.test(fieldValue);
+                  const isBrand = /[®™]/.test(fieldValue) || /^(Onewind|Shopify)/i.test(fieldValue);
+
+                  if (!isTechnical && !isBrand && !fieldValue.includes('{{') && !fieldValue.includes('{%')) {
+                    logger.debug(
+                      `[Theme翻译] JSON Template特殊处理，强制翻译: ${key} = "${fieldValue}"`
+                    );
+                    shouldTranslate = true;
+                    reason = null;
+                  }
+                }
+              }
+
+              if (shouldTranslate && typeof fieldValue === 'string') {
+                try {
+                  const { protectedText, protectedMap } = protectLiquidVariables(fieldValue);
+                  let translatedText = await translateThemeValue(protectedText, targetLang);
+                  translatedText = restoreLiquidVariables(translatedText, protectedMap);
+                  translatedText = await postProcessTranslation(translatedText, targetLang, fieldValue, {
+                    linkConversion: options?.linkConversion
+                  });
+
+                  translatedDynamic[key] = {
+                    value: translatedText,
+                    digest: fieldData.digest || null,
+                    original: fieldValue
+                  };
+                  errorContext.recordTranslation(key);
+                } catch (error) {
+                  logger.error(`[Theme翻译] 翻译dynamicField失败 ${key}:`, error?.message || error);
+                  errorContext.recordError(error, { fieldPath: key, section: 'dynamicFields' });
+                  translatedDynamic[key] = fieldData;
+                }
+              } else {
+                if (reason) {
+                  errorContext.recordSkip(reason, key, fieldValue);
+                }
+                translatedDynamic[key] = fieldData;
               }
             }
+
+            result.translationFields.dynamicFields = translatedDynamic;
+            logger.debug(`[Theme翻译] dynamicFields处理完成`);
           }
-          
-          if (shouldTranslate) {
-            try {
-              const { protectedText, protectedMap } = protectLiquidVariables(fieldValue);
-              let translatedText = await translateThemeValue(protectedText, targetLang);
-              translatedText = restoreLiquidVariables(translatedText, protectedMap);
-              
-              // 保留digest用于后续注册
-              translatedDynamic[key] = {
-                value: translatedText,
-                digest: fieldData.digest || null,
-                original: fieldValue
-              };
-            } catch (error) {
-              logger.error(`[Theme翻译] 翻译dynamicField失败 ${key}:`, error.message);
-              translatedDynamic[key] = fieldData;
+
+          if (contentFields.translatableFields && Array.isArray(contentFields.translatableFields)) {
+            logger.debug(`[Theme翻译] 处理translatableFields数组`);
+            const translatedFields = [];
+
+            for (const field of contentFields.translatableFields) {
+              if (typeof field.value === 'string') {
+                const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(
+                  field.key,
+                  field.value
+                );
+
+                if (shouldTranslate) {
+                  try {
+                    const { protectedText, protectedMap } = protectLiquidVariables(field.value);
+                    let translatedText = await translateThemeValue(protectedText, targetLang);
+                    translatedText = restoreLiquidVariables(translatedText, protectedMap);
+                    translatedText = await postProcessTranslation(translatedText, targetLang, field.value, {
+                      linkConversion: options?.linkConversion
+                    });
+
+                    translatedFields.push({
+                      ...field,
+                      value: translatedText,
+                      original: field.value
+                    });
+                    errorContext.recordTranslation(field.key);
+                  } catch (error) {
+                    logger.error(`[Theme翻译] 翻译field失败 ${field.key}:`, error?.message || error);
+                    errorContext.recordError(error, { fieldPath: field.key, section: 'translatableFields' });
+                    translatedFields.push(field);
+                  }
+                } else {
+                  errorContext.recordSkip(reason, field.key, field.value);
+                  translatedFields.push(field);
+                }
+              } else {
+                errorContext.recordSkip('空值或非字符串', field.key, field.value);
+                translatedFields.push(field);
+              }
             }
-          } else {
-            translatedDynamic[key] = fieldData;
+
+            result.translationFields.translatableFields = translatedFields;
           }
+          break;
         }
-        
-        result.translationFields.dynamicFields = translatedDynamic;
-        logger.debug(`[Theme翻译] dynamicFields处理完成`);
-      }
-      
-      // 处理translatableFields（如果存在）
-      if (contentFields.translatableFields && Array.isArray(contentFields.translatableFields)) {
-        logger.debug(`[Theme翻译] 处理translatableFields数组`);
-        const translatedFields = [];
-        
-        for (const field of contentFields.translatableFields) {
-          if (shouldTranslateThemeField(field.key, field.value)) {
+        case 'ONLINE_STORE_THEME_LOCALE_CONTENT': {
+          logger.debug(`[Theme翻译] 处理本地化内容类型资源`);
+
+          if (contentFields.localeContent) {
             try {
-              const { protectedText, protectedMap } = protectLiquidVariables(field.value);
+              const { protectedText, protectedMap } = protectLiquidVariables(contentFields.localeContent);
               let translatedText = await translateThemeValue(protectedText, targetLang);
               translatedText = restoreLiquidVariables(translatedText, protectedMap);
-              
-              translatedFields.push({
-                ...field,
-                value: translatedText,
-                original: field.value
+              translatedText = await postProcessTranslation(translatedText, targetLang, contentFields.localeContent, {
+                linkConversion: options?.linkConversion
               });
+              result.translationFields.localeContent = translatedText;
+              errorContext.recordTranslation('localeContent');
             } catch (error) {
-              logger.error(`[Theme翻译] 翻译field失败 ${field.key}:`, error.message);
-              translatedFields.push(field);
+              logger.error('[Theme翻译] 翻译localeContent失败:', error);
+              errorContext.recordError(error, { fieldPath: 'localeContent' });
+              result.translationFields.localeContent = contentFields.localeContent;
             }
-          } else {
-            translatedFields.push(field);
+          }
+          break;
+        }
+        case 'ONLINE_STORE_THEME_APP_EMBED':
+        case 'ONLINE_STORE_THEME_SECTION_GROUP':
+        case 'ONLINE_STORE_THEME_SETTINGS_CATEGORY': {
+          logger.debug(`[Theme翻译] 处理设置类型资源`);
+
+          for (const [key, value] of Object.entries(contentFields)) {
+            if (typeof value === 'string') {
+              const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(key, value);
+
+              if (shouldTranslate) {
+                try {
+                  const { protectedText, protectedMap } = protectLiquidVariables(value);
+                  let translatedText = await translateThemeValue(protectedText, targetLang);
+                  translatedText = restoreLiquidVariables(translatedText, protectedMap);
+                  translatedText = await postProcessTranslation(translatedText, targetLang, value, {
+                    linkConversion: options?.linkConversion
+                  });
+
+                  result.translationFields[key] = translatedText;
+                  errorContext.recordTranslation(key);
+                } catch (error) {
+                  logger.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);
+                  errorContext.recordError(error, { fieldPath: key, section: 'settings' });
+                  result.translationFields[key] = value;
+                }
+              } else {
+                errorContext.recordSkip(reason, key, value);
+                result.translationFields[key] = value;
+              }
+            } else if (value && typeof value === 'object') {
+              result.translationFields[key] = await translateThemeJsonData(value, targetLang, key, options);
+            } else {
+              result.translationFields[key] = value;
+            }
+          }
+          break;
+        }
+        default: {
+          logger.debug(`[Theme翻译] 未知的Theme资源类型: ${resourceType}，使用通用处理`);
+
+          for (const [key, value] of Object.entries(contentFields)) {
+            if (typeof value === 'string') {
+              const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(key, value);
+
+              if (shouldTranslate) {
+                try {
+                  const { protectedText, protectedMap } = protectLiquidVariables(value);
+                  let translatedText = await translateThemeValue(protectedText, targetLang);
+                  translatedText = restoreLiquidVariables(translatedText, protectedMap);
+                  translatedText = await postProcessTranslation(translatedText, targetLang, value, {
+                    linkConversion: options?.linkConversion
+                  });
+                  result.translationFields[key] = translatedText;
+                  errorContext.recordTranslation(key);
+                } catch (error) {
+                  logger.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);
+                  errorContext.recordError(error, { fieldPath: key, section: 'generic' });
+                  result.translationFields[key] = value;
+                }
+              } else {
+                errorContext.recordSkip(reason, key, value);
+                result.translationFields[key] = value;
+              }
+            } else {
+              result.translationFields[key] = value;
+            }
           }
         }
-        
-        result.translationFields.translatableFields = translatedFields;
       }
-      break;
 
-    case 'ONLINE_STORE_THEME_LOCALE_CONTENT':
-      logger.debug(`[Theme翻译] 处理本地化内容类型资源`);
-      
-      // 处理本地化内容
-      if (contentFields.localeContent) {
-        try {
-          result.translationFields.localeContent = await translateThemeValue(
-            contentFields.localeContent, 
-            targetLang
-          );
-        } catch (error) {
-          logger.error('[Theme翻译] 翻译localeContent失败:', error);
-          result.translationFields.localeContent = contentFields.localeContent;
-        }
+      if (result.translationFields) {
+        result.translationFields = flattenTranslationFields(result.translationFields);
       }
-      break;
 
-    case 'ONLINE_STORE_THEME_APP_EMBED':
-    case 'ONLINE_STORE_THEME_SECTION_GROUP':
-    case 'ONLINE_STORE_THEME_SETTINGS_CATEGORY':
-      logger.debug(`[Theme翻译] 处理设置类型资源`);
-      
-      // 通用处理其他Theme资源类型
-      for (const [key, value] of Object.entries(contentFields)) {
-        if (shouldTranslateThemeField(key, value)) {
-          try {
-            const { protectedText, protectedMap } = protectLiquidVariables(value);
-            let translatedText = await translateThemeValue(protectedText, targetLang);
-            translatedText = restoreLiquidVariables(translatedText, protectedMap);
-            translatedText = await postProcessTranslation(translatedText, targetLang, value, { linkConversion: options?.linkConversion });
+      logger.info('[Theme翻译] Theme资源翻译完成', {
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        fieldCount: Object.keys(result.translationFields || {}).length,
+        structure: 'flattened'
+      });
 
-            result.translationFields[key] = translatedText;
-          } catch (error) {
-            logger.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);
-            result.translationFields[key] = value;
-          }
-        } else if (typeof value === 'object' && value !== null) {
-          // 递归处理嵌套对象
-          result.translationFields[key] = await translateThemeJsonData(value, targetLang, key, options);
-        } else {
-          result.translationFields[key] = value;
-        }
+      // 记录翻译结果概要
+      const { totalFields, translatedFields, skipStats, coverage } = errorContext.getTotals();
+      logger.info('[Theme翻译] 翻译结果概要', {
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        targetLang,
+        totalFields,
+        translatedFields,
+        skipStats,
+        coverage
+      });
+
+      return result;
+    } catch (error) {
+      errorContext.recordError(error, { phase: 'main', operation: 'translateThemeResource' });
+      throw error;
+    } finally {
+      try {
+        await errorContext.flush();
+      } catch (flushError) {
+        logger.error('[Theme翻译] 错误提交失败', { error: flushError?.message || flushError });
       }
-      break;
-
-    default:
-      logger.debug(`[Theme翻译] 未知的Theme资源类型: ${resourceType}，使用通用处理`);
-      
-      // 默认处理方式
-      for (const [key, value] of Object.entries(contentFields)) {
-        if (typeof value === 'string' && shouldTranslateThemeField(key, value)) {
-          try {
-            result.translationFields[key] = await translateThemeValue(value, targetLang);
-          } catch (error) {
-            logger.error(`[Theme翻译] 翻译字段失败 ${key}:`, error);
-            result.translationFields[key] = value;
-          }
-        } else {
-          result.translationFields[key] = value;
-        }
-      }
-  }
-
-  // 扁平化 translationFields 中的复杂嵌套结构
-  if (result.translationFields) {
-    result.translationFields = flattenTranslationFields(result.translationFields);
-  }
-
-  logger.info('[Theme翻译] Theme资源翻译完成', {
-    resourceId: resource.id,
-    resourceType: resource.resourceType,
-    fieldCount: Object.keys(result.translationFields || {}).length,
-    structure: 'flattened'
+    }
   });
-
-  return result;
 }
 
 /**
@@ -834,9 +1110,10 @@ export function validateThemeTranslation(original, translated) {
 }
 
 // 导出工具函数供测试使用
-export { 
-  shouldTranslateThemeField, 
-  protectLiquidVariables, 
+export {
+  shouldTranslateThemeField,
+  shouldTranslateThemeFieldWithReason,
+  protectLiquidVariables,
   restoreLiquidVariables,
-  translateThemeJsonData 
+  translateThemeJsonData
 };
