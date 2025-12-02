@@ -10,9 +10,9 @@ const REDIS_CONFIG = {
   enableReadyCheck: false
 };
 
-const queue = new Bull('translation_fynony', {
+const queue = new Bull('translation_shop1', {
   redis: REDIS_CONFIG,
-  prefix: 'bull:fynony'
+  prefix: 'bull:shop1'
 });
 
 async function check() {

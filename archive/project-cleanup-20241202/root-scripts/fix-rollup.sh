@@ -19,7 +19,7 @@ if [[ $(uname -m) == "arm64" ]]; then
 
     echo "✨ 修复完成！"
     echo "现在可以使用以下命令启动项目（需用户授权）："
-    echo "shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000"
+    echo "shopify app dev --tunnel-url=https://translate.ease-joy.com:3000"
 else
     echo "⚠️  非 ARM64 架构，使用标准安装"
     npm install

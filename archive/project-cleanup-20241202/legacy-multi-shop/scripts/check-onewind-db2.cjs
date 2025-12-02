@@ -5,21 +5,21 @@ const REDIS_CONFIG = {
   host: 'nozomi.proxy.rlwy.net',
   port: 39953,
   password: 'gedTtMvRpnZNccvqCpgjBdDycKIiLOFR',
-  db: 2,
+  db: 12,
   maxRetriesPerRequest: null,
   enableReadyCheck: false
 };
 
-const queue = new Bull('translation_onewind', {
+const queue = new Bull('translation_shop2', {
   redis: REDIS_CONFIG,
-  prefix: 'bull:onewind'
+  prefix: 'bull:shop2'
 });
 
 async function check() {
   try {
     await queue.isReady();
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ OneWind队列状态 (DB 2)');
+    console.log('✅ OneWind队列状态 (DB 12)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     
     const counts = await queue.getJobCounts();

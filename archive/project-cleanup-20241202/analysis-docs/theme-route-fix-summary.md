@@ -226,7 +226,7 @@ node --test tests/integration/theme-primary-language-validation.test.js
 ### 本地验证
 1. **启动开发服务器**
    ```bash
-   shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000
+   shopify app dev --tunnel-url=https://translate.ease-joy.com:3000
    ```
 
 2. **运行集成测试**

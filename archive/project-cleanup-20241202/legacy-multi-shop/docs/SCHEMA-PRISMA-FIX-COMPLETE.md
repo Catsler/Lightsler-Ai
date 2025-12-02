@@ -71,7 +71,7 @@ SHOP_ID:     onewind
 ## 剩余问题
 
 ### Shopify跨域错误
-**现象**: 浏览器报错 `translate.ease-joy.fun !== fynony.ease-joy.fun`
+**现象**: 浏览器报错 `translate.ease-joy.com !== fynony.ease-joy.fun`
 
 **原因**: Shopify Partners后台配置与shopify.app.toml不同步
 

@@ -74,6 +74,10 @@ Press P to open the URL to your app. Once you click install, you can start devel
 
 Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your partners account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
 
+### Chrome 开发 Profile
+
+调试时请使用项目内的 `./scripts/open-dev-chrome.sh` 脚本，它会复用 `lampesmercy@gmail.com` 登录态的 Profile，避免每次出现未登录的新浏览器。首次运行后在弹出的窗口内完成登录即可。详细说明参考 `docs/dev-browser-profile.md`。
+
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:

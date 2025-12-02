@@ -1,0 +1,46 @@
+[
+  {
+    "path": "https://fynony.ease-joy.fun/",
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 150000 },
+      { "resourceType": "style", "budget": 50000 },
+      { "resourceType": "image", "budget": 200000 },
+      { "resourceType": "font", "budget": 50000 },
+      { "resourceType": "third-party", "budget": 100000 },
+      { "resourceType": "total", "budget": 500000 }
+    ],
+    "timings": [
+      { "metric": "first-contentful-paint", "budget": 1800 },
+      { "metric": "largest-contentful-paint", "budget": 2500 },
+      { "metric": "interactive", "budget": 3000 },
+      { "metric": "speed-index", "budget": 3000 },
+      { "metric": "total-blocking-time", "budget": 100 }
+    ],
+    "resourceCounts": [
+      { "resourceType": "total", "budget": 25 },
+      { "resourceType": "third-party", "budget": 10 }
+    ]
+  },
+  {
+    "path": "https://onewind.ease-joy.fun/",
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 120000 },
+      { "resourceType": "style", "budget": 40000 },
+      { "resourceType": "image", "budget": 150000 },
+      { "resourceType": "font", "budget": 40000 },
+      { "resourceType": "third-party", "budget": 80000 },
+      { "resourceType": "total", "budget": 350000 }
+    ],
+    "timings": [
+      { "metric": "first-contentful-paint", "budget": 1600 },
+      { "metric": "largest-contentful-paint", "budget": 1800 },
+      { "metric": "interactive", "budget": 2500 },
+      { "metric": "speed-index", "budget": 2500 },
+      { "metric": "total-blocking-time", "budget": 100 }
+    ],
+    "resourceCounts": [
+      { "resourceType": "total", "budget": 20 },
+      { "resourceType": "third-party", "budget": 8 }
+    ]
+  }
+]

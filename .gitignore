@@ -30,6 +30,7 @@ diagnose-*.js
 
 # Logs directory
 logs/
+theme/
 
 # Cache directories
 .serena/

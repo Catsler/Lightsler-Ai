@@ -1,6 +1,195 @@
 # TODO 任务列表
 
+## 💳 Pricing V2 "Ultra"（2025-11-XX） - 待启动
+**目标**：五档阶梯（Free→Gold）、全线 GPT-5 对外展示、可灵活 Top-up，支持后台种子店铺手动升档。
+
+### Phase 1：后端 & 配置（优先）
+- [ ] Schema：Shop 增加 overridePlanId/overrideExpiresAt/overrideReason/allowBillingBypass、topUpCredits/topUpExpiresAt；新增 PlanOverrideAudit 记录所有手动升档操作
+- [ ] Config：扩展 pricing-config.js 读取 `.env` 的 GPT_MODEL_NAME，固定 DISPLAY_MODEL_NAME="GPT-5"；新增 FREE_RATE_LIMIT、FREE_MONTHLY_CREDITS、CREDIT_PRICE_USD、CREDIT_MIN_PURCHASE、CREDIT_EXPIRY_DAYS、DEDUCTION_ORDER=SUBSCRIPTION_FIRST、FALLBACK_ENABLED/FALLBACK_MODEL_NAME、GPT_TIMEOUT_MS/GPT_RATE_LIMIT
+- [ ] Billing 逻辑：实现 getEffectivePlan(override > subscription > top-up)；实现 deductCredits() 返回扣减明细并记账；Top-up 购买与对账记录（订单号/金额/credits/expiry）；Free 档额度+速率限制
+- [ ] Fallback：GPT-5 调用失败按阈值自动切换 GPT-4o（可配置），记录告警与统计
+
+### Phase 2：前端 UI（待 Phase 1 稳定后）
+- [ ] 5-Tier Grid（Free/Starter/Standard/Silver/Gold），AI Model 行统一展示 GPT-5；突出额度/速率/支持差异
+- [ ] Top-up Modal：单价、最小购买量、有效期说明；入口清晰但不干扰订阅流程
+- [ ] 文案与提示：Free 档“额度有限/速率限制，可加购 Top-up”；不足/超速率/Fallback 提示一致
+
+### 验收与风控
+- [ ] 扣减顺序、限额/速率、Top-up 购买与扣减、override 生效/过期、Fallback 触发全链路验证
+- [ ] 审计：PlanOverrideAudit 全量记录，操作人/时间/旧值/新值/理由；必要时通知运营
+- [ ] 对账：Top-up 订单、扣减来源（订阅/Top-up/override）可查
+
+## 🌐 i18n 国际化落地（2025-11-24） - 进行中
+- [x] 默认语言切换为英文，LanguageSwitcher 正常工作（cookie + URL 覆盖）
+- [x] 优化 `check-i18n-keys` 脚本（忽略规则 + 白名单，过滤误报）
+- [x] 导航菜单、翻译覆盖率卡片接入 i18n 文案
+- [x] 首页核心操作区主要按钮与状态替换硬编码中文（部分 Toast/Modal 仍在排队）
+- [x] 资源列表/详情主要文案抽取，产品扩展与元数据区双语化
+- [ ] 计费页文案抽取
+- [ ] 硬编码中文逐步清理（当前重点：ErrorBoundary 及核心页面注释/日志）
+
 ## 🚧 进行中
+
+### 错误处理系统优化 (2025-10-08) - 📋 待启动
+**目标**: 提升翻译服务的自愈能力与可观测性，建立可回滚的渐进式治理闭环。
+**当前状态**: 需求说明已定稿（参见 `docs/error-management.md` 草案），等待按阶段推进并完成 dry-run。
+
+#### Phase 1：核心韧性（Week 1）
+- [x] 输出 Phase 1 需求基线（`docs/error-handling-requirements.md`），补齐范围/验收/风险说明
+- [ ] 启用最小化 ErrorRecoveryManager（仅开 Exponential Backoff、Fallback），按环境变量控制并完成冷启动/热重载/禁用验证
+- [ ] 落地统一的 service error handler，替换 7 个目标服务并补齐单元测试（成功、失败、告警、this 绑定）
+- [x] 整理 Phase 1 checklist（启动验证、日志基线、回滚路径）并记录于 `docs/error-management.md`
+
+#### Phase 2：基础观测（Week 2）
+- [ ] 交付 Prisma 迁移（ApiMetrics、ServiceLock），运行 `npm run setup` 验证
+- [ ] 启动 metrics persistence 服务（含锁机制、遥测降级、进程清理）并完成 staging dry-run
+- [ ] 构建管理员专用错误仪表板 V1：加载最近 24h 指标与错误热点、支持自动/手动刷新、加固权限与缓存头
+
+#### Phase 3：运维治理（按需）
+- [ ] 部署日志归档脚本与 DRY-RUN 流程，验证批量/逐条更新的兼容性并编写运行手册
+- [ ] 上线首个告警渠道（Slack webhook），明确密钥交付与值班流程
+- [ ] 扩充文档：新增运维检查项（每日/每周/每月）、环境变量矩阵及 cron 配置样例
+
+#### 验收门槛
+- Phase 1：恢复管理器和错误处理 helper 可按环境切换，自测日志与单测通过，`npm run build` 成功
+- Phase 2：指标持久化 1h 内可见，仪表板具备健康指示，staging dry-run 完成并记录
+- Phase 3：归档与告警脚本具备回滚指南，运营手册更新完毕并获 Ops 确认
+
+
+### Shopify Admin 性能诊断与首屏提速 (2025-10-30) - 🆕 Phase 1 启动
+**目标**: 将 Lightsler-ai Translator 首屏体验从 FCP ~15.6s 降至 <8s，并建立可持续性能监控。
+**当前状态**: 性能现况已复盘，执行计划与基线指标明确，准备按 Phase 1 快速优化实施。
+
+#### Phase 0：诊断基线与可访问性修复（1人×0.5天）
+- [ ] 补齐缺失 `alt` 属性的图片（目标：扫描为 0）（备注：当前 8 张来自 Shopify Admin 组件，待确认是否可覆盖）
+- [x] 固化 `scripts/diagnose-performance.mjs` 性能基线脚本
+- [x] `docs/performance/performance-baseline.md` 记录首轮指标
+
+#### Phase 1：首屏加载加速（1人×1.5天）
+- [ ] 内联 Critical CSS，延迟非关键样式加载
+- [ ] 调整资源优先级（preload/dns-prefetch 等）
+- [ ] 启用 Remix ESM + 路由级代码拆分
+- [ ] Polaris 组件按需导入/Tree Shaking
+- [ ] 运行性能脚本对比基线（FCP 目标 ≤10s）
+
+#### Phase 2：结构优化与监控（择期执行）
+- [ ] 路由懒加载与非首屏功能延迟加载
+- [ ] iframe 与批量 API 请求优化
+- [ ] 集成 Web Vitals / Lighthouse 监控（docs/performance/optimization-log.md）
+- [ ] Playwright KISS/ultrathink 自检覆盖性能关键路径
+
+#### Phase 3：长期治理（规划中）
+- [ ] SSR/缓存/CDN 深度优化（FCP 目标 <3s）
+- [ ] RUM 数据入库与告警阈值
+- [ ] 性能预算与回归治理机制
+
+#### 验收门槛
+- Phase 1 完成后 FCP ≤10s，关键资源耗时显著下降
+- 性能诊断脚本输出稳定，文档记录清晰
+- 开发完成阶段采用 Playwright（KISS ultrathink）脚本进行端到端验证
+
+### Shopify 多语言翻译可靠性与品牌词保护体系升级 (2025-10-21) - 🆕 PoC 准备中
+**目标**: 修复 Theme 翻译数据契约、实现可配置品牌词保护，并建立监控与灰度策略，确保多语言体验一致。
+**当前状态**: 已完成任务拆解、人力排期与 PoC 验收标准梳理，待按检查清单执行。
+
+#### Phase 1：PoC 核心验证（1人×2周）
+- [x] Phase 0：建立基础目录、gitignore 与样本数据（poc/datasets、poc/reports、scripts/poc/providers）
+- [x] Phase 0：准备 `poc.config.json`（注释控制执行范围）并验证 `npm run poc:validate` 样本运行
+- [x] Phase 0：完善阶段执行记录（PoC 报告入 poc/reports，敏感数据不上库）
+- [ ] Theme GraphQL 截断率评估与 Asset API 降级验证
+- [ ] Shopify 限流压测与恢复时间统计（目标 <30s）
+- [ ] 品牌词保护 MVP 准确率评估（目标 ≥90%）
+- [ ] PoC 自动化验收脚本与报告输出
+
+#### Phase 2：核心功能迭代（2人×2周）
+- [ ] Theme 资源扫描契约修复与历史数据迁移
+- [ ] 品牌词规则引擎与白名单体系落地
+- [ ] 降级重扫幂等控制与缓存一致性机制
+- [ ] 灰度发布开关实现与端到端测试
+- [ ] 开发完成后使用 Playwright 进行 KISS 原则自检（ultrathink 场景）
+
+#### Phase 3：配置管理与监控（1人×1周 + 3天）
+- [ ] 品牌词保护管理界面、权限校验与审计日志
+- [ ] 导入/导出工具与默认 UI 词汇初始化
+- [ ] Prometheus/Grafana 指标、告警与应急 Runbook
+
+#### 验收门槛
+- Theme 翻译成功率 ≥95%，品牌词 UI 词汇翻译覆盖率 ≥90%
+- 限流场景恢复 ≤30s，降级重扫不超过3次重试
+- 监控与灰度计划上线，可在 Runbook 指引下完成回滚
+
+### Theme JSON 翻译错误追踪增强 (2025-10-04) - 🆕 Phase 1 进行中
+**目标**: 构建可追溯的 Theme 翻译诊断体系，锁定覆盖率下降的真实原因。
+**方案**: 以最小侵入方式叠加异步上下文、跳过统计与批量错误上报。
+
+#### Phase 1 实施进度（零破坏性 KISS 落地）
+- [x] 引入 `AsyncLocalStorage` 上下文，封装 `ThemeErrorContext` 采集器
+- [x] 重构 `shouldTranslateThemeField` → `shouldTranslateThemeFieldWithReason` 返回结构化结果
+- [x] 在 Theme 翻译流程记录跳过原因与限制采样（field+reason 去重，长度截断）
+- [x] 使用 `collectErrorBatch` 一次性提交跳过摘要与字段翻译错误
+- [x] 所有翻译/跳过/异常分支落地 `recordSkip` / `recordError`，默认主题与结构异常路径同步入库
+- [x] 修正 ErrorLog 写入结构，将 diagnostics（skipStats/samples/coverage）持久化至 context
+- [ ] Phase 0：URL 字段兜底与诊断
+  - [ ] 修复 Theme 技术字段正则，覆盖 `link_url`/`*_url`
+  - [ ] 引入 Theme URL 格式校验与回退策略
+  - [ ] 运行 `theme-translation-audit` 脚本，生成 OneWind 基线报告
+- [ ] Phase 1：字段策略与 Prompt 调优
+  - [ ] 建立 Theme 字段分类（Must Translate / Must Keep / Special Handling）
+  - [ ] 调整 LLM Prompt，强调保留 URL / 品牌词 / HTML / Liquid
+  - [ ] 扩充品牌词 & HTML 差异诊断日志
+- [ ] Phase 2：灰度发布与监控
+  - [ ] 在 OneWind → Fynony → 全量的顺序灰度验证
+  - [ ] 建立 Theme 翻译成功率仪表盘与告警
+  - [ ] 编写 Playbook + 培训材料并固化流程
+- [ ] 开发完成后使用 Playwright（KISS / ultrathink）脚本自检 Theme JSON 翻译流程
+
+#### Phase 2 实施进度
+- [x] `scripts/diagnostics/diagnose-theme-coverage.mjs` 核心诊断脚本
+- [x] 诊断脚本读取 context.diagnostics，优化关键词噪声过滤与 verbose 输出
+
+#### 后续 Phase（规划中）
+- [ ] Phase 2：`diagnose-theme-coverage.mjs` 覆盖率诊断脚本与 ErrorLog 交叉分析
+- [ ] Phase 3：低覆盖率预警与周期性 Theme 健康度报告
+
+#### 预期效果
+- ✅ Theme 翻译失败/跳过可在 ErrorLog 中精确检索（含字段样本）
+- ✅ 并发翻译保持独立上下文，杜绝数据串线
+- ✅ 跳过分类统计明确（技术/品牌/Liquid/空值/模式），为后续策略调整提供数据基础
+
+### Theme JSON 覆盖率扩展 (2025-11-07) - 🆕 Phase B 进行中
+**目标**：引入 schema 驱动的字段判定与完善测试矩阵，将 Theme JSON 有效翻译率提升至 ≥95%，核心 Section ≥97%。
+
+#### Phase A：真实主题数据准备 ✅
+- [x] 导入 Onewind-1107 主题并生成完整 schema（settings + 79 个 sections）
+- [x] 整理 Dawn fixtures（product/collection/index/cart 模板 + header/footer 等 sections）
+- [x] `npm run theme:schema` 跑通，schema 标记经人工抽检无误
+
+#### Phase B：schema 集成与单元测试（目标 2-3 天）
+- [x] 在 `shouldTranslateThemeFieldWithReason` 中接入 schema 查找（schema 优先，正则兜底）
+- [x] 增强 schema 缓存，支持嵌套 blocks/arrays、`sectionTypeMap` 推断
+- [x] 将 `theme-field-filter.test.ts` 扩展至 ≥25 用例（当前 28 个，覆盖 schema 优先级/嵌套/数组/Liquid/边界）
+- [x] 测试分支覆盖率 ≥90%，记录并修复 ≥3 个误判场景
+  - 2025-11-10：`app/services/theme-field-filter.server.js` 独立抽取后，补充 URL 检测、占位符、TitleCase 及 schema 失败用例（35 个）。`npx vitest run --coverage --reporter=json --outputFile coverage/coverage-summary.json` 显示语句 98.63% / 分支 91.66% / 函数 100%，已覆盖 `link_label`、`collection_handle`、`map.api_key` 等误判路径。
+
+#### Phase C：真实模板集成测试（目标 3-4 天）
+- [x] 基于 Dawn fixtures 编写 `tests/integration/theme-json/*.test.ts`（product/collection/index/cart）
+  - `tests/integration/theme-json.{translation,product,collection,index,cart}.translation.test.ts` 共 6 个场景已接入 `npm run test:integration`
+- [x] 针对复杂 section（multi-column、image-with-text、product-recommendations、header/footer）补充集成用例
+  - `tests/integration/theme-json.sections.translation.test.ts` 覆盖 5 大 Section，包含嵌套 blocks/数组/liquid 混合
+- [ ] 计算每个模板的 coverage（≥95%），输出跳过字段报告
+  - 2025-11-10：
+    - `npm run diagnose:theme-coverage`（ErrorLog）目前无真实样本，仍需上线后再跑。
+    - `node scripts/theme/report-template-coverage.mjs` 针对 Dawn fixtures 输出 coverage（product 52.9%、collection 35.7%、index 33.3%、cart 50%），已记录在 `docs/theme/theme-coverage-baseline.md`，后续需通过更新 schema/模式提升静态判定覆盖率并与真实流量对齐。
+
+#### Phase D：覆盖率观测与告警（目标 1-2 天）
+- [x] `ThemeErrorContext` 输出 section/block coverage，coverage<90% 记录 `THEME_COVERAGE_LOW`
+  - `translateThemeResource` 已在执行前注入 `sectionTypeMap`，`ThemeErrorContext.flush()` 会把 section/block 统计塞入 `diagnostics.sectionStats`
+- [x] 新诊断脚本 `diagnose-theme-coverage.mjs` 生成 section 级覆盖率/SLO 报告
+  - 2025-11-10 执行 `node scripts/diagnostics/diagnose-theme-coverage.mjs`，脚本正常输出（当前窗口内暂无采集数据）
+
+#### Phase E：文档与基线（目标 1 天）
+- [ ] 更新 `TODO.md`/`CLAUDE.md`/coverage baseline 文档，记录命令、SLO、诊断流程
+- [ ] 形成首次 Theme JSON 覆盖率基线（整体 ≥95%，核心 section ≥97%）
 
 ### 翻译系统错误处理增强 (2025-10-01) - 🆕 Phase 0 实施中
 **目标**: 在翻译系统关键节点（长文本分块、URL转换）增加本地化错误处理，提升问题定位效率。
@@ -10,11 +199,11 @@
 
 #### Phase 0 实施进度（最小验证）
 - [x] 创建需求文档（docs/translation-error-handling-enhancement.md）
-- [ ] 扩展 error-messages.server.js 支持参数替换
-- [ ] 添加分块异常监控（intelligentChunkText）
-- [ ] 添加URL转换成功率监控（convertLinksForLocale）
-- [ ] 更新 CLAUDE.md 错误排查文档
-- [ ] 代码检查通过（lint + build）
+- [x] 扩展 error-messages.server.js 支持参数替换
+- [x] 添加分块异常监控（intelligentChunkText）
+- [x] 添加URL转换成功率监控（convertLinksForLocale）
+- [x] 更新 CLAUDE.md 错误排查文档
+- [ ] 代码检查通过（lint + build）（lint 当前受既有 import 顺序与缺失组件问题阻塞，待后续统一清理）
 
 #### 预期效果
 - ✅ 中文错误消息，快速理解问题
@@ -954,9 +1143,9 @@ npm run build
 - [x] **分析问题根本原因** - Sequential Thinking深度分析
 - [x] **制定完整需求文档** - 包含技术方案和实施计划
 - [x] **更新TODO.md记录** - 记录分析结果和修复方案
-- [ ] **修复Fynony店铺语言配置问题**
+- [ ] **修复店铺语言配置问题**
   - [ ] 通过POST /api/locales {"action": "sync"}重新同步语言
-  - [ ] 清除localStorage缓存：translate-fynony.myshopify.com-language-preference
+  - [ ] 清除localStorage缓存：<shop-domain>-language-preference
   - [ ] 验证Language表中code与name一致性
 - [ ] **添加语言配置自动验证机制**
   - [ ] 在api.locales.jsx的formatLocalesForDatabase添加验证
@@ -1448,8 +1637,8 @@ npm run build
 - [x] 列表去重：隐藏顶层 `PRODUCT_OPTION/PRODUCT_OPTION_VALUE` 资源，只保留产品行“展开选项”展示路径
 - [x] 布局精简：移除右侧栏；“产品扩展”移至“资源内容”下；三按钮并入“资源内容”抬头；“元数据”移至页面底部
 - [x] Playwright脚本：补充最小端到端校验（布局顺序、按钮存在、展开/收起选项与Metafields）
-  - 运行前提：已通过 `shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000` 启动并登录，准备 `E2E_STORAGE_STATE`
-  - 运行示例：`E2E_BASE_URL=https://translate.ease-joy.fun:3000 E2E_RESOURCE_PATH=/app/resource/product/<id>?lang=zh-CN E2E_STORAGE_STATE=playwright/.auth/admin.json npm run test:e2e`
+  - 运行前提：已通过 `shopify app dev --tunnel-url=https://translate.ease-joy.com:3000` 启动并登录，准备 `E2E_STORAGE_STATE`
+  - 运行示例：`E2E_BASE_URL=https://translate.ease-joy.com:3000 E2E_RESOURCE_PATH=/app/resource/product/<id>?lang=zh-CN E2E_STORAGE_STATE=playwright/.auth/admin.json npm run test:e2e`
 - [x] 资源分类调整：将 `FILTER` 从“产品与集合/集合”移动至“内容管理/其他选项”，仅改配置，避免误归类
 
 ### 动态可译模块发现与模板适配 - 2025-09-12（KISS）
@@ -1740,4 +1929,66 @@ alternateLocales   // [String!]!: ["fr", "de"]
 - **Day 3**: 占位符回退逻辑
 - **Day 4**: 日志轮转优化
 - **Day 5**: 综合验证和文档更新
+- [ ] Phase 2：灰度发布与监控  
+  - [ ] 在 OneWind → Fynony → 全量的顺序灰度验证  
+  - [ ] 建立 Theme 翻译成功率仪表盘与告警  
+  - [ ] 编写 Playbook + 培训材料并固化流程  
+- [ ] 开发完成后使用 Playwright（KISS / ultrathink）脚本自检 Theme JSON 翻译流程
 
+### 计费系统 MVP (2025-10-27) - 🆕 计划中
+**目标**: 搭建订阅+额度管理闭环，让翻译场景具备收费能力。
+
+#### Phase 0：项目准备
+- [x] 输出计费 MVP 需求说明书
+- [x] 评审执行计划并存档当前 git 状态
+- [x] Prisma 数据模型草稿与迁移计划确认
+
+#### Phase 1：数据模型与额度服务（Day 1-3）
+- [x] 新增 SubscriptionPlan / ShopSubscription / CreditUsage / CreditReservation schema
+- [x] 编写默认订阅计划初始化脚本
+- [x] 实现 CreditCalculator（统一字数/权重计算）
+- [x] 实现 CreditManager（预扣/确认/释放 + 防抖机制）
+- [x] 编写单元测试覆盖预扣 → 确认 → 释放流程
+- [x] 将额度预扣集成至核心翻译流程并补充调用参数
+- [x] Phase 1 Ultra-MVP：构建 `SubscriptionPlan.maxLanguages` 迁移脚本（scripts/billing/phase1-ultra-mvp.sql）
+- [x] Phase 1 Ultra-MVP：编写手动迁移检查清单（docs/billing/phase1-ultra-mvp-checklist.md）
+- [ ] Phase 1 Ultra-MVP：staging 数据库演练并记录验证结果
+- [ ] Phase 1 Ultra-MVP：生产环境执行与回滚演练
+
+#### Phase 2：Shopify 订阅集成（Day 4-5）
+- [x] 实现 SubscriptionManager，接入 Shopify Recurring Charge API
+- [x] 处理订阅 webhook & 状态同步
+- [ ] E2E 验证创建/确认/取消流程
+
+#### Phase 3：UI 最小化实现（Day 6-7）
+- [x] CreditBar 额度展示组件集成到主界面
+- [x] /app/billing 体验增强（空状态、额度单位、FAQ）
+- [ ] 取消订阅流程（确认弹窗 + 接口联动）
+- [ ] Playwright 场景：额度不足弹窗、额度充足成功翻译、并发额度校验
+
+#### Phase 4：上线前准备（Day 8）
+- [ ] 定时清理任务与告警阈值配置
+- [ ] 生产环境变量与 shopify.app.toml 计费字段检查
+- [ ] 手动验证 Checklist（OneWind → Fynony 灰度流程）
+- [ ] 开发完成后再次运行 Playwright（KISS / ultrathink）验证收费流程
+- [x] 灰度上线检查清单（docs/billing/billing-gray-release-checklist.md）
+
+#### Phase 5：盈利监控（新增）
+- [x] 定价配置集中管理（app/utils/pricing-config.js）
+- [x] scripts/monthly-metrics.js 月度审查脚本
+- [ ] 成本/告警自动通知（Slack / Email）
+
+> 备注：所有阶段必须先跑通 OneWind 店铺的灰度验证，再扩展到 Fynony，最终全量上线。
+
+### i18n 与计费调度改进（2025-11-XX）- 进行中
+**目标**：完善双语 UI 与计费降级自动执行，避免语言不一致和降级失效。
+
+- [ ] 添加 i18n 缺失键检测脚本，并集成 npm script（check:i18n），输出基线报告
+- [ ] 第一批替换：NavMenu/TopBar 文案 → t() + 补充 common.json
+- [ ] 第一批替换：首页核心操作（扫描/翻译/发布、状态提示、Toast/Modal）→ t() + 补充 common.json
+- [ ] 第二批替换：计费页文案 → t() + 补充 common.json
+- [ ] 第二批替换：资源详情文案 → t() + 补充 common.json
+- [ ] 添加硬编码中文扫描、缺失键对称性检测（en vs zh-CN）
+- [ ] BillingScheduler 锁竞争检测与健康检查路由 /api/billing/health 上线验证
+- [ ] 计费降级调度：BILLING_SCHEDULER_ENABLED 开关验证，确认 gracePeriod 到期自动执行
+- [ ] Skip 场景计费验证测试（ALREADY_TRANSLATED/ERROR_PRONE/TRANSLATION_IN_PROGRESS/错误重试不重复扣费）

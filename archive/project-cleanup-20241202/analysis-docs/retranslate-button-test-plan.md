@@ -1,8 +1,8 @@
 # 重新翻译按钮修复 - 测试计划
 
 ## 测试环境
-- **应用URL**: https://translate.ease-joy.fun
-- **开发服务器**: 已运行 (`shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000`)
+- **应用URL**: https://translate.ease-joy.com
+- **开发服务器**: 已运行 (`shopify app dev --tunnel-url=https://translate.ease-joy.com:3000`)
 - **测试时间**: 2025年10月5日
 
 ## 自动化测试
@@ -13,7 +13,7 @@
 **运行命令**:
 ```bash
 # 设置环境变量
-export E2E_BASE_URL=https://translate.ease-joy.fun:3000
+export E2E_BASE_URL=https://translate.ease-joy.com:3000
 export E2E_STORAGE_STATE=playwright/.auth/admin.json
 export E2E_ZERO_LANG_RESOURCE_ID=gid://shopify/Product/123
 
@@ -131,7 +131,7 @@ node --test tests/integration/**/*.test.js
 
 #### 1.1 访问资源列表页
 ```
-✅ 访问: https://translate.ease-joy.fun/app
+✅ 访问: https://translate.ease-joy.com/app
 ```
 
 **预期结果:**
@@ -203,7 +203,7 @@ node --test tests/integration/**/*.test.js
 
 #### 2.1 测试 URL 缺少 lang 参数 (错误处理)
 ```
-✅ 直接访问: https://translate.ease-joy.fun/app/resource/product/123
+✅ 直接访问: https://translate.ease-joy.com/app/resource/product/123
    (故意不带 ?lang=xx)
 ```
 
@@ -213,7 +213,7 @@ node --test tests/integration/**/*.test.js
 
 #### 2.2 测试 lang 参数无效 (错误处理)
 ```
-✅ 访问: https://translate.ease-joy.fun/app/resource/product/123?lang=invalid-lang
+✅ 访问: https://translate.ease-joy.com/app/resource/product/123?lang=invalid-lang
 ```
 
 **预期结果:**
@@ -392,7 +392,7 @@ node --test tests/integration/lang-validation.test.js
 **2. 运行E2E测试（完整验证）**
 ```bash
 # 准备: 设置环境变量
-export E2E_BASE_URL=https://translate.ease-joy.fun:3000
+export E2E_BASE_URL=https://translate.ease-joy.com:3000
 export E2E_STORAGE_STATE=playwright/.auth/admin.json
 export E2E_ZERO_LANG_RESOURCE_ID=gid://shopify/Product/YOUR_PRODUCT_ID
 

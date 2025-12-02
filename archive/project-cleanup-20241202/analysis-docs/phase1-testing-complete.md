@@ -33,7 +33,7 @@
 
 **运行方式**:
 ```bash
-export E2E_BASE_URL=https://translate.ease-joy.fun:3000
+export E2E_BASE_URL=https://translate.ease-joy.com:3000
 export E2E_STORAGE_STATE=playwright/.auth/admin.json
 export E2E_ZERO_LANG_RESOURCE_ID=gid://shopify/Product/YOUR_ID
 npm run test:e2e -- zero-secondary-language.spec.js

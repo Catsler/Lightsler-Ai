@@ -4,6 +4,45 @@
  * 优化内存使用和错误恢复
  */
 
+const fs = require('fs');
+
+function loadEnv(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split(/\r?\n/);
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) {
+        continue;
+      }
+
+      const index = line.indexOf('=');
+      if (index === -1) {
+        continue;
+      }
+
+      const key = line.slice(0, index).trim();
+      const value = line.slice(index + 1).trim();
+
+      if (!key) {
+        continue;
+      }
+
+      process.env[key] = value;
+    }
+  } catch (error) {
+    console.error(`[ecosystem] Failed to load env file: ${filePath}`, error);
+  }
+}
+
+loadEnv('/var/www/app1-fynony/.env');
+loadEnv('/var/www/app2-onewind/.env');
+
 module.exports = {
   apps: [
     {
@@ -34,13 +73,12 @@ module.exports = {
         CACHE_TTL: '3600',
 
         // 翻译服务配置
-        GPT_API_KEY: process.env.GPT_API_KEY,
-        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
 
         // 性能优化
         ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
         UV_THREADPOOL_SIZE: '4'
       },
+      env_file: '/var/www/app1-fynony/.env',
 
       // PM2配置
       instances: 1, // 单实例，避免资源竞争
@@ -93,12 +131,11 @@ module.exports = {
         REDIS_URL: process.env.REDIS_URL,
         REDIS_ENABLED: 'true',
         QUEUE_CONCURRENCY: process.env.QUEUE_CONCURRENCY || '2',
-        GPT_API_KEY: process.env.GPT_API_KEY,
-        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
         ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
         UV_THREADPOOL_SIZE: '4',
         QUEUE_ROLE: 'worker'
       },
+      env_file: '/var/www/app1-fynony/.env',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -139,13 +176,12 @@ module.exports = {
         CACHE_TTL: '3600',
 
         // 翻译服务配置
-        GPT_API_KEY: process.env.GPT_API_KEY,
-        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
 
         // 性能优化
         ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
         UV_THREADPOOL_SIZE: '4'
       },
+      env_file: '/var/www/app2-onewind/.env',
 
       // PM2配置
       instances: 1,
@@ -198,12 +234,11 @@ module.exports = {
         REDIS_URL: process.env.REDIS_URL,
         REDIS_ENABLED: 'true',
         QUEUE_CONCURRENCY: process.env.QUEUE_CONCURRENCY || '2',
-        GPT_API_KEY: process.env.GPT_API_KEY,
-        GPT_API_URL: process.env.GPT_API_URL || 'https://api.cursorai.art/v1',
         ENABLE_PRODUCT_RELATED_TRANSLATION: 'true',
         UV_THREADPOOL_SIZE: '4',
         QUEUE_ROLE: 'worker'
       },
+      env_file: '/var/www/app2-onewind/.env',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,

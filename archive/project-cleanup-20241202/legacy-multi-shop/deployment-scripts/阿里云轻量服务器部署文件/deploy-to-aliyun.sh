@@ -8,7 +8,7 @@ set -euo pipefail
 SERVER_IP="47.79.77.128"
 SERVER_USER="root"
 SSH_KEY="/Users/elie/Downloads/shopify.pem"
-BIND_IP="192.168.31.83"
+BIND_IP=$(ifconfig en0 | grep "inet " | grep -v "inet6" | awk '{print $2}')  # Auto-detect current en0 IP
 
 # 服务器路径
 REMOTE_BASE="/var/www"
@@ -68,11 +68,23 @@ phase() {
 
 # ============ SSH/SCP 包装函数 ============
 ssh_cmd() {
-    ssh -b "$BIND_IP" -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_IP" "$@"
+    ssh \
+      -o PubkeyAcceptedAlgorithms=+ssh-rsa \
+      -o HostKeyAlgorithms=+ssh-rsa \
+      -b "$BIND_IP" \
+      -i "$SSH_KEY" \
+      -o StrictHostKeyChecking=no \
+      "$SERVER_USER@$SERVER_IP" "$@"
 }
 
 scp_cmd() {
-    scp -o BindAddress="$BIND_IP" -i "$SSH_KEY" -o StrictHostKeyChecking=no "$@"
+    scp \
+      -o PubkeyAcceptedAlgorithms=+ssh-rsa \
+      -o HostKeyAlgorithms=+ssh-rsa \
+      -o BindAddress="$BIND_IP" \
+      -i "$SSH_KEY" \
+      -o StrictHostKeyChecking=no \
+      "$@"
 }
 
 # ============ 错误处理 ============

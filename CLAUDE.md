@@ -24,99 +24,24 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev
 
 **强制要求**:
 - ✅ 项目启动前必须获得用户明确授权
-- ✅ 如必须启动，使用指定命令：`shopify app dev --tunnel-url=https://translate.ease-joy.fun:3000`
+- ✅ 如必须启动，使用指定命令：`shopify app dev --tunnel-url=https://translate.ease-joy.com:3000`
 
-## 🔴 生产部署红线警告
+## 🔴 生产部署红线（简化）
 
-### 致命禁区（违反必究）
+**绝对禁止**:
+- 覆盖生产配置文件（`.env`、`shopify.app.toml`、数据库文件、Redis 数据）
+- 未授权操作生产服务（重启、迁移、变更配置）
 
-**❌ 绝对禁止的操作**:
-1. **禁止覆盖生产配置文件**
-   - 禁止同步 `.env` 到生产服务器
-   - 禁止同步 `shopify.app.toml` 到生产服务器
-   - 禁止同步数据库文件（`prisma/dev.sqlite`）到生产服务器
-   - 禁止同步 Redis 队列数据
+**必做**:
+- 构建与运行使用 `NODE_ENV=production`
+- 服务器上重新构建：`npm run build`
+- 重启后检查日志：`pm2 logs <app> --lines 20 --nostream`
+- 确保有回滚方案（备份配置、数据库）
 
-2. **禁止混淆环境**
-   - 本地开发配置（devshop, DB 13）≠ 生产配置（shop1/shop2, DB 11/12）
-   - Fynony 使用 Redis DB 11，OneWind 使用 Redis DB 12
-   - 每个店铺有独立的 SHOPIFY_API_KEY 和认证信息
-
-3. **禁止未经授权的生产操作**
-   - 所有生产部署必须先获得用户明确授权
-   - 禁止自主重启生产服务（PM2 restart）
-   - 禁止自主修改生产数据库
-
-### ✅ 正确的部署流程
-
-**安全部署步骤**:
-```bash
-# 1. 提交代码到 Git
-git add .
-git commit -m "feat: 功能描述"
-git push origin main
-
-# 2. SSH到服务器（选择目标）
-# Fynony: /var/www/app1-fynony
-# OneWind: /var/www/app2-onewind
-
-# 3. 服务器上拉取代码并构建
-cd /var/www/app1-fynony
-git pull origin main
-npm run build  # ⚠️ 必须：重新构建
-
-# 4. 重启进程
-pm2 restart shop1-fynony shop1-worker
-
-# 5. 验证
-pm2 logs shop1-fynony --lines 20 --nostream
-```
-
-**使用安全部署脚本**:
-```bash
-# 脚本位置：/tmp/safe-deploy-to-production.sh
-# 包含交互式确认和环境选择
-./tmp/safe-deploy-to-production.sh
-```
-
-### ⚠️ 生产配置备份位置
-
-**配置备份文件**（只读参考，禁止修改）:
-- Fynony: `/Users/elie/Downloads/translate/Lightsler-Ai/阿里云轻量服务器部署文件/app1-fynony-production.env`
-- OneWind: `/Users/elie/Downloads/translate/Lightsler-Ai/阿里云轻量服务器部署文件/app2-onewind-production.env`
-
-**生产配置关键信息**:
-```bash
-# Fynony (shop1)
-SHOPIFY_API_KEY=f97170933cde079c914f7df7e90cd806
-REDIS_URL=redis://...39953/11
-SHOP_ID=shop1
-
-# OneWind (shop2)
-SHOPIFY_API_KEY=（OneWind专用key）
-REDIS_URL=redis://...39953/12
-SHOP_ID=shop2
-```
-
-### 🛡️ 防御措施
-
-**在执行任何生产操作前，必须检查**:
-1. 是否获得用户明确授权？
-2. 操作是否会影响配置文件？
-3. 是否使用了正确的环境标识（shop1/shop2）？
-4. 是否有回滚方案？
-
-**如违反红线**:
-- 立即停止操作
-- 检查服务器当前状态（只读）
-- 从备份文件恢复正确配置
-- 重启服务并验证
-- 向用户报告并记录事故
-
-### 关键配置信息
-- **应用URL**: https://translate.ease-joy.fun
-- **Client ID**: fa2e9f646301c483f81570613924c495
-- **API版本**: Shopify GraphQL Admin API 2025-07
+**关键参数（参考）**:
+- 应用 URL: https://translate.ease-joy.com
+- Client ID: fa2e9f646301c483f81570613924c495
+- API 版本: Shopify GraphQL Admin API 2025-07
 
 ## 项目架构
 
@@ -599,94 +524,7 @@ sqlite3 prisma/dev.db "SELECT errorCode, message, context FROM ErrorLog WHERE er
 
 ## 生产部署
 
-### 服务器架构 (47.79.77.128)
-
-**多租户部署**:
-- **Shop1 (Fynony)**: `/var/www/app1-fynony`
-  - 主进程: `shop1-fynony`
-  - Worker: `shop1-worker`
-  - 数据库: Redis DB 11
-- **Shop2 (OneWind)**: `/var/www/app2-onewind`
-  - 主进程: `shop2-onewind`
-  - Worker: `shop2-worker`
-  - 数据库: Redis DB 12
-
-### 部署流程
-
-**本地到生产**:
-```bash
-# 1. 本地开发和测试
-npm run check                    # 代码检查
-npm run build                    # 本地构建验证
-
-# 2. 提交代码
-git add .
-git commit -m "feat(service): 功能描述"
-git push origin main
-
-# 3. 服务器部署（以 Fynony 为例）
-ssh root@47.79.77.128
-cd /var/www/app1-fynony
-git pull origin main
-npm run build                    # ⚠️ 必须：服务器重新构建
-pm2 restart shop1-fynony shop1-worker
-
-# 4. 验证部署
-pm2 status
-pm2 logs shop1-fynony --lines 50 --nostream
-```
-
-**⚠️ 关键注意事项**:
-- 代码修改后必须在服务器上运行 `npm run build`（特别是前端组件修改）
-- 同时重启主进程和 worker 避免代码版本不一致
-- 部署时只修改代码，不要同步 `.env`、数据库、`shopify.app.toml`
-
-### SSH 智能连接（绕过VPN）
-
-```bash
-# 智能检测物理网卡IP，自动绕过VPN
-detect_bypass_vpn_ip() {
-    local target_ip="${1:-47.79.77.128}"
-    local interface=$(route -n get "$target_ip" 2>/dev/null | grep 'interface:' | awk '{print $2}')
-
-    if [ -n "$interface" ] && [[ ! "$interface" =~ ^utun ]]; then
-        local bind_ip=$(ifconfig "$interface" 2>/dev/null | grep "inet " | grep -v "inet6" | awk '{print $2}')
-        if [ -n "$bind_ip" ]; then
-            echo "$bind_ip"
-            return 0
-        fi
-    fi
-}
-
-# SSH连接
-ssh_cmd() {
-    local BIND_IP=$(detect_bypass_vpn_ip "47.79.77.128")
-    if [ -n "$BIND_IP" ]; then
-        ssh -b "$BIND_IP" -i /Users/elie/Downloads/shopify.pem -o StrictHostKeyChecking=no root@47.79.77.128 "$@"
-    else
-        ssh -i /Users/elie/Downloads/shopify.pem -o StrictHostKeyChecking=no root@47.79.77.128 "$@"
-    fi
-}
-```
-
-### PM2 进程管理
-
-```bash
-# 查看进程状态
-pm2 status
-pm2 list
-
-# 重启进程
-pm2 restart shop1-fynony shop1-worker    # Fynony
-pm2 restart shop2-onewind shop2-worker   # OneWind
-
-# 查看日志
-pm2 logs shop1-fynony --lines 100 --nostream
-pm2 logs shop1-worker --err              # 只看错误日志
-
-# 监控
-pm2 monit
-```
+详见上文“生产部署（简化版）”流程。核心要点：服务器上重新构建、使用 `NODE_ENV=production`、不覆盖配置文件、重启后核查日志并保留回滚方案。
 
 ## API 开发规范
 
@@ -798,9 +636,9 @@ const values = array.map(extractValue).filter(Boolean).join(', ');
 **解决方案**:
 ```bash
 # 服务器上必须重新构建
-cd /var/www/app1-fynony
-npm run build                    # 生成新的 build/
-pm2 restart shop1-fynony shop1-worker
+cd /var/www/<app>
+NODE_ENV=production npm run build
+pm2 restart <app> <app-worker>
 
 # 用户端清除浏览器缓存
 # Mac: Cmd + Shift + R
@@ -886,8 +724,8 @@ pm2 restart shop1-fynony shop1-worker
 # Dry-run检查
 node scripts/fix-option-gids.mjs --dry-run
 
-# 按店铺清理
-node scripts/fix-option-gids.mjs --shop=shop1
+# 按店铺清理（示例）
+node scripts/fix-option-gids.mjs --shop=<shop-id>
 ```
 
 **修复日期**: 2025-10-08

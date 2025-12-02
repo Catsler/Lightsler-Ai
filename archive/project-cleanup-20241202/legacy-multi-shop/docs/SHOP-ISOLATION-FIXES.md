@@ -35,7 +35,7 @@ datasource db {
 - OneWind: 1141 resources, 878 translations (35MB)
 
 **问题2: Shopify跨域错误**
-浏览器报错显示应用从 `translate.ease-joy.fun` 重定向到 `fynony.ease-joy.fun`，导致跨域。
+浏览器报错显示应用从 `translate.ease-joy.com` 重定向到 `fynony.ease-joy.fun`，导致跨域。
 可能是Shopify Partners中应用配置未更新。
 
 ## 🛠️ 修复方案
