@@ -1,8 +1,9 @@
 import React from 'react';
 import { Page, Card, BlockStack, Text, Button, InlineStack, Badge, Banner } from '@shopify/polaris';
+import { withTranslation, useTranslation } from 'react-i18next';
 import { UILogger } from '../utils/ui-helpers.js';
 
-export class ErrorBoundary extends React.Component {
+class ErrorBoundaryBase extends React.Component {
   constructor(props) {
     super(props);
     this.state = { 
@@ -16,13 +17,13 @@ export class ErrorBoundary extends React.Component {
       canAutoRecover: false
     };
     
-    // 绑定方法
+    // Bind methods
     this.handleReset = this.handleReset.bind(this);
     this.handleAutoRecover = this.handleAutoRecover.bind(this);
   }
 
   static getDerivedStateFromError(error) {
-    // 分析错误类型
+    // Analyze error type
     const errorMessage = error.message || '';
     const errorStack = error.stack || '';
     
@@ -31,14 +32,14 @@ export class ErrorBoundary extends React.Component {
                           errorMessage.includes('fetch') ||
                           errorMessage.includes('NETWORK_ERROR');
                           
-    const isUIError = errorMessage.includes('UI事件处理错误') ||
-                     errorMessage.includes('状态更新错误') ||
+    const isUIError = errorMessage.includes('UI event handling error') ||
+                     errorMessage.includes('state update error') ||
                      errorStack.includes('onClick') ||
                      errorStack.includes('onChange') ||
                      errorStack.includes('Select') ||
                      errorStack.includes('Button');
     
-    // 判断是否可以自动恢复
+    // Determine if auto-recovery is possible
     const canAutoRecover = isUIError && !isNetworkError;
     
     const now = Date.now();
@@ -49,14 +50,16 @@ export class ErrorBoundary extends React.Component {
       isUIError,
       canAutoRecover,
       lastErrorTime: now,
-      errorCount: (prevState) => (prevState?.errorCount || 0) + 1
+      // Increment in setState later to avoid functions in state
+      errorCount: 1
     };
   }
 
   componentDidCatch(error, errorInfo) {
-    // 使用UILogger记录错误
+    const { t } = this.props;
+    // Log error with UILogger
     UILogger.error(
-      `ErrorBoundary捕获错误: ${error.message}`,
+      `${t('errors.boundary.captured')}: ${error.message}`,
       error,
       `ErrorBoundary-${this.props.componentName || 'Unknown'}`
     );
@@ -66,7 +69,7 @@ export class ErrorBoundary extends React.Component {
       errorInfo
     });
 
-    // 详细错误信息
+    // Detailed error payload
     const errorDetails = {
       message: error.message,
       stack: error.stack,
@@ -79,38 +82,38 @@ export class ErrorBoundary extends React.Component {
       errorCount: this.state.errorCount
     };
     
-    // 上报错误到服务器（增强版）
+    // Report error to server (enhanced)
     this.reportErrorToServer(errorDetails);
 
-    // 记录错误到多个日志服务
+    // Record errors to multiple logging services
     if (window.Shopify?.analytics) {
       try {
         window.Shopify.analytics.publish('app-error', errorDetails);
       } catch (e) {
-        console.error('无法发送Shopify错误日志:', e);
+        console.error('Failed to send Shopify error log:', e);
       }
     }
 
-    // 自定义错误追踪
+    // Custom error tracking
     if (typeof window !== 'undefined' && window.trackError) {
       try {
         window.trackError(errorDetails);
       } catch (e) {
-        console.error('自定义错误追踪失败:', e);
+        console.error('Custom error tracking failed:', e);
       }
     }
 
-    // 如果可以自动恢复，设置定时器
+    // If auto-recovery is possible, set a timer
     if (this.state.canAutoRecover && this.state.errorCount < 3) {
-      UILogger.info('尝试自动恢复UI错误', 'ErrorBoundary-AutoRecover');
+      UILogger.info(t('errors.boundary.autoRecoverTry'), 'ErrorBoundary-AutoRecover');
       setTimeout(this.handleAutoRecover, 3000);
     }
   }
   
-  // 新增：上报错误到服务器
+  // Report error to server
   reportErrorToServer(errorDetails) {
     try {
-      // 准备错误数据
+      // Prepare error payload
       const errorData = {
         errorType: 'UI',
         errorCategory: this.state.isNetworkError ? 'NETWORK' : 'ERROR',
@@ -127,7 +130,7 @@ export class ErrorBoundary extends React.Component {
         componentName: this.props.componentName || 'Unknown'
       };
       
-      // 上下文信息
+      // Context information
       const context = {
         source: 'frontend',
         component: 'ErrorBoundary',
@@ -145,7 +148,7 @@ export class ErrorBoundary extends React.Component {
         }
       };
       
-      // 异步发送错误到服务器
+      // Send error to server asynchronously
       fetch('/api/errors', {
         method: 'POST',
         headers: {
@@ -159,23 +162,23 @@ export class ErrorBoundary extends React.Component {
       })
       .then(response => {
         if (response.ok) {
-          UILogger.info('错误已上报到服务器', 'ErrorBoundary-Report');
+          UILogger.info('Error reported to server', 'ErrorBoundary-Report');
         } else {
-          UILogger.warn('错误上报失败', 'ErrorBoundary-Report');
+          UILogger.warn('Error report failed', 'ErrorBoundary-Report');
         }
       })
       .catch(err => {
-        UILogger.error('错误上报异常', err, 'ErrorBoundary-Report');
+        UILogger.error('Error reporting exception', err, 'ErrorBoundary-Report');
       });
       
     } catch (error) {
-      console.error('准备错误上报数据失败:', error);
+      console.error('Failed to prepare error report payload:', error);
     }
   }
 
   handleAutoRecover() {
     try {
-      UILogger.info('正在执行自动恢复...', 'ErrorBoundary-AutoRecover');
+      UILogger.info(this.props.t('errors.boundary.autoRecovering'), 'ErrorBoundary-AutoRecover');
       
       this.setState({ 
         hasError: false, 
@@ -186,20 +189,20 @@ export class ErrorBoundary extends React.Component {
         canAutoRecover: false
       });
       
-      // 触发父组件重新渲染（如果有回调）
+      // Trigger parent re-render (if provided)
       if (this.props.onRecover && typeof this.props.onRecover === 'function') {
         this.props.onRecover();
       }
       
-      UILogger.info('自动恢复成功', 'ErrorBoundary-AutoRecover');
+      UILogger.info(this.props.t('errors.boundary.autoRecoverSuccess'), 'ErrorBoundary-AutoRecover');
     } catch (error) {
-      UILogger.error('自动恢复失败', error, 'ErrorBoundary-AutoRecover');
+      UILogger.error(this.props.t('errors.boundary.autoRecoverFailed'), error, 'ErrorBoundary-AutoRecover');
     }
   }
 
   handleReset() {
     try {
-      UILogger.info('用户手动重置应用', 'ErrorBoundary-Reset');
+      UILogger.info(this.props.t('errors.boundary.resetManual'), 'ErrorBoundary-Reset');
       
       this.setState({ 
         hasError: false, 
@@ -212,45 +215,46 @@ export class ErrorBoundary extends React.Component {
         canAutoRecover: false
       });
       
-      // 如果有自定义重置回调，优先使用
+      // If custom reset callback exists, use it first
       if (this.props.onReset && typeof this.props.onReset === 'function') {
         this.props.onReset();
       } else {
-        // 否则刷新页面
+        // Otherwise refresh the page
         window.location.reload();
       }
     } catch (error) {
-      UILogger.error('重置失败，强制刷新页面', error, 'ErrorBoundary-Reset');
+      UILogger.error(this.props.t('errors.boundary.resetFailed'), error, 'ErrorBoundary-Reset');
       window.location.reload();
     }
   }
 
   render() {
     if (this.state.hasError) {
+      const { t } = this.props;
       const errorType = this.state.isNetworkError ? 'network' : 
                        this.state.isUIError ? 'ui' : 'general';
       
       return (
-        <Page title="应用遇到错误">
+        <Page title={t('errors.boundary.pageTitle')}>
           <BlockStack gap="400">
-            {/* 错误状态横幅 */}
+            {/* Error status banner */}
             <Banner 
               title={
-                this.state.isNetworkError ? '网络连接错误' :
-                this.state.isUIError ? 'UI交互错误' : '应用运行错误'
+                this.state.isNetworkError ? t('errors.boundary.networkTitle') :
+                this.state.isUIError ? t('errors.boundary.uiTitle') : t('errors.boundary.generalTitle')
               }
               tone="critical"
             >
               <BlockStack gap="200">
                 <Text>
-                  错误类型: <Badge tone="critical">{errorType.toUpperCase()}</Badge>
+                  {t('errors.boundary.type')}: <Badge tone="critical">{errorType.toUpperCase()}</Badge>
                   {this.state.errorCount > 1 && (
-                    <span> | 错误次数: <Badge tone="warning">{this.state.errorCount}</Badge></span>
+                    <span> | {t('errors.boundary.times')}: <Badge tone="warning">{this.state.errorCount}</Badge></span>
                   )}
                 </Text>
                 {this.state.canAutoRecover && (
                   <Text tone="success">
-                    ✨ 系统将在3秒后尝试自动恢复此UI错误
+                    ✨ {t('errors.boundary.autoRecoverSoon')}
                   </Text>
                 )}
               </BlockStack>
@@ -259,45 +263,44 @@ export class ErrorBoundary extends React.Component {
             <Card>
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">
-                  错误详情与解决方案
+                  {t('errors.boundary.detailsTitle')}
                 </Text>
               
               {this.state.isNetworkError ? (
                 <BlockStack gap="300">
-                  <Text>应用在加载Shopify资源时遇到问题。这可能是由于：</Text>
+                  <Text>{t('errors.boundary.networkDesc')}</Text>
                   <BlockStack gap="200">
-                    <Text>• 浏览器扩展程序（如广告拦截器）干扰了网络请求</Text>
-                    <Text>• 网络连接不稳定</Text>
-                    <Text>• Shopify服务暂时不可用</Text>
+                    <Text>• {t('errors.boundary.networkCause1')}</Text>
+                    <Text>• {t('errors.boundary.networkCause2')}</Text>
+                    <Text>• {t('errors.boundary.networkCause3')}</Text>
                   </BlockStack>
-                  
-                  <Text as="h3" variant="headingSm">建议解决方案：</Text>
+                  <Text as="h3" variant="headingSm">{t('errors.boundary.suggestions')}</Text>
                   <BlockStack gap="200">
-                    <Text>1. 禁用所有浏览器扩展程序，特别是广告拦截器</Text>
-                    <Text>2. 使用Chrome隐身模式访问应用</Text>
-                    <Text>3. 检查网络连接</Text>
-                    <Text>4. 清除浏览器缓存后重试</Text>
+                    <Text>1. {t('errors.boundary.networkStep1')}</Text>
+                    <Text>2. {t('errors.boundary.networkStep2')}</Text>
+                    <Text>3. {t('errors.boundary.networkStep3')}</Text>
+                    <Text>4. {t('errors.boundary.networkStep4')}</Text>
                   </BlockStack>
                 </BlockStack>
               ) : this.state.isUIError ? (
                 <BlockStack gap="300">
-                  <Text>UI组件交互出现错误。这通常是临时性问题：</Text>
+                  <Text>{t('errors.boundary.uiDesc')}</Text>
                   <BlockStack gap="200">
-                    <Text>• 按键或选择操作触发了意字义序错误</Text>
-                    <Text>• 组件状态更新冲突</Text>
-                    <Text>• 事件处理函数执行异常</Text>
+                    <Text>• {t('errors.boundary.uiCause1')}</Text>
+                    <Text>• {t('errors.boundary.uiCause2')}</Text>
+                    <Text>• {t('errors.boundary.uiCause3')}</Text>
                   </BlockStack>
                   
-                  <Text as="h3" variant="headingSm">自动处理：</Text>
+                  <Text as="h3" variant="headingSm">{t('errors.boundary.uiAutoTitle')}</Text>
                   <BlockStack gap="200">
-                    <Text>✅ 系统已自动记录错误详情</Text>
-                    <Text>✅ 正在尝试自动恢复UI状态</Text>
-                    <Text>✅ 如果问题持续，请手动重置</Text>
+                    <Text>✅ {t('errors.boundary.uiAuto1')}</Text>
+                    <Text>✅ {t('errors.boundary.uiAuto2')}</Text>
+                    <Text>✅ {t('errors.boundary.uiAuto3')}</Text>
                   </BlockStack>
                 </BlockStack>
               ) : (
                 <BlockStack gap="300">
-                  <Text>应用遇到了意外错误。错误信息如下：</Text>
+                  <Text>{t('errors.boundary.generalDesc')}</Text>
                   {this.state.error && (
                     <Card subdued>
                       <Text variant="bodyMd" as="p" fontFamily="monospace">
@@ -310,39 +313,39 @@ export class ErrorBoundary extends React.Component {
               
               <InlineStack gap="200">
                 <Button onClick={this.handleReset} variant="primary">
-                  {this.state.isUIError ? '重置UI状态' : '重新加载应用'}
+                  {this.state.isUIError ? t('errors.boundary.resetUi') : t('errors.boundary.reloadApp')}
                 </Button>
                 <Button 
                   onClick={() => window.location.href = '/app/simple'} 
                   variant="secondary"
                 >
-                  使用简化版
+                  {t('errors.boundary.useLite')}
                 </Button>
                 {this.state.isUIError && (
                   <Button 
                     onClick={() => window.location.reload()} 
                     variant="tertiary"
                   >
-                    强制刷新页面
+                    {t('errors.boundary.forceReload')}
                   </Button>
                 )}
               </InlineStack>
               
-              {/* 错误统计信息 */}
+              {/* Error statistics */}
               {this.state.errorCount > 1 && (
                 <Card subdued>
                   <BlockStack gap="200">
-                    <Text as="h4" variant="headingSm">错误统计</Text>
+                    <Text as="h4" variant="headingSm">{t('errors.boundary.statsTitle')}</Text>
                     <Text variant="bodySm">
-                      • 总错误次数: {this.state.errorCount}
+                      • {t('errors.boundary.statsCount')}: {this.state.errorCount}
                     </Text>
                     <Text variant="bodySm">
-                      • 最后错误时间: {this.state.lastErrorTime ? 
-                        new Date(this.state.lastErrorTime).toLocaleString('zh-CN') : 
-                        '未知'}
+                      • {t('errors.boundary.statsLast')} {this.state.lastErrorTime ? 
+                        new Date(this.state.lastErrorTime).toLocaleString() : 
+                        t('errors.boundary.unknown')}
                     </Text>
                     <Text variant="bodySm">
-                      • 自动恢复能力: {this.state.canAutoRecover ? '✅ 支持' : '❌ 不支持'}
+                      • {t('errors.boundary.statsAuto')}: {this.state.canAutoRecover ? '✅' : '❌'}
                     </Text>
                   </BlockStack>
                 </Card>
@@ -356,12 +359,12 @@ export class ErrorBoundary extends React.Component {
                       padding: '10px',
                       fontWeight: 'bold'
                     }}>
-                      🔧 开发者调试信息
+                      🔧 {t('errors.boundary.devInfo')}
                     </summary>
                     <div style={{ marginTop: '10px' }}>
                       <BlockStack gap="300">
                         <div>
-                          <Text as="h5" variant="headingXs">错误堆栈:</Text>
+                          <Text as="h5" variant="headingXs">{t('errors.boundary.devStack')}</Text>
                           <pre style={{ 
                             marginTop: '5px',
                             padding: '10px', 
@@ -375,7 +378,7 @@ export class ErrorBoundary extends React.Component {
                           </pre>
                         </div>
                         <div>
-                          <Text as="h5" variant="headingXs">组件堆栈:</Text>
+                          <Text as="h5" variant="headingXs">{t('errors.boundary.devComponentStack')}</Text>
                           <pre style={{ 
                             marginTop: '5px',
                             padding: '10px', 
@@ -404,37 +407,46 @@ export class ErrorBoundary extends React.Component {
   }
 }
 
-// 包装函数，用于函数组件
+// Export i18n-wrapped error boundary for route usage
+export const ErrorBoundary = withTranslation()(ErrorBoundaryBase);
+
+// Wrapper for function components
 export function withErrorBoundary(Component, options = {}) {
-  return function WithErrorBoundaryComponent(props) {
+  const Wrapped = (props) => {
+    const { t } = useTranslation();
     const {
       componentName = Component.displayName || Component.name || 'Anonymous',
       onReset = null,
       onRecover = null,
       ...boundaryProps
     } = options;
-    
+
     return (
       <ErrorBoundary 
         componentName={componentName}
         onReset={onReset}
         onRecover={onRecover}
         {...boundaryProps}
+        t={t}
       >
         <Component {...props} />
       </ErrorBoundary>
     );
   };
+
+  Wrapped.displayName = `WithErrorBoundary(${Component.displayName || Component.name || 'Component'})`;
+  return Wrapped;
 }
 
-// Hook版本的错误边界（用于函数组件内部）
+// Hook-based error boundary for function components
 export function useErrorBoundary() {
+  const { t } = useTranslation();
   const [error, setError] = React.useState(null);
   
   const reportError = React.useCallback((error) => {
-    UILogger.error('useErrorBoundary报告错误', error, 'useErrorBoundary');
+    UILogger.error(t('errors.boundary.hookReported'), error, 'useErrorBoundary');
     setError(error);
-  }, []);
+  }, [t]);
   
   if (error) {
     throw error;
@@ -443,22 +455,22 @@ export function useErrorBoundary() {
   return reportError;
 }
 
-// 安全执行函数 - 在错误边界外部使用
+// Safely execute functions outside error boundary
 export function safeExecute(fn, fallback = null, context = 'Unknown') {
   try {
     return fn();
   } catch (error) {
-    UILogger.error(`safeExecute捕获错误 [${context}]`, error, 'safeExecute');
+    UILogger.error(`safeExecute caught error [${context}]`, error, 'safeExecute');
     return fallback;
   }
 }
 
-// 创建带错误处理的组件
+// Create component with error handling wrapper
 export function createSafeComponent(Component, fallbackComponent = null) {
   return withErrorBoundary(Component, {
     componentName: Component.displayName || Component.name || 'SafeComponent',
     onReset: () => {
-      UILogger.info('SafeComponent重置', 'createSafeComponent');
+      UILogger.info('SafeComponent reset', 'createSafeComponent');
     }
   });
 }

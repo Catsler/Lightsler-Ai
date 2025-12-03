@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getResourceDisplayTitle, getResourceDisplayDescription } from '../utils/resource-display-helpers.js';
 import {
   Card,
   Layout,
@@ -17,12 +19,11 @@ import { STANDARD_TRANSLATION_MAP } from '../routes/api.resource-detail';
 import { getSyncErrorMessage } from '../utils/sync-error-helper.js';
 
 /**
- * 通用资源详情组件 - Linus哲学实现
- * 原则：最多3层缩进，消除条件分支
- * 目标：一个组件处理所有26种资源类型
+ * Generic resource detail component (supports all resource types).
+ * Keep nesting shallow and avoid branching where possible.
  */
 
-// 字段渲染器 - 纯函数，无副作用
+// Field renderer - pure function
 const FieldRenderer = ({ label, value, isHtml = false }) => {
   if (!value) return null;
   
@@ -38,7 +39,7 @@ const FieldRenderer = ({ label, value, isHtml = false }) => {
   );
 };
 
-// 徽章组渲染器
+// Badge group renderer
 const BadgeGroup = ({ badges }) => {
   if (!badges || badges.length === 0) return null;
   
@@ -53,8 +54,8 @@ const BadgeGroup = ({ badges }) => {
   );
 };
 
-// 翻译状态卡片
-const TranslationCard = ({ translations, currentLanguage }) => {
+// Translation status card
+const TranslationCard = ({ translations, currentLanguage, t }) => {
   if (!currentLanguage) return null;
 
   const translation = translations[currentLanguage];
@@ -63,7 +64,7 @@ const TranslationCard = ({ translations, currentLanguage }) => {
   return (
     <Card>
       <BlockStack gap="300">
-        <Text variant="headingMd">翻译状态 - {currentLanguage}</Text>
+        <Text variant="headingMd">{t('resources.detail.title', { language: currentLanguage })}</Text>
         <InlineStack gap="400">
           <Badge tone={translation.status === 'completed' ? 'success' : 'warning'}>
             {translation.status}
@@ -74,9 +75,9 @@ const TranslationCard = ({ translations, currentLanguage }) => {
             translation.syncStatus === 'failed' ? 'critical' :
             'info'
           }>
-            同步: {translation.syncStatus}
+            {t('resources.detail.sync', { status: translation.syncStatus })}
           </Badge>
-          <Text variant="bodySm">质量评分: {(translation.qualityScore * 100).toFixed(0)}%</Text>
+          <Text variant="bodySm">{t('resources.detail.quality', { score: (translation.qualityScore * 100).toFixed(0) })}%</Text>
         </InlineStack>
         {(translation.syncStatus === 'partial' || translation.syncStatus === 'failed') && translation.syncError && (
           <Box paddingBlockStart="200">
@@ -96,8 +97,8 @@ const TranslationCard = ({ translations, currentLanguage }) => {
   );
 };
 
-// JSON内容查看器
-const JsonViewer = ({ data, collapsed = true }) => {
+// JSON viewer
+const JsonViewer = ({ data, collapsed = true, t }) => {
   const [isCollapsed, setIsCollapsed] = useState(collapsed);
   
   const jsonString = useMemo(() => {
@@ -107,7 +108,7 @@ const JsonViewer = ({ data, collapsed = true }) => {
   return (
     <Box>
       <Button onClick={() => setIsCollapsed(!isCollapsed)} plain>
-        {isCollapsed ? '展开' : '折叠'} JSON ({Object.keys(data).length} 个字段)
+        {isCollapsed ? t('resources.actions.expand') : t('resources.actions.collapse')} {t('resources.detail.jsonOriginal', { count: Object.keys(data).length })}
       </Button>
       {!isCollapsed && (
         <Box paddingBlockStart="200">
@@ -126,12 +127,26 @@ const JsonViewer = ({ data, collapsed = true }) => {
   );
 };
 
-// 主组件 - 统一处理所有资源类型（支持双语对照）
-export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLanguages = false, onTranslate, onEdit, onViewHistory, translatableKeys = [] }) {
+// Main component - handles all resource types with bilingual view\n*** End Patch
+export function ResourceDetail({
+  resource,
+  currentLanguage,
+  hasNoSecondaryLanguages = false,
+  onTranslate,
+  onEdit,
+  onViewHistory,
+  translatableKeys = [],
+  billingInfo = {}
+}) {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language || 'en';
   // 创建适配器 - 核心：通过配置而非代码处理差异
   const adapter = useMemo(() => {
     return createResourceAdapter(resource.type);
   }, [resource.type]);
+
+  const displayTitle = getResourceDisplayTitle(resource, locale, t);
+  const displayDescription = getResourceDisplayDescription(resource, locale, t);
 
   // Theme JSON差异展示状态
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
@@ -188,7 +203,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
       if (val == null || val === '') {
         return (
           <Text variant="bodySm" tone="subdued" fontStyle="italic">
-            {isOriginal ? '— 无原始内容 —' : '— 待翻译 —'}
+            {isOriginal ? t('resources.detail.noOriginal') : t('resources.detail.toTranslate')}
           </Text>
         );
       }
@@ -205,12 +220,12 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
         <Text variant="bodyMd" fontWeight="semibold">{label}</Text>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
           <Box style={{ padding: '8px', backgroundColor: '#f9f9f9', borderRadius: '4px', minWidth: 0 }}>
-            <Text variant="bodySm" tone="subdued">原文</Text>
+            <Text variant="bodySm" tone="subdued">{t('resources.detail.source')}</Text>
             <Box paddingBlockStart="100">{renderValue(original, isHtml, true)}</Box>
           </Box>
           {!hasNoSecondaryLanguages && currentLanguage && (
             <Box style={{ padding: '8px', backgroundColor: translated ? '#f0f8ff' : '#fff8dc', borderRadius: '4px', minWidth: 0 }}>
-              <Text variant="bodySm" tone="subdued">译文（{currentLanguage}）</Text>
+              <Text variant="bodySm" tone="subdued">{t('resources.detail.target', { language: currentLanguage })}</Text>
               <Box paddingBlockStart="100">{renderValue(translated, isHtml, false)}</Box>
             </Box>
           )}
@@ -238,7 +253,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
 
     // 标题
     if (keysSet.has('title')) {
-      pushRow('标题', 'title', content.title, translationFields['titleTrans']);
+      pushRow(t('resources.detail.titleLabel'), 'title', content.title, translationFields['titleTrans']);
     }
 
     // 正文（优先 body_html）
@@ -246,7 +261,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
     if (bodyKey) {
       const isHtml = bodyKey === 'body_html';
       const original = isHtml ? content.descriptionHtml : (content.description || content.body);
-      pushRow('正文', bodyKey, original, translationFields['descTrans'], isHtml);
+      pushRow(t('resources.detail.body'), bodyKey, original, translationFields['descTrans'], isHtml);
     }
 
     // Handle
@@ -259,23 +274,23 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
       const summaryKey = hasAny(['summary_html', 'excerpt_html', 'summary', 'excerpt']);
       if (summaryKey) {
         const isHtml = summaryKey.endsWith('html');
-        pushRow('摘要', summaryKey, content.summary, translationFields['summaryTrans'], isHtml);
+        pushRow(t('resources.detail.summary'), summaryKey, content.summary, translationFields['summaryTrans'], isHtml);
       }
     }
 
     // 资源特有：标签（Filter）
     if (type === 'FILTER' && keysSet.has('label')) {
-      pushRow('标签', 'label', content.label, translationFields['labelTrans']);
+      pushRow(t('resources.detail.label'), 'label', content.label, translationFields['labelTrans']);
     }
 
     // SEO（优先/回退）
     const seoTitleKey = hasAny(['seo.title', 'meta_title']);
     if (seoTitleKey) {
-      pushRow('SEO 标题', seoTitleKey, content.seoTitle, translationFields['seoTitleTrans']);
+      pushRow(t('resources.detail.seoTitle'), seoTitleKey, content.seoTitle, translationFields['seoTitleTrans']);
     }
     const seoDescKey = hasAny(['seo.description', 'meta_description']);
     if (seoDescKey) {
-      pushRow('SEO 描述', seoDescKey, content.seoDescription, translationFields['seoDescTrans']);
+      pushRow(t('resources.detail.seoDesc'), seoDescKey, content.seoDescription, translationFields['seoDescTrans']);
     }
 
     // 动态字段双语（Theme等）
@@ -314,49 +329,49 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
         <Box key="theme-json-diff">
           <BlockStack gap="300">
             <InlineStack align="space-between">
-              <Text variant="headingMd">Theme字段翻译状态</Text>
+              <Text variant="headingMd">{t('resources.detail.themeStatus')}</Text>
               <Checkbox
-                label="仅显示差异"
+                label={t('resources.detail.showDiffOnly')}
                 checked={showOnlyDifferences}
                 onChange={setShowOnlyDifferences}
               />
             </InlineStack>
 
-            {/* 高风险路径提示 */}
+            {}
             {isHighRiskTheme && (
               <Box padding="200" background="bg-fill-caution">
                 <BlockStack gap="100">
-                  <Text variant="bodySm" fontWeight="semibold">⚠️ 高影响区域</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('resources.detail.highImpact')}</Text>
                   <Text variant="bodySm" tone="subdued">
-                    此资源属于关键路径（如全局Header、核心模板等），翻译变更可能影响整个网站外观。建议发布前仔细预览。
+                    {t('resources.detail.highImpactDesc')}
                   </Text>
                 </BlockStack>
               </Box>
             )}
 
-            {/* 统计信息 */}
+            {}
             <InlineStack gap="400">
               <InlineStack gap="100">
-                <Text variant="bodySm">总字段:</Text>
+                <Text variant="bodySm">{t('resources.detail.totalFields')}</Text>
                 <Badge>{status.total}</Badge>
               </InlineStack>
               <InlineStack gap="100">
-                <Text variant="bodySm">已翻译:</Text>
+                <Text variant="bodySm">{t('resources.detail.translatedLabel')}</Text>
                 <Badge tone="success">{status.translated.length}</Badge>
               </InlineStack>
               <InlineStack gap="100">
-                <Text variant="bodySm">未翻译:</Text>
+                <Text variant="bodySm">{t('resources.detail.untranslatedLabel')}</Text>
                 <Badge tone="warning">{status.untranslated.length}</Badge>
               </InlineStack>
               {status.added.length > 0 && (
                 <InlineStack gap="100">
-                  <Text variant="bodySm">新增:</Text>
+                  <Text variant="bodySm">{t('resources.detail.addedLabel')}</Text>
                   <Badge tone="info">{status.added.length}</Badge>
                 </InlineStack>
               )}
             </InlineStack>
 
-            {/* 字段列表 */}
+            {}
             <BlockStack gap="200">
               {fieldsToShow.map(key => {
                 const original = originalFields[key];
@@ -366,7 +381,9 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
 
                 // 状态图标
                 const statusIcon = isTranslated ? '🟢' : (isUntranslated ? '⚪' : '🔵');
-                const statusText = isTranslated ? '已翻译' : (isUntranslated ? '未翻译' : '新增');
+                const statusText = isTranslated
+                  ? t('resources.detail.statusTranslated')
+                  : (isUntranslated ? t('resources.detail.statusUntranslated') : t('resources.detail.statusAdded'));
 
                 return (
                   <Box key={key} padding="200" background="bg-surface-secondary" borderRadius="100">
@@ -376,16 +393,16 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                         <Text variant="bodyXs" tone="subdued">{statusIcon} {statusText}</Text>
                       </InlineStack>
 
-                      {/* 原文 */}
-                      <Text variant="bodyXs" tone="subdued">原文:</Text>
+                      {}
+                      <Text variant="bodyXs" tone="subdued">{t('resources.detail.originalLabel')}</Text>
                       <Text variant="bodyXs" truncate>{
                         typeof original === 'string' ? original : JSON.stringify(original)
                       }</Text>
 
-                      {/* 译文 */}
+                      {}
                       {isTranslated && (
                         <>
-                          <Text variant="bodyXs" tone="subdued">译文:</Text>
+                          <Text variant="bodyXs" tone="subdued">{t('resources.detail.translatedLabel')}</Text>
                           <Text variant="bodyXs" truncate>{
                             typeof translated === 'string' ? translated : JSON.stringify(translated)
                           }</Text>
@@ -404,8 +421,8 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
     // 扩展：JSON内容（原有的查看器保留）
     const jsonViewer = displayConfig.isJSON && fields?.extended?.themeData ? (
       <Box key="json-viewer">
-        <Text variant="headingMd">JSON内容（原文）</Text>
-        <JsonViewer data={fields.extended.themeData} />
+        <Text variant="headingMd">{t('resources.detail.jsonOriginalTitle')}</Text>
+        <JsonViewer data={fields.extended.themeData} t={t} />
       </Box>
     ) : null;
 
@@ -419,7 +436,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
             ))}
           </>
         )}
-        {/* Theme JSON差异展示优先于原始JSON查看器 */}
+        {}
         {displayConfig.isDynamic ? renderThemeJsonDiff() : jsonViewer}
       </BlockStack>
     );
@@ -480,18 +497,18 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
     return (
       <Card>
         <BlockStack gap="200">
-          <Text variant="headingMd">元数据</Text>
+          <Text variant="headingMd">{t('resources.detail.metadataTitle')}</Text>
           <InlineStack gap="400">
-            <Text variant="bodySm">最后修改: {new Date(metadata.lastModified).toLocaleString()}</Text>
-            <Text variant="bodySm">版本哈希: {metadata.contentHash?.slice(0, 8)}</Text>
-            <Text variant="bodySm">风险评分: {(metadata.riskScore * 100).toFixed(0)}%</Text>
+            <Text variant="bodySm">{t('resources.detail.metadataLastModified')}: {new Date(metadata.lastModified).toLocaleString()}</Text>
+            <Text variant="bodySm">{t('resources.detail.metadataHash')}: {metadata.contentHash?.slice(0, 8)}</Text>
+            <Text variant="bodySm">{t('resources.detail.metadataRisk')}: {(metadata.riskScore * 100).toFixed(0)}%</Text>
           </InlineStack>
           <InlineStack gap="200">
             <Badge tone={metadata.canEdit ? 'success' : 'critical'}>
-              {metadata.canEdit ? '可编辑' : '锁定'}
+              {metadata.canEdit ? t('resources.detail.metadataEditable') : t('resources.detail.metadataLocked')}
             </Badge>
             <Badge tone={metadata.canTranslate ? 'success' : 'warning'}>
-              {metadata.canTranslate ? '可翻译' : '暂停'}
+              {metadata.canTranslate ? t('resources.detail.metadataTranslatable') : t('resources.detail.metadataPaused')}
             </Badge>
           </InlineStack>
         </BlockStack>
@@ -504,38 +521,47 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
     <Layout>
       <Layout.Section>
         <BlockStack gap="400">
-          {/* 零辅语言警告 */}
+          {}
           {hasNoSecondaryLanguages && (
-            <Banner tone="warning">
-              <p>当前商店未配置次要语言，无法进行翻译。请先在 Shopify 设置中添加目标语言。</p>
-            </Banner>
+          <Banner tone="warning">
+            <p>{t('resources.detail.noSecondaryLanguages')}</p>
+          </Banner>
           )}
 
-          {/* 头部信息 */}
+          {}
           <Card>
             <InlineStack align="space-between">
               <InlineStack gap="200" align="center">
-                <Text variant="headingLg">{displayConfig.icon} {formattedResource.displayTitle}</Text>
+                <Text variant="headingLg">{displayConfig.icon} {displayTitle}</Text>
                 <Badge>{displayConfig.categoryLabel}</Badge>
               </InlineStack>
               <BadgeGroup badges={formattedResource.badges} />
             </InlineStack>
           </Card>
           
-          {/* 主要内容（双语对照） */}
+          {}
           <Card>
             <BlockStack gap="400">
               <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingMd">资源内容</Text>
+                <Text variant="headingMd">{t('resources.detail.contentTitle')}</Text>
                 <InlineStack gap="200">
-                  <Button primary onClick={onTranslate} disabled={!resource.metadata?.canTranslate || hasNoSecondaryLanguages}>
-                    重新翻译
+                  <Button
+                    primary
+                    onClick={onTranslate}
+                    disabled={
+                      !resource.metadata?.canTranslate ||
+                      hasNoSecondaryLanguages ||
+                      (billingInfo?.remainingCredits ?? 1) <= 0 ||
+                      ((billingInfo?.planLimit ?? Infinity) <= (billingInfo?.planUsed ?? 0))
+                    }
+                  >
+                    {t('resources.detail.retranslate')}
                   </Button>
                   <Button onClick={onEdit} disabled={!resource.metadata?.canEdit}>
-                    编辑内容
+                    {t('resources.detail.editContent')}
                   </Button>
                   <Button onClick={onViewHistory} plain>
-                    查看历史
+                    {t('resources.detail.viewHistory')}
                   </Button>
                 </InlineStack>
               </InlineStack>
@@ -544,39 +570,38 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
             </BlockStack>
           </Card>
 
-          {/* 产品扩展（懒加载）放到资源内容下方 */}
+          {}
           {isProduct && (
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">产品扩展</Text>
+                <Text variant="headingMd">{t('resources.detail.productExtensions')}</Text>
                 <InlineStack gap="200">
                   <Button
                     onClick={() => setShowOptions(v => !v)}
                     size="slim"
                   >
-                    {showOptions ? '收起选项' : '展开选项'}
+                    {showOptions ? t('resources.detail.collapseOptions') : t('resources.detail.expandOptions')}
                   </Button>
                   <Button
                     onClick={() => setShowMetafields(v => !v)}
                     size="slim"
                   >
-                    {showMetafields ? '收起Metafields' : '展开Metafields'}
+                    {showMetafields ? t('resources.detail.collapseMetafields') : t('resources.detail.expandMetafields')}
                   </Button>
                 </InlineStack>
 
                 {showOptions && (
                   <BlockStack gap="300">
-                    {/* Shopify API 限制说明 */}
+                    {}
                     <Banner tone="info">
-                      <p><strong>ℹ️ 关于产品选项翻译的重要说明</strong></p>
-                      <p>由于 Shopify API 限制，产品选项（Product Options）的 <strong>values 字段</strong>（如 "S, M, L" 等选项值）<strong>无法通过翻译 API 发布到 Shopify</strong>。</p>
-                      <p>✅ 可发布：选项名称（name）- 如 "Size"、"Color"<br/>
-                      ❌ 无法发布：选项值（values）- 如 "Small, Medium, Large"</p>
-                      <p>发布时这些记录会显示为 <Badge tone="warning">partial</Badge> 状态，表示部分字段成功发布。这是 Shopify 平台的限制，并非系统错误。</p>
+                      <p><strong>{t('resources.detail.optionsNoteTitle')}</strong></p>
+                      <p>{t('resources.detail.optionsNoteBody1')}</p>
+                      <p>{t('resources.detail.optionsNoteBody2')}</p>
+                      <p>{t('resources.detail.optionsNoteBody3')}</p>
                     </Banner>
 
                     {optionsState.loading ? (
-                      <Text variant="bodySm" tone="subdued">加载选项中...</Text>
+                      <Text variant="bodySm" tone="subdued">{t('resources.detail.loadingOptions')}</Text>
                     ) : optionsState.data.length > 0 ? (
                       optionsState.data.map((opt, idx) => {
                         // 工具函数：提取对象/字符串的实际值
@@ -595,8 +620,8 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                           : (typeof opt.translatedValues === 'string' ? opt.translatedValues : null);
 
                         const optionLabel = opt.translatedName
-                          ? `选项: ${opt.name} / ${opt.translatedName}`
-                          : `选项: ${opt.name}`;
+                          ? t('resources.detail.optionLabelWithTranslation', { name: opt.name, translatedName: opt.translatedName })
+                          : t('resources.detail.optionLabel', { name: opt.name });
 
                         return (
                           <BilingualRow
@@ -608,7 +633,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                         );
                       })
                     ) : (
-                      <Text variant="bodySm" tone="subdued">无选项</Text>
+                      <Text variant="bodySm" tone="subdued">{t('resources.detail.noOptions')}</Text>
                     )}
                   </BlockStack>
                 )}
@@ -616,7 +641,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                 {showMetafields && (
                   <BlockStack gap="150">
                     {metafieldsState.loading ? (
-                      <Text variant="bodySm" tone="subdued">加载Metafields中...</Text>
+                      <Text variant="bodySm" tone="subdued">{t('resources.detail.loadingMetafields')}</Text>
                     ) : (
                       metafieldsState.data.length > 0 ? (
                         metafieldsState.data.map((mf, idx) => (
@@ -628,7 +653,7 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
                           />
                         ))
                       ) : (
-                        <Text variant="bodySm" tone="subdued">无Metafields</Text>
+                        <Text variant="bodySm" tone="subdued">{t('resources.detail.noMetafields')}</Text>
                       )
                     )}
                   </BlockStack>
@@ -637,16 +662,17 @@ export function ResourceDetail({ resource, currentLanguage, hasNoSecondaryLangua
             </Card>
           )}
 
-          {/* 翻译信息（若已双语展示，可省略；保留在无译文时的回退） */}
+          {}
           {!hasNoSecondaryLanguages && currentLanguage &&
            (!resource.translations || !resource.translations[currentLanguage]) && (
             <TranslationCard
               translations={resource.translations || {}}
               currentLanguage={currentLanguage}
+              t={t}
             />
           )}
 
-          {/* 元数据放置在页面底部 */}
+          {}
           {renderMetadata()}
         </BlockStack>
       </Layout.Section>

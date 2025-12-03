@@ -37,13 +37,27 @@ model Shop {
   domain      String   @unique
   accessToken String
   autoTranslateEnabled Boolean @default(false) // 是否启用自动翻译
+  pendingPlanId         String?
+  planChangeRequestedAt DateTime?
+  gracePeriodEndsAt     DateTime?
+  overridePlanId        String?
+  overrideExpiresAt     DateTime?
+  overrideReason        String?
+  allowBillingBypass    Boolean  @default(false)
+  topUpCredits          Int      @default(0)
+  topUpExpiresAt        DateTime?
   languages   Language[]
   resources   Resource[]
   translations Translation[]
   webhookEvents WebhookEvent[]
   settings    ShopSettings?
+  pendingPlan SubscriptionPlan? @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  overridePlan SubscriptionPlan? @relation("OverridePlan", fields: [overridePlanId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Billing relations
+  subscriptions ShopSubscription[]
 }
 
 // 支持的语言
@@ -145,6 +159,47 @@ model Translation {
   @@index([skipReason]) // 用于跳过原因分析
   @@index([qualityScore]) // 用于质量排序
   @@index([errorFingerprint]) // 用于错误关联查询
+}
+
+// Billing models (minimal, to satisfy billing features)
+model SubscriptionPlan {
+  id            String              @id
+  name          String
+  displayName   String
+  price         Float               @default(0)
+  monthlyCredits Int
+  maxLanguages  Int?
+  features      Json?
+  sortOrder     Int                 @default(0)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  subscriptions ShopSubscription[]
+  pendingShops  Shop[]             @relation("PendingPlan")
+  overrideShops Shop[]             @relation("OverridePlan")
+}
+
+model ShopSubscription {
+  id                String           @id @default(cuid())
+  shopId            String
+  planId            String
+  status            String?
+  shopifyChargeId   String?
+  billingCycle      String?
+  startDate         DateTime?
+  endDate           DateTime?
+  cancelledAt       DateTime?
+  overridePlanId    String?
+  overrideExpiresAt DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId])
+  @@index([shopId])
+  @@index([planId])
 }
 
 // 错误日志表 - 全面的错误收集和分析系统

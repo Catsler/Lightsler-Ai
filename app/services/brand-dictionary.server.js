@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger.server.js';
 import { prisma } from '../db.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 /**
  * 简单的内存缓存实现
@@ -59,7 +60,12 @@ const GENERIC_VENDOR_BLACKLIST = new Set([
  * @param {string} shopDomain - 店铺域名
  * @returns {Set<string>} 品牌词集合
  */
-export async function getBrandDictionary(admin, shopDomain) {
+const handleBrandDictionaryError = createServiceErrorHandler('BRAND_DICTIONARY', {
+  throwErrors: false,
+  getFallbackValue: () => new Set()
+});
+
+async function getBrandDictionaryInternal(admin, shopDomain) {
   const cacheKey = `brand_dict:${shopDomain}`;
   
   // 尝试从缓存获取
@@ -72,52 +78,39 @@ export async function getBrandDictionary(admin, shopDomain) {
     return cached;
   }
   
-  try {
-    const brandSet = new Set();
-    
-    // 1. 从店铺域名提取品牌
-    const shopName = extractBrandFromDomain(shopDomain);
-    if (shopName) {
-      brandSet.add(shopName.toLowerCase());
-      logger.debug('从域名提取品牌', { shopName });
-    }
-    
-    // 2. 从产品Vendor字段收集（限制数量避免性能问题）
-    const vendors = await getVendorsFromProducts(1000);
-    let filteredCount = 0;
-    vendors.forEach(vendor => {
-      const normalized = vendor.toLowerCase().trim();
-      // 过滤通用词和过短的词
-      if (normalized.length > 2 && !GENERIC_VENDOR_BLACKLIST.has(normalized)) {
-        brandSet.add(normalized);
-      } else {
-        filteredCount++;
-      }
-    });
-    
-    logger.info('品牌词典构建完成', {
-      shopDomain,
-      totalBrands: brandSet.size,
-      fromDomain: shopName ? 1 : 0,
-      fromVendors: vendors.size,
-      filteredGeneric: filteredCount
-    });
-    
-    // 缓存结果
-    brandCache.set(cacheKey, brandSet);
-    
-    return brandSet;
-    
-  } catch (error) {
-    logger.error('构建品牌词典失败', {
-      error: error.message,
-      shopDomain
-    });
-    
-    // 返回空的Set，避免阻塞翻译
-    return new Set();
+  const brandSet = new Set();
+
+  const shopName = extractBrandFromDomain(shopDomain);
+  if (shopName) {
+    brandSet.add(shopName.toLowerCase());
+    logger.debug('从域名提取品牌', { shopName });
   }
+
+  const vendors = await getVendorsFromProducts(1000);
+  let filteredCount = 0;
+  vendors.forEach(vendor => {
+    const normalized = vendor.toLowerCase().trim();
+    if (normalized.length > 2 && !GENERIC_VENDOR_BLACKLIST.has(normalized)) {
+      brandSet.add(normalized);
+    } else {
+      filteredCount++;
+    }
+  });
+
+  logger.info('品牌词典构建完成', {
+    shopDomain,
+    totalBrands: brandSet.size,
+    fromDomain: shopName ? 1 : 0,
+    fromVendors: vendors.size,
+    filteredGeneric: filteredCount
+  });
+
+  brandCache.set(cacheKey, brandSet);
+
+  return brandSet;
 }
+
+export const getBrandDictionary = handleBrandDictionaryError(getBrandDictionaryInternal);
 
 /**
  * 从域名提取品牌名

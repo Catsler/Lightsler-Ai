@@ -6,6 +6,7 @@
 import { prisma } from '../db.server.js';
 import { collectError } from './error-collector.server.js';
 import { logger } from '../utils/logger.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 // 告警级别
 export const ALERT_LEVELS = {
@@ -583,13 +584,21 @@ export class AlertManager {
 // 创建全局告警管理器实例
 export const alertManager = new AlertManager();
 
+const alertManagerStartupGuard = createServiceErrorHandler('ALERT_MANAGER', {
+  throwErrors: false
+});
+
 // 在生产环境自动启动
 if (process.env.NODE_ENV === 'production') {
-  alertManager.start();
+  alertManagerStartupGuard(async () => {
+    alertManager.start();
+  })();
 }
 
+const handleAlertServiceError = createServiceErrorHandler('ALERT_MANAGER');
+
 // 导出用于API的函数
-export async function getAlertStatus() {
+async function getAlertStatusInternal() {
   const activeAlerts = alertManager.getActiveAlerts();
   const metrics = await alertManager.collectMetrics();
   
@@ -600,5 +609,7 @@ export async function getAlertStatus() {
     thresholds: ALERT_THRESHOLDS
   };
 }
+
+export const getAlertStatus = handleAlertServiceError(getAlertStatusInternal);
 
 export default alertManager;

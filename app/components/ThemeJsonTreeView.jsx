@@ -13,16 +13,16 @@ import {
 import { ChevronDownIcon, ChevronRightIcon, SearchIcon } from '@shopify/polaris-icons';
 
 /**
- * JSON树形展示组件 - 专业版本
+ * JSON tree viewer - pro
  * 用于Theme资源的结构化显示，支持任意层级嵌套和高级功能
  * 
  * @param {Object} data - JSON数据对象
  * @param {string} searchTerm - 搜索关键词
- * @param {boolean} editable - 是否可编辑
- * @param {Function} onEdit - 编辑回调函数 (path, oldValue, newValue) => void
- * @param {boolean} highlightTranslatable - 高亮可翻译字段
+ * @param {boolean} editable - 是否可Edit
+ * @param {Function} onEdit - Edit回调函数 (path, oldValue, newValue) => void
+ * @param {boolean} highlightTranslatable - 高亮Translatable字段
  * @param {number} maxDepth - 最大显示深度，防止过深嵌套
- * @param {Array<string>} expandedPaths - 默认展开的路径数组
+ * @param {Array<string>} expandedPaths - default expanded paths
  */
 export function ThemeJsonTreeView({
   data = {},
@@ -45,7 +45,7 @@ export function ThemeJsonTreeView({
   const [editingPath, setEditingPath] = useState(null);
   const [editingValue, setEditingValue] = useState('');
 
-  // 可翻译字段的模式匹配
+  // Translatable字段的模式匹配
   const translatablePatterns = useMemo(() => [
     /^(title|name|label|text|content|description|placeholder|alt)$/i,
     /^(button_text|link_text|heading|subtitle|caption)$/i,
@@ -53,9 +53,9 @@ export function ThemeJsonTreeView({
     /^(settings|blocks)\.\w+\.(title|text|label|content|description|placeholder|alt)$/i
   ], []);
 
-  // 判断字段是否可翻译
+  // 判断字段是否Translatable
   const isTranslatableField = useCallback((key, path, value) => {
-    // 只有字符串值才可翻译
+    // 只有字符串值才Translatable
     if (typeof value !== 'string') return false;
     
     // 排除技术字段
@@ -106,14 +106,14 @@ export function ThemeJsonTreeView({
     }));
   }, []);
 
-  // 开始编辑
+  // 开始Edit
   const startEdit = useCallback((path, value) => {
     if (!editable || !onEdit) return;
     setEditingPath(path);
     setEditingValue(String(value));
   }, [editable, onEdit]);
 
-  // 保存编辑
+  // SaveEdit
   const saveEdit = useCallback(() => {
     if (!editingPath || !onEdit) return;
     
@@ -125,7 +125,7 @@ export function ThemeJsonTreeView({
     setEditingValue('');
   }, [editingPath, editingValue, onEdit, data]);
 
-  // 取消编辑
+  // CancelEdit
   const cancelEdit = useCallback(() => {
     setEditingPath(null);
     setEditingValue('');
@@ -148,7 +148,7 @@ export function ThemeJsonTreeView({
     if (depth > maxDepth) {
       return (
         <Text variant="bodySm" tone="subdued">
-          ... (最大深度 {maxDepth} 已达到)
+          ... (max depth {maxDepth} reached)
         </Text>
       );
     }
@@ -189,7 +189,7 @@ export function ThemeJsonTreeView({
                   </Text>
                   
                   {isTranslatable && highlightTranslatable && (
-                    <Badge tone="success" size="small">可翻译</Badge>
+                    <Badge tone="success" size="small">Translatable</Badge>
                   )}
                 </InlineStack>
 
@@ -205,14 +205,14 @@ export function ThemeJsonTreeView({
                             variant="primary"
                             onClick={saveEdit}
                           >
-                            保存
+                            Save
                           </Button>
                           <Button
                             size="micro"
                             variant="tertiary"
                             onClick={cancelEdit}
                           >
-                            取消
+                            Cancel
                           </Button>
                         </InlineStack>
                       ) : (
@@ -222,7 +222,7 @@ export function ThemeJsonTreeView({
                             variant="plain"
                             onClick={() => startEdit(currentPath, value)}
                           >
-                            编辑
+                            Edit
                           </Button>
                         )
                       )}
@@ -352,24 +352,24 @@ export function ThemeJsonTreeView({
       <Card>
         <BlockStack gap="300">
           <InlineStack align="space-between" wrap={false}>
-            <Text variant="headingMd">JSON 结构浏览器</Text>
+            <Text variant="headingMd">JSON structure browser</Text>
             <InlineStack gap="200">
               <Button size="slim" variant="tertiary" onClick={expandAll}>
-                展开全部
+                Expand all
               </Button>
               <Button size="slim" variant="tertiary" onClick={collapseAll}>
-                折叠全部
+                Collapse all
               </Button>
             </InlineStack>
           </InlineStack>
 
           {/* 统计信息 */}
           <InlineStack gap="200" wrap>
-            <Badge tone="info">节点总数: {stats.totalNodes}</Badge>
-            <Badge tone="success">可翻译: {stats.translatableNodes}</Badge>
-            <Badge>最大深度: {stats.maxDepthReached}</Badge>
+            <Badge tone="info">Total nodes: {stats.totalNodes}</Badge>
+            <Badge tone="success">Translatable: {stats.translatableNodes}</Badge>
+            <Badge>Max depth: {stats.maxDepthReached}</Badge>
             {searchTerm && (
-              <Badge tone="attention">搜索中: "{searchTerm}"</Badge>
+              <Badge tone="attention">Searching: "{searchTerm}"</Badge>
             )}
           </InlineStack>
         </BlockStack>
@@ -392,8 +392,8 @@ export function ThemeJsonTreeView({
                 <SearchIcon />
                 <Text variant="bodyMd" tone="subdued" alignment="center">
                   {searchTerm 
-                    ? `没有找到包含 "${searchTerm}" 的内容`
-                    : '没有数据可显示'
+                    ? `No content found containing "${searchTerm}"`
+                    : 'No data to display'
                   }
                 </Text>
               </InlineStack>
@@ -406,19 +406,19 @@ export function ThemeJsonTreeView({
         </Box>
       </Card>
 
-      {/* 编辑说明 */}
+      {/* Editing guide */}
       {editable && (
         <Card>
           <BlockStack gap="200">
-            <Text variant="headingSm">编辑说明</Text>
+            <Text variant="headingSm">Editing guide</Text>
             <Text variant="bodySm" tone="subdued">
-              • 点击非对象字段旁的"编辑"按钮可修改值
+              • Click "Edit" beside non-object fields to change values
             </Text>
             <Text variant="bodySm" tone="subdued">
-              • 绿色背景的字段表示可翻译内容
+              • Green background indicates translatable content
             </Text>
             <Text variant="bodySm" tone="subdued">
-              • 修改会通过 onEdit(path, oldValue, newValue) 回调传递
+              • Changes are passed via onEdit(path, oldValue, newValue)
             </Text>
           </BlockStack>
         </Card>

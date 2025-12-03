@@ -4,6 +4,21 @@ import { collectError, ERROR_TYPES } from './error-collector.server.js';
 
 const REQUIRED_PRISMA_MODELS = ['subscriptionPlan', 'shopSubscription', 'shop', 'language'];
 
+// Explicit plan selection to avoid querying non-existent legacy columns
+const PLAN_SELECT = {
+  id: true,
+  name: true,
+  displayName: true,
+  price: true,
+  monthlyCredits: true,
+  maxLanguages: true,
+  features: true,
+  sortOrder: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true
+};
+
 function assertPrismaModels(prismaClient) {
   const missingModels = REQUIRED_PRISMA_MODELS.filter(
     (model) => typeof prismaClient?.[model]?.findMany !== 'function'
@@ -158,6 +173,7 @@ function createSubscriptionManager({ prismaClient }) {
     assertPrismaModels(prismaClient);
     return prismaClient.subscriptionPlan.findMany({
       where: { isActive: true },
+      select: PLAN_SELECT,
       orderBy: [{ sortOrder: 'asc' }, { monthlyCredits: 'asc' }]
     });
   };
@@ -168,7 +184,8 @@ function createSubscriptionManager({ prismaClient }) {
     const [plan] = await prismaClient.subscriptionPlan.findMany({
       where: {
         OR: [{ id: planIdOrName }, { name: planIdOrName }]
-      }
+      },
+      select: PLAN_SELECT
     });
     return plan;
   };
@@ -489,7 +506,8 @@ function createSubscriptionManager({ prismaClient }) {
         where: {
           price: Number(price),
           isActive: true
-        }
+        },
+        select: PLAN_SELECT
       });
       if (plan) {
         planId = plan.id;
@@ -501,7 +519,8 @@ function createSubscriptionManager({ prismaClient }) {
     }
 
     const defaultPlan = await prismaClient.subscriptionPlan.findFirst({
-      where: { name: 'free', isActive: true }
+      where: { name: 'free', isActive: true },
+      select: PLAN_SELECT
     });
 
     const updated = await prismaClient.shopSubscription.upsert({

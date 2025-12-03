@@ -7,6 +7,7 @@
 import { logger } from '../utils/logger.server.js';
 import { config } from '../utils/config.server.js';
 import { getEnvWithDevOverride } from '../utils/env.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 // 获取当前店铺ID
 const SHOP_ID = getEnvWithDevOverride('SHOP_ID', 'default');
@@ -194,36 +195,56 @@ export function getMemoryCache() {
   return instance;
 }
 
+const memoryCacheArgSerializer = (args) => args.map((arg) => {
+  if (typeof arg === 'string') {
+    return arg.length > 64 ? `${arg.slice(0, 32)}…` : arg;
+  }
+  if (typeof arg === 'number' || typeof arg === 'boolean') {
+    return arg;
+  }
+  if (arg && typeof arg === 'object' && arg.id) {
+    return `{id:${arg.id}}`;
+  }
+  return `[${typeof arg}]`;
+});
+
+const handleMemoryCacheError = createServiceErrorHandler('MEMORY_CACHE', {
+  serializeArgs: memoryCacheArgSerializer
+});
+
 // 翻译缓存专用方法（带店铺隔离）
-export async function getCachedTranslation(resourceId, language, contentHash, shopId = SHOP_ID) {
+async function getCachedTranslationInternal(resourceId, language, contentHash, shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const key = MemoryCache.getTranslationKey(resourceId, language, contentHash, shopId);
   return cache.get(key);
 }
 
-export async function setCachedTranslation(resourceId, language, contentHash, translation, shopId = SHOP_ID) {
+async function setCachedTranslationInternal(resourceId, language, contentHash, translation, shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const key = MemoryCache.getTranslationKey(resourceId, language, contentHash, shopId);
-  // 翻译结果缓存1小时（减少内存压力）
   cache.set(key, translation, 60 * 60);
 }
 
 // 资源缓存专用方法（带店铺隔离）
-export async function getCachedResource(resourceType, resourceId, shopId = SHOP_ID) {
+async function getCachedResourceInternal(resourceType, resourceId, shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const key = MemoryCache.getResourceKey(resourceType, resourceId, shopId);
   return cache.get(key);
 }
 
-export async function setCachedResource(resourceType, resourceId, resource, shopId = SHOP_ID) {
+async function setCachedResourceInternal(resourceType, resourceId, resource, shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const key = MemoryCache.getResourceKey(resourceType, resourceId, shopId);
-  // 资源缓存30分钟（减少内存压力）
   cache.set(key, resource, 30 * 60);
 }
 
+export const getCachedTranslation = handleMemoryCacheError(getCachedTranslationInternal);
+export const setCachedTranslation = handleMemoryCacheError(setCachedTranslationInternal);
+export const getCachedResource = handleMemoryCacheError(getCachedResourceInternal);
+export const setCachedResource = handleMemoryCacheError(setCachedResourceInternal);
+
 // 清空特定类型的缓存（带店铺隔离）
-export function clearTranslationCache(resourceId = null, shopId = SHOP_ID) {
+function clearTranslationCacheInternal(resourceId = null, shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const shopPrefix = `shop:${shopId}:`;
 
@@ -245,7 +266,7 @@ export function clearTranslationCache(resourceId = null, shopId = SHOP_ID) {
 }
 
 // 清空特定店铺的所有缓存
-export function clearShopCache(shopId = SHOP_ID) {
+function clearShopCacheInternal(shopId = SHOP_ID) {
   const cache = getMemoryCache();
   const shopPrefix = `shop:${shopId}:`;
 
@@ -263,7 +284,7 @@ export default getMemoryCache;
 /**
  * 获取缓存统计信息（按店铺分组）
  */
-export function getCacheStatsByShop() {
+function getCacheStatsByShopInternal() {
   const cache = getMemoryCache();
   const stats = {
     total: cache.stats,
@@ -291,3 +312,7 @@ export function getCacheStatsByShop() {
 
   return stats;
 }
+
+export const clearTranslationCache = handleMemoryCacheError(clearTranslationCacheInternal);
+export const clearShopCache = handleMemoryCacheError(clearShopCacheInternal);
+export const getCacheStatsByShop = handleMemoryCacheError(getCacheStatsByShopInternal);

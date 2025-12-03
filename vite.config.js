@@ -85,9 +85,15 @@ export default defineConfig({
     tsconfigPaths(),
   ],
   build: {
+    // Allow top-level await in dependencies like i18next-fs-backend
+    target: "esnext",
     assetsInlineLimit: 0,
   },
   optimizeDeps: {
     include: ["@shopify/app-bridge-react", "@shopify/polaris"],
+    exclude: ["i18next-fs-backend"],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
 });

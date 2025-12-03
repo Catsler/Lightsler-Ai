@@ -241,9 +241,9 @@ export default function ThemeTranslationCompare({
     return (
       <Card>
         <EmptyState
-          heading={hasTranslatedData ? "暂无原始数据" : "暂无Theme数据"}
+          heading={hasTranslatedData ? "No source data" : "No theme data"}
           action={{
-            content: hasTranslatedData ? '重新扫描' : '开始翻译',
+            content: hasTranslatedData ? 'Rescan' : 'Start translation',
             onAction: () => onBulkAction?.({
               action: hasTranslatedData ? 'scan' : 'translate_all'
             })
@@ -252,8 +252,8 @@ export default function ThemeTranslationCompare({
         >
           <Text variant="bodyMd" tone="subdued">
             {hasTranslatedData
-              ? '请先扫描获取Theme资源的原始数据'
-              : `当前目标语言：${targetLanguage}，点击上方按钮开始翻译`
+              ? 'Please scan to fetch theme source data first.'
+              : `Target language: ${targetLanguage}. Click the button above to start translating.`
             }
           </Text>
         </EmptyState>
@@ -272,9 +272,9 @@ export default function ThemeTranslationCompare({
           {/* 语言选择和统计信息 */}
           <InlineStack align="space-between">
             <InlineStack gap="300" blockAlign="center">
-              <Text variant="headingMd">Theme翻译对比</Text>
+              <Text variant="headingMd">Theme translation compare</Text>
               <Select
-                label="目标语言"
+                label="Target language"
                 labelHidden
                 options={languageOptions}
                 value={currentLanguage}
@@ -283,19 +283,19 @@ export default function ThemeTranslationCompare({
               />
             </InlineStack>
 
-            <InlineStack gap="100" blockAlign="center">
-              <Badge tone="success">{globalStats.translated}/{globalStats.total}</Badge>
-              <Text variant="bodySm" tone="subdued">
-                已翻译
-              </Text>
+              <InlineStack gap="100" blockAlign="center">
+                <Badge tone="success">{globalStats.translated}/{globalStats.total}</Badge>
+                <Text variant="bodySm" tone="subdued">
+                  Translated
+                </Text>
+              </InlineStack>
             </InlineStack>
-          </InlineStack>
 
           {/* 进度条 */}
           {(translationProgress > 0 || loading) && (
             <BlockStack gap="100">
               <InlineStack align="space-between">
-                <Text variant="bodySm">翻译进度</Text>
+                <Text variant="bodySm">Translation progress</Text>
                 <Text variant="bodySm">{translationProgress}%</Text>
               </InlineStack>
               <ProgressBar 
@@ -309,9 +309,9 @@ export default function ThemeTranslationCompare({
           {/* 简单的搜索框 */}
           <Box minWidth="300px">
             <TextField
-              label="搜索字段"
+              label="Search fields"
               labelHidden
-              placeholder="搜索字段路径或内容..."
+              placeholder="Search field path or content..."
               value={searchTerm}
               onChange={setSearchTerm}
               clearButton
@@ -329,7 +329,7 @@ export default function ThemeTranslationCompare({
               disabled={Object.keys(editedTranslations).length === 0}
               onClick={handleSaveChanges}
             >
-              保存更改 ({Object.keys(editedTranslations).length})
+              Save changes ({Object.keys(editedTranslations).length})
             </Button>
           </InlineStack>
         </BlockStack>
@@ -340,20 +340,20 @@ export default function ThemeTranslationCompare({
         <Card>
           <BlockStack gap="200" inlineAlign="center">
             <Spinner size="large" />
-            <Text variant="headingSm">加载中...</Text>
+            <Text variant="headingSm">Loading...</Text>
           </BlockStack>
         </Card>
       ) : processedFields.length === 0 ? (
         <Card>
           <EmptyState
-            heading="没有找到匹配的字段"
+            heading="No matching fields"
             action={{
-              content: '清除搜索',
+              content: 'Clear search',
               onAction: () => setSearchTerm('')
             }}
           >
             <Text variant="bodyMd" tone="subdued">
-              尝试调整搜索条件
+              Try adjusting the search criteria
             </Text>
           </EmptyState>
         </Card>
@@ -373,20 +373,20 @@ export default function ThemeTranslationCompare({
                         }
                       </Text>
                       <Badge tone="subdued" size="small">
-                        {field.displayType?.label || '文本'}
+                        {field.displayType?.label || 'Text'}
                       </Badge>
                     </InlineStack>
                     <InlineStack gap="100">
                       {field.hasTranslation ? (
-                        <Badge tone="success">已翻译</Badge>
+                        <Badge tone="success">Translated</Badge>
                       ) : (
-                        <Badge tone="warning">未翻译</Badge>
+                        <Badge tone="warning">Untranslated</Badge>
                       )}
                       {field.isEdited && (
-                        <Badge tone="attention">已编辑</Badge>
+                        <Badge tone="attention">Edited</Badge>
                       )}
                       {field.isChanged && (
-                        <Badge tone="info">已变更</Badge>
+                        <Badge tone="info">Changed</Badge>
                       )}
                     </InlineStack>
                   </BlockStack>
@@ -397,7 +397,7 @@ export default function ThemeTranslationCompare({
                     onClick={() => handleSingleTranslate(field.path, field.originalValue)}
                     disabled={loading}
                   >
-                    AI翻译
+                    AI translate
                   </Button>
                 </InlineStack>
 
@@ -419,8 +419,8 @@ export default function ThemeTranslationCompare({
                         Reference
                       </Text>
                       <div className="theme-translation-field html-content" style={{ width: '100%' }}>
-                        <TextField
-                          label="原文内容"
+                      <TextField
+                          label="Source content"
                           labelHidden
                           value={String(field.originalValue || '')}
                           multiline={String(field.originalValue || '').length > 50}
@@ -444,13 +444,13 @@ export default function ThemeTranslationCompare({
                         </Text>
                         {field.isEdited && (
                           <Text variant="bodySm" tone="attention">
-                            未保存
+                            Unsaved
                           </Text>
                         )}
                       </InlineStack>
                       <div className="theme-translation-field html-content" style={{ width: '100%' }}>
                         <TextField
-                          label="翻译内容"
+                          label="Translated content"
                           labelHidden
                           value={String(
                             editedTranslations[field.path] !== undefined
@@ -459,7 +459,7 @@ export default function ThemeTranslationCompare({
                           )}
                           onChange={(value) => handleTranslationEdit(field.path, value)}
                           multiline={String(field.originalValue || '').length > 50}
-                          placeholder="请输入翻译内容..."
+                          placeholder="Enter translated content..."
                           autoComplete="off"
                         />
                       </div>
@@ -477,17 +477,17 @@ export default function ThemeTranslationCompare({
         <Card>
           <InlineStack align="space-between">
             <Text variant="bodySm" tone="subdued">
-              共 {globalStats.total} 个字段
+              Total {globalStats.total} fields
             </Text>
             <InlineStack gap="200">
               <Text variant="bodySm" tone="subdued">
-                翻译完成率: {globalStats.progress}%
+                Translation completion: {globalStats.progress}%
               </Text>
               <Text variant="bodySm" tone="subdued">
-                未翻译: {globalStats.untranslated}
+                Untranslated: {globalStats.untranslated}
               </Text>
               <Text variant="bodySm" tone="subdued">
-                已变更: {globalStats.changed}
+                Changed: {globalStats.changed}
               </Text>
             </InlineStack>
           </InlineStack>

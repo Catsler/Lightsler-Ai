@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '../db.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 /**
  * 从 translatableContent 数组提取 key->digest 映射
@@ -25,7 +26,9 @@ export function extractDigestMap(translatableContent = []) {
  * @param {string} resourceId Resource.id
  * @param {Array} translatableContent Shopify translatableContent
  */
-export async function updateResourceDigests(resourceId, translatableContent = []) {
+const handleDigestTrackerError = createServiceErrorHandler('CONTENT_DIGEST_TRACKER');
+
+async function updateResourceDigestsInternal(resourceId, translatableContent = []) {
   const digestMap = extractDigestMap(translatableContent);
   if (!resourceId || Object.keys(digestMap).length === 0) return null;
 
@@ -40,6 +43,8 @@ export async function updateResourceDigests(resourceId, translatableContent = []
   await prisma.resource.update({ where: { id: resourceId }, data: { contentDigests: next } });
   return { changed: true, digests: next };
 }
+
+export const updateResourceDigests = handleDigestTrackerError(updateResourceDigestsInternal);
 
 /**
  * 对比新旧digest，返回发生变化的字段key列表
@@ -62,12 +67,14 @@ export function diffChangedKeys(oldMap = {}, translatableContent = []) {
  * @param {string} resourceId Resource.id
  * @param {Array} translatableContent Shopify translatableContent
  */
-export async function getIncrementalFields(resourceId, translatableContent = []) {
+async function getIncrementalFieldsInternal(resourceId, translatableContent = []) {
   const resource = await prisma.resource.findUnique({ where: { id: resourceId }, select: { contentDigests: true } });
   const oldMap = resource?.contentDigests || {};
   const changedKeys = diffChangedKeys(oldMap, translatableContent);
   return changedKeys;
 }
+
+export const getIncrementalFields = handleDigestTrackerError(getIncrementalFieldsInternal);
 
 export default {
   extractDigestMap,
@@ -75,4 +82,3 @@ export default {
   diffChangedKeys,
   getIncrementalFields,
 };
-

@@ -592,7 +592,13 @@ async function translateProductMetafieldsIfExists(product, targetLang, admin) {
         const metafield = metafields.find(m => m.id === metafieldResult.id) || metafieldResult;
         if (!metafield) continue;
 
-        const translatedValue = await translateText(metafield.value, targetLang);
+        const translatedValue = await translateText(metafield.value, targetLang, {
+          shopId: product.shopId,
+          resourceType: 'PRODUCT_METAFIELD',
+          resourceId: metafield.id,
+          fieldName: `${metafield.namespace}.${metafield.key}`,
+          operation: 'translate_product_metafield'
+        });
 
         const derivedId = buildDerivedResourceId(product, 'metafield', `${metafield.namespace}-${metafield.key}`);
         const metafieldResources = [{

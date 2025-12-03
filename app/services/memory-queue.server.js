@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../utils/logger.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 class MemoryQueue {
   constructor(name, options = {}) {
@@ -16,6 +17,18 @@ class MemoryQueue {
     this.runningTasks = new Set();
     this.listeners = new Map();
     this.defaultConcurrency = Math.max(1, options.defaultConcurrency || 1);
+    this.handleProcessorError = createServiceErrorHandler('MEMORY_QUEUE', {
+      serializeArgs: (args) => args.map((arg) => {
+        if (arg && typeof arg === 'object') {
+          return {
+            id: arg.id,
+            name: arg.name,
+            status: arg.status
+          };
+        }
+        return arg;
+      })
+    });
   }
 
   process(jobType, concurrency, processor) {
@@ -161,7 +174,8 @@ class MemoryQueue {
 
       this.emit('active', publicJob);
 
-      const result = await processor.processor(publicJob);
+      const wrappedProcessor = this.handleProcessorError(processor.processor);
+      const result = await wrappedProcessor(publicJob);
 
       job.status = 'completed';
       job.result = result;
