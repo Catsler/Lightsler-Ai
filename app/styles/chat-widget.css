@@ -1,0 +1,54 @@
+.crisp-client, .crisp-client * {
+  z-index: 9999 !important;
+}
+
+/* Hide Crisp default launcher (we use custom button) */
+.crisp-client [data-id="chat-closed"],
+.crisp-client .cc-kv,
+.crisp-client .cc-sh-badge,
+.crisp-client .cc-no-badge,
+.crisp-client .cc-1xry,
+.crisp-client [data-chat-status] {
+  display: none !important;
+}
+
+.chat-widget-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 100px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 24px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+  cursor: pointer;
+  z-index: 10000;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.chat-widget-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 34px rgba(0,0,0,0.2);
+  background: #0f172a;
+}
+
+.chat-widget-launcher:active {
+  transform: translateY(0);
+}
+
+.chat-widget-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.chat-widget-label {
+  font-size: 14px;
+  font-weight: 600;
+}
