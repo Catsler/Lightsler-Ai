@@ -1,0 +1,188 @@
+{
+  "name": "t:Showcase",
+  "type": null,
+  "settings": [
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "id": "products_count",
+      "type": "range",
+      "label": "t:Products_to_show",
+      "translate": false
+    },
+    {
+      "id": "products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    },
+    {
+      "id": "instagram_profile_link",
+      "type": "text",
+      "label": "t:Instagram_profile_link",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Overlay",
+      "translate": false
+    },
+    {
+      "id": "always_show_overlay",
+      "type": "checkbox",
+      "label": "t:Always_show_overlay",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "id": "item_background",
+      "type": "color",
+      "label": "t:Box_background",
+      "translate": false
+    },
+    {
+      "id": "item_text_color",
+      "type": "color",
+      "label": "t:Box_text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "t:Item",
+      "settings": [
+        {
+          "type": "header",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "cover_image",
+          "type": "image_picker",
+          "label": "t:Cover_image",
+          "translate": false
+        },
+        {
+          "id": "avatar_image",
+          "type": "image_picker",
+          "label": "t:Avatar",
+          "translate": false
+        },
+        {
+          "id": "show_avatar_outline",
+          "type": "checkbox",
+          "label": "t:Show_avatar_image_outline",
+          "translate": false
+        },
+        {
+          "id": "hover_icon",
+          "type": "select",
+          "label": "t:CTA_icon_display_when_hovering",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Text",
+          "translate": false
+        },
+        {
+          "id": "heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "cta_label",
+          "type": "text",
+          "label": "t:CTA_label_display_when_hovering",
+          "translate": true
+        },
+        {
+          "type": "header",
+          "label": "t:Products",
+          "translate": false
+        },
+        {
+          "id": "product_list",
+          "type": "product_list",
+          "label": "t:Products",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

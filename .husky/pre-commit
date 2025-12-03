@@ -1,0 +1,17 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Check for untracked .server.js files
+UNTRACKED=$(git ls-files --others --exclude-standard | grep '\.server\.js$' || true)
+if [ -n "$UNTRACKED" ]; then
+  echo "\033[33m⚠️  Found untracked .server.js files:\033[0m"
+  echo "$UNTRACKED"
+  echo ""
+  echo "Please add them before committing:"
+  echo "  git add $UNTRACKED"
+  exit 1
+fi
+
+# Run lint + build (defined in npm scripts)
+echo "\033[34m🔍 Running npm run check:build ...\033[0m"
+npm run check:build

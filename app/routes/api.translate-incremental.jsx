@@ -22,7 +22,7 @@ async function handleIncrementalTranslationAction({ request, admin, session }) {
     };
 
     if (!params.language) {
-      throw new Error('language 参数是必需的');
+      throw new Error('language is required');
     }
 
     const targetLanguage = params.language;
@@ -40,8 +40,8 @@ async function handleIncrementalTranslationAction({ request, admin, session }) {
       });
 
       throw new Error(
-        `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
-        `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+        `Translating to primary language ${primaryLocale.name || primaryLocale.locale} is not allowed. ` +
+        `Primary language content is the source; please choose another target language.`
       );
     }
 
@@ -49,7 +49,7 @@ async function handleIncrementalTranslationAction({ request, admin, session }) {
     try {
       resourceIds = JSON.parse(params.resourceIds);
     } catch (error) {
-      throw new Error('resourceIds 必须是有效的JSON格式');
+      throw new Error('resourceIds must be valid JSON');
     }
 
     // 获取店铺记录

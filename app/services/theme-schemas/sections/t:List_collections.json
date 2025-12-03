@@ -1,0 +1,68 @@
+{
+  "name": "t:List_collections",
+  "type": null,
+  "settings": [
+    {
+      "id": "collections_to_show",
+      "type": "radio",
+      "label": "t:Show_collections",
+      "translate": false
+    },
+    {
+      "id": "show_collection_title",
+      "type": "checkbox",
+      "label": "t:Show_collection_title",
+      "translate": false
+    },
+    {
+      "id": "mobile_products_per_row",
+      "type": "select",
+      "label": "t:Products_per_row_mobile",
+      "translate": false
+    },
+    {
+      "id": "desktop_products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "collection",
+      "name": "t:Collection",
+      "settings": [
+        {
+          "id": "collection",
+          "type": "collection",
+          "label": "t:Collection",
+          "translate": false
+        },
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text",
+          "translate": false
+        },
+        {
+          "id": "overlay_color",
+          "type": "color",
+          "label": "t:Overlay",
+          "translate": false
+        },
+        {
+          "id": "overlay_opacity",
+          "type": "range",
+          "label": "t:Overlay_opacity",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

@@ -111,7 +111,7 @@ async function getErrorList(searchParams, shopId) {
   const sortOrder = searchParams.get("sortOrder") || "desc";
   const timeRange = searchParams.get("timeRange") || "24h";
   
-  // 构建查询条件
+  // Build query conditions
   const where = {
     ...(shopId && { shopId }),
     ...(status && { status }),
@@ -126,13 +126,13 @@ async function getErrorList(searchParams, shopId) {
     })
   };
   
-  // 添加时间过滤
+  // Add time filter
   if (timeRange !== "all") {
     const timeFilter = getTimeFilter(timeRange);
     where.createdAt = timeFilter;
   }
   
-  // 执行查询
+  // Execute query
   const [total, errors] = await Promise.all([
     prisma.errorLog.count({ where }),
     prisma.errorLog.findMany({
@@ -180,7 +180,7 @@ async function getErrorDetail(searchParams) {
   const id = searchParams.get("id");
   
   if (!id) {
-    throw new Error("错误ID必需");
+    throw new Error("Error ID is required");
   }
   
   const error = await prisma.errorLog.findUnique({
@@ -188,10 +188,10 @@ async function getErrorDetail(searchParams) {
   });
   
   if (!error) {
-    throw new Error("错误记录不存在");
+    throw new Error("Error record not found");
   }
   
-  // 获取相关错误
+  // Get related errors
   const related = await findRelatedErrors(id);
   
   return {
@@ -273,7 +273,7 @@ async function getRelatedErrors(searchParams) {
   const id = searchParams.get("id");
   
   if (!id) {
-    throw new Error("错误ID必需");
+    throw new Error("Error ID is required");
   }
   
   const related = await findRelatedErrors(id);
@@ -320,13 +320,13 @@ async function collectNewError(formData, shopId) {
   const errorData = JSON.parse(formData.get("errorData") || "{}");
   const context = JSON.parse(formData.get("context") || "{}");
   
-  // 添加shop信息
+  // Add shop info
   context.shopId = shopId;
   context.source = "frontend";
   
   const result = await collectError(errorData, context);
   
-  return { ...result, message: "错误已收集" };
+  return { ...result, message: "Error collected" };
 }
 
 /**
@@ -340,7 +340,7 @@ async function updateErrorStatus(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!id || !status) {
-    throw new Error("ID和状态必需");
+    throw new Error("ID and status are required");
   }
   
   const updateData = {
@@ -351,7 +351,7 @@ async function updateErrorStatus(formData) {
     ...(assignedTo && { assignedTo })
   };
   
-  // 如果是解决状态，记录解决时间
+  // Record resolution time when status is resolved
   if (status === ERROR_STATUS.RESOLVED) {
     updateData.resolvedAt = new Date();
   }
@@ -361,7 +361,7 @@ async function updateErrorStatus(formData) {
     data: updateData
   });
   
-  return { ...updated, message: "错误状态已更新" };
+  return { ...updated, message: "Error status updated" };
 }
 
 /**
@@ -372,7 +372,7 @@ async function acknowledgeError(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!id) {
-    throw new Error("错误ID必需");
+    throw new Error("Error ID is required");
   }
   
   const updated = await prisma.errorLog.update({
@@ -384,7 +384,7 @@ async function acknowledgeError(formData) {
     }
   });
   
-  return { ...updated, message: "错误已确认" };
+  return { ...updated, message: "Error acknowledged" };
 }
 
 /**
@@ -396,7 +396,7 @@ async function resolveError(formData) {
   const fixVersion = formData.get("fixVersion");
   
   if (!id || !resolution) {
-    throw new Error("ID和解决方案必需");
+    throw new Error("ID and resolution are required");
   }
   
   const updated = await prisma.errorLog.update({
@@ -409,7 +409,7 @@ async function resolveError(formData) {
     }
   });
   
-  return { ...updated, message: "错误已解决" };
+  return { ...updated, message: "Error resolved" };
 }
 
 /**
@@ -420,18 +420,18 @@ async function ignoreError(formData) {
   const reason = formData.get("reason");
   
   if (!id) {
-    throw new Error("错误ID必需");
+    throw new Error("Error ID is required");
   }
   
   const updated = await prisma.errorLog.update({
     where: { id },
     data: {
       status: ERROR_STATUS.IGNORED,
-      notes: reason || "已忽略"
+      notes: reason || "Ignored"
     }
   });
   
-  return { ...updated, message: "错误已忽略" };
+  return { ...updated, message: "错误Ignored" };
 }
 
 /**
@@ -443,7 +443,7 @@ async function batchUpdateErrors(formData) {
   const assignedTo = formData.get("assignedTo");
   
   if (!ids.length || !status) {
-    throw new Error("ID列表和状态必需");
+    throw new Error("ID list and status are required");
   }
   
   const updateData = {
@@ -461,7 +461,7 @@ async function batchUpdateErrors(formData) {
     data: updateData
   });
   
-  return { ...result, message: `${result.count}个错误已更新` };
+  return { ...result, message: `${result.count} errors updated` };
 }
 
 /**
@@ -472,7 +472,7 @@ async function addErrorNote(formData) {
   const note = formData.get("note");
   
   if (!id || !note) {
-    throw new Error("ID和备注必需");
+    throw new Error("ID and note are required");
   }
   
   const error = await prisma.errorLog.findUnique({
@@ -481,7 +481,7 @@ async function addErrorNote(formData) {
   });
   
   if (!error) {
-    throw new Error("错误记录不存在");
+    throw new Error("Error record not found");
   }
   
   const existingNotes = error.notes || "";
@@ -497,7 +497,7 @@ ${newNote}`
     data: { notes: updatedNotes }
   });
   
-  return { ...updated, message: "备注已添加" };
+  return { ...updated, message: "Note added" };
 }
 
 /**

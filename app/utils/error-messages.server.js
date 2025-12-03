@@ -26,12 +26,12 @@ const ERROR_MESSAGES = {
     'en': 'Related content translation failed'
   },
   CHUNK_SIZE_ABNORMAL: {
-    'zh-CN': '分块数量异常({chunks}个)，可能影响翻译质量',
-    'en': 'Abnormal chunk count ({chunks}), may affect translation quality'
+    'zh-CN': '分块数量异常({chunks}个，文本长度{textLength}字符)，可能影响翻译质量',
+    'en': 'Abnormal chunk count ({chunks}, text length {textLength} chars), may affect translation quality'
   },
   LINK_CONVERSION_LOW_SUCCESS_RATE: {
-    'zh-CN': 'URL转换成功率过低',
-    'en': 'Link conversion success rate too low'
+    'zh-CN': 'URL转换成功率过低(成功率{rate}%，共{total}个链接，失败{failed}个)',
+    'en': 'Link conversion success rate too low ({rate}%, total {total}, failed {failed})'
   }
 };
 

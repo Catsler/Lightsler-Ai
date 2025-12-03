@@ -1,0 +1,31 @@
+{
+  "name": "t:Unavaiable",
+  "type": null,
+  "settings": [
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "description",
+      "type": "text",
+      "label": "t:Description",
+      "translate": true
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

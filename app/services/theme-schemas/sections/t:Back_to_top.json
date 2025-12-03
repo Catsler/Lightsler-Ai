@@ -1,0 +1,94 @@
+{
+  "name": "t:Back_to_top",
+  "type": null,
+  "settings": [
+    {
+      "id": "enable",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "id": "show_only_on_index",
+      "type": "checkbox",
+      "label": "t:Show_only_on_home_page",
+      "translate": false
+    },
+    {
+      "id": "vertical_offset_for_trigger",
+      "type": "number",
+      "label": "t:Vertical_offset_for_trigger",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Style",
+      "translate": false
+    },
+    {
+      "id": "icon",
+      "type": "select",
+      "label": "t:Icon",
+      "translate": false
+    },
+    {
+      "id": "shape",
+      "type": "select",
+      "label": "t:Shape",
+      "translate": false
+    },
+    {
+      "id": "size",
+      "type": "range",
+      "label": "t:Size",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "id": "desktop_right_distance",
+      "type": "range",
+      "label": "t:Desktop_right_distance",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_distance",
+      "type": "range",
+      "label": "t:Desktop_bottom_distance",
+      "translate": false
+    },
+    {
+      "id": "mobile_right_distance",
+      "type": "range",
+      "label": "t:Mobile_right_distance",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_distance",
+      "type": "range",
+      "label": "t:Mobile_bottom_distance",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

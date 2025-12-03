@@ -36,6 +36,6 @@ async function handleDeprecatedScanUntranslated() {
 }
 
 export const action = createApiRoute(handleDeprecatedScanUntranslated, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: '已废弃的未翻译扫描端点'
 });

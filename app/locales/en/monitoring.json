@@ -1,0 +1,67 @@
+{
+  "title": "Real-time monitoring dashboard",
+  "actions": {
+    "start": "Start refresh",
+    "stop": "Stop refresh"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "errors": "Error monitoring",
+    "performance": "Performance",
+    "jobs": "Job queue"
+  },
+  "health": {
+    "title": "System health",
+    "score": "Health score",
+    "successRate": "Translation success rate",
+    "apiErrorRate": "API error rate",
+    "queueLength": "Queue length",
+    "avgTranslationTime": "Average translation time",
+    "busy": "Busy",
+    "normal": "Normal",
+    "slow": "Slow",
+    "fast": "Fast"
+  },
+  "statsCards": {
+    "totalTranslations": "Total translations",
+    "recent": "Recent {{range}}",
+    "successTranslations": "Successful translations",
+    "totalErrors": "Total errors",
+    "needsAttention": "Needs attention",
+    "activeJobs": "Active jobs",
+    "inProgress": "In progress"
+  },
+  "tables": {
+    "overviewHeading": "Language translation stats",
+    "overviewHeadings": ["Language", "Total", "Synced", "Pending", "Failed"],
+    "recentErrors": "Recent errors",
+    "viewAll": "View all",
+    "errorHeadings": ["Time", "Type", "Message", "Resource", "Severity", "Status", "Frequency"],
+    "noRecent": "No errors in the last {{range}}",
+    "errorsByType": "Errors by type",
+    "jobsHeading": "Active jobs",
+    "jobsBadge": "{{count}} jobs",
+    "jobsHeadings": ["Job ID", "Started at", "Status", "Progress", "Completion", "Errors"],
+    "noJobs": "No active translation jobs",
+    "queueState": "Queue status",
+    "queuePending": "Pending: {{count}}",
+    "queueRunning": "Running: {{count}}",
+    "queuePaused": "Paused: {{count}}"
+  },
+  "performance": {
+    "title": "Performance",
+    "translation": "Translation performance",
+    "avgResponse": "Avg response time: {{ms}}ms",
+    "queueSpeed": "Queue throughput: ~50 items/min",
+    "concurrency": "Concurrency: 5",
+    "api": "API performance",
+    "errorRate": "Error rate: {{rate}}%",
+    "throttles": "Throttles: 12 times",
+    "retries": "Avg retries: 1.2",
+    "adviceTitle": "Performance advice",
+    "adviceApi": "API error rate is high; check network and quotas",
+    "adviceQueue": "Queue backlog is high; consider increasing concurrency",
+    "adviceSlow": "Translation is slow; optimize batch size"
+  },
+  "autoRefresh": "Auto-refresh enabled, updating every {{seconds}}s"
+}

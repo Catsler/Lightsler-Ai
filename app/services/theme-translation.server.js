@@ -4,10 +4,20 @@
  * 与其他资源翻译逻辑完全独立，避免相互影响
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { performance } from 'node:perf_hooks';
 import { translateTextWithFallback, postProcessTranslation } from './translation/core.server.js';
 import { logger } from '../utils/logger.server.js';
-import { AsyncLocalStorage } from 'node:async_hooks';
 import { collectErrorBatch, ERROR_TYPES, ERROR_CATEGORIES } from './error-collector.server.js';
+import { validateThemeUrl } from '../utils/theme-url-validator.server.js';
+import {
+  shouldTranslateThemeFieldWithReason,
+  shouldTranslateThemeField,
+  isThemeUrlField,
+  evaluateThemeFieldsBatch,
+  preloadThemeSchemaCache
+} from './theme-field-filter.server.js';
+import { collectMetric } from './metrics-persistence.server.js';
 
 // 验证必需函数是否正确导入
 if (typeof translateTextWithFallback !== 'function') {
@@ -17,13 +27,38 @@ if (typeof postProcessTranslation !== 'function') {
   throw new Error('postProcessTranslation未正确导入，请检查translation.server.js的导出');
 }
 
-const themeErrorContextStorage = new AsyncLocalStorage();
+preloadThemeSchemaCache();
 
+const METRIC_OPERATION = 'theme-translation-batch';
+
+function createMetricsTracker() {
+  return {
+    totalFields: 0,
+    batchCalls: 0
+  };
+}
+
+function recordBatchMetrics(tracker, fieldCount) {
+  if (!tracker || !fieldCount) {
+    return;
+  }
+  tracker.totalFields += fieldCount;
+  tracker.batchCalls += 1;
+}
+
+function recordFieldMetrics(tracker, count = 1) {
+  if (!tracker || !count) {
+    return;
+  }
+  tracker.totalFields += count;
+}
+
+const themeErrorContextStorage = new AsyncLocalStorage();
 /**
  * 主题翻译错误上下文，用于在整个翻译流程中汇总错误与跳过统计
  */
 class ThemeErrorContext {
-  constructor(resource, targetLang) {
+  constructor(resource, targetLang, options = {}) {
     this.resource = resource;
     this.targetLang = targetLang;
     this.translatedCount = 0;
@@ -42,15 +77,28 @@ class ThemeErrorContext {
       brand: []
     };
     this.errors = [];
+    this.sectionTypeMap = options.sectionTypeMap || {};
+    this.sectionStats = {};
   }
 
-  recordTranslation(_field) {
+  setSectionTypeMap(map = {}) {
+    this.sectionTypeMap = map;
+    this.sectionStats = {};
+  }
+
+  recordTranslation(fieldPath) {
     this.translatedCount += 1;
+    if (fieldPath) {
+      this._updateSectionStats(fieldPath, 'translated');
+    }
   }
 
   recordSkip(reason, field, value) {
     const category = this._categorize(reason);
     this.skipCounts[category] = (this.skipCounts[category] || 0) + 1;
+    if (field) {
+      this._updateSectionStats(field, 'skipped');
+    }
 
     // patternMismatch 采样日志（10% 采样率）
     if (category === 'patternMismatch' && Math.random() < 0.1) {
@@ -101,11 +149,14 @@ class ThemeErrorContext {
     const { totalFields, translatedFields, skipStats } = this.getTotals();
     const totalSkips = totalFields - translatedFields;
 
+    const sectionStats = this._buildSectionStats();
+
     const diagnostics = {
       skipStats,
       samples: JSON.parse(JSON.stringify(this.skipSamples)),
       totalFields,
-      translatedFields
+      translatedFields,
+      sectionStats
     };
 
     if (totalSkips > 0) {
@@ -123,6 +174,30 @@ class ThemeErrorContext {
           targetLang: this.targetLang,
           shopId: this.resource?.shopId ?? null,
           diagnostics
+        }
+      });
+    }
+
+    const lowCoverageSections = Object.entries(sectionStats).filter(([, stats]) => {
+      return stats.total >= 5 && stats.coverage < 90;
+    });
+
+    for (const [sectionType, stats] of lowCoverageSections) {
+      batch.push({
+        data: {
+          errorType: ERROR_TYPES.TRANSLATION,
+          category: ERROR_CATEGORIES.WARNING,
+          errorCode: 'THEME_COVERAGE_LOW',
+          message: `Section ${sectionType} 覆盖率 ${stats.coverage}% (${stats.translated}/${stats.total})`,
+          isTranslationError: true
+        },
+        context: {
+          resourceId: this.resource?.id ?? null,
+          resourceType: this.resource?.resourceType ?? null,
+          targetLang: this.targetLang,
+          shopId: this.resource?.shopId ?? null,
+          sectionType,
+          sectionStats: stats
         }
       });
     }
@@ -233,6 +308,45 @@ class ThemeErrorContext {
 
     return 'other';
   }
+
+  _resolveSectionKey(fieldPath) {
+    if (!fieldPath || typeof fieldPath !== 'string') {
+      return 'global';
+    }
+    const match = fieldPath.match(/^sections\.([^./\[]+)/);
+    if (!match) {
+      return 'global';
+    }
+    const sectionId = match[1];
+    return this.sectionTypeMap[sectionId] || sectionId || 'global';
+  }
+
+  _updateSectionStats(fieldPath, kind) {
+    const sectionKey = this._resolveSectionKey(fieldPath);
+    if (!sectionKey) return;
+    const bucket = this.sectionStats[sectionKey] || { total: 0, translated: 0, skipped: 0 };
+    bucket.total += 1;
+    if (kind === 'translated') {
+      bucket.translated += 1;
+    } else if (kind === 'skipped') {
+      bucket.skipped += 1;
+    }
+    this.sectionStats[sectionKey] = bucket;
+  }
+
+  _buildSectionStats() {
+    const stats = {};
+    for (const [section, bucket] of Object.entries(this.sectionStats)) {
+      const coverage = bucket.total ? Number(((bucket.translated / bucket.total) * 100).toFixed(1)) : 0;
+      stats[section] = {
+        total: bucket.total,
+        translated: bucket.translated,
+        skipped: bucket.skipped,
+        coverage
+      };
+    }
+    return stats;
+  }
 }
 
 function getErrorContext() {
@@ -286,127 +400,6 @@ function flattenTranslationFields(translationFields) {
   return flattened;
 }
 
-// Theme可翻译字段规则 - 基于Shopify官方文档和最佳实践
-const THEME_TRANSLATABLE_PATTERNS = [
-  // 文本内容类
-  /^(.+\.)?(title|heading|label|name|text|content|description)$/i,
-  /^(.+\.)?(subtitle|subheading|tagline|caption)$/i,
-  
-  // 按钮和交互类
-  /^(.+\.)?(button_text|button_label|link_text|link_label)$/i,
-  /^(.+\.)?(placeholder|input_label|field_label)$/i,
-  
-  // 辅助信息类
-  /^(.+\.)?(help_text|helper_text|hint|tooltip|info_text)$/i,
-  /^(.+\.)?(alt_text|image_alt|aria_label)$/i,
-  
-  // 消息和提示类
-  /^(.+\.)?(message|error|error_message|success|success_message)$/i,
-  /^(.+\.)?(warning|warning_message|info|info_message|notice)$/i,
-  /^(.+\.)?(confirmation|confirm_text|alert|notification)$/i,
-  
-  // 导航和菜单类
-  /^(.+\.)?(menu_item|nav_text|breadcrumb)$/i,
-  
-  // 表单相关
-  /^(.+\.)?(form_label|form_text|validation_message)$/i,
-  
-  // 产品和商店相关
-  /^(.+\.)?(product_text|collection_text|shop_text)$/i,
-  /^(.+\.)?(price_text|discount_text|sale_text)$/i,
-  
-  // 更通用的模式 - 捕获更多可能包含文本的字段
-  /^(.+\.)?(value|content_value|text_value)$/i,
-  /^(.+\.)?(item|field|column|row|section).*?(text|content|title|label)$/i,
-  /^(.+\.)?(tab_label|tab_title|tab_content)$/i,
-
-  // 新增常见UI模式 - 提高覆盖率
-  /^(.+\.)?(summary|excerpt|preview|intro|overview)$/i,
-  /^(.+\.)?(footer_text|copyright|legal|disclaimer)$/i,
-  /^(.+\.)?(quote|testimonial|review|comment)$/i,
-  /^(.+\.)?(announcement|promo|promotion|offer)$/i,
-  /^(.+\.)?(menu|dropdown|option|choice).*?(text|label)$/i,
-  /^(.+\.)?(badge|status|tag|category).*?(text|label)$/i,
-  /^(.+\.)?(instruction|step|guide|tutorial).*?(text|title)$/i,
-  /^(.+\.)?(empty_state|no_results|not_found).*?(text|message)$/i,
-
-  // 更宽泛的文本检测模式
-  /.*_(text|title|label|heading|description|content|message)$/i,
-  /.*text$/i,
-  /.*(title|label|heading)$/i,
-
-  // 增强的用户界面文本模式
-  /^(.+\.)?(modal|popup|dialog|toast|alert).*?(text|title|message)$/i,
-  /^(.+\.)?(sidebar|header|footer|navigation).*?(text|label)$/i,
-  /^(.+\.)?(loading|error|success|warning).*?(text|message)$/i,
-
-  // 产品和电商相关文本
-  /^(.+\.)?(cart|checkout|payment|shipping).*?(text|label|message)$/i,
-  /^(.+\.)?(product|collection|category).*?(text|description|name)$/i,
-  /^(.+\.)?(search|filter|sort).*?(text|placeholder|label)$/i,
-
-  // 表单和输入相关
-  /^(.+\.)?(form|input|field|textarea).*?(text|placeholder|label)$/i,
-  /^(.+\.)?(submit|cancel|save|delete).*?(text|label)$/i,
-
-  // 通知和反馈相关
-  /^(.+\.)?(notification|feedback|review|comment).*?(text|message)$/i,
-  /^(.+\.)?(help|tip|hint|guide).*?(text|content)$/i,
-
-  // 博客和内容相关
-  /^(.+\.)?(blog|article|post|news).*?(text|title|excerpt)$/i,
-  /^(.+\.)?(author|date|category|tag).*?(text|label)$/i,
-
-  // 社交媒体和分享
-  /^(.+\.)?(social|share|follow|like).*?(text|label)$/i,
-  /^(.+\.)?(facebook|twitter|instagram|youtube).*?(text|title)$/i,
-
-  // 特殊场景文本
-  /^(.+\.)?(empty|no_results|not_found).*?(text|message)$/i,
-  /^(.+\.)?(countdown|timer|progress).*?(text|label)$/i,
-
-  // Shopify特有的主题字段
-  /^(.+\.)?(collection_list|product_grid|featured_product).*?(text|heading|subheading)$/i,
-  /^(.+\.)?(newsletter|contact|about).*?(text|description|heading)$/i
-];
-
-// Theme技术字段（不翻译）- 这些字段应该保持原值
-const THEME_TECHNICAL_PATTERNS = [
-  // 标识符和键值
-  /^(.+\.)?(id|key|handle|slug|type|kind|variant)$/i,
-  /^(.+\.)?(class|className|style|css|scss)$/i,
-
-  // URL和路径
-  /^(.+\.)?(url|href|src|path|endpoint|route|link)$/i,
-  /^(.+\.)?(asset|assets|file|filename|image|icon)$/i,
-
-  // 明确匹配所有 video_url 字段（防止特殊处理逻辑绕过）
-  /^(.+_)?video_url$/i,
-  
-  // 样式和布局
-  /^(.+\.)?(color|colour|background|bg|font|font_size)$/i,
-  /^(.+\.)?(size|width|height|margin|padding|spacing)$/i,
-  /^(.+\.)?(position|align|alignment|justify|display)$/i,
-  /^(.+\.)?(border|radius|shadow|opacity|z_index)$/i,
-  
-  // 配置和设置
-  /^(.+\.)?(enabled|disabled|active|inactive|visible|hidden)$/i,
-  /^(.+\.)?(required|optional|default|min|max|limit)$/i,
-  /^(.+\.)?(setting|settings|config|configuration|option|options)$/i,
-  
-  // 数据和逻辑
-  /^(.+\.)?(data|value|values|count|number|amount)$/i,
-  /^(.+\.)?(condition|conditions|rule|rules|filter|filters)$/i,
-  /^(.+\.)?(template|templates|layout|layouts|schema)$/i,
-  
-  // API和技术相关
-  /^(.+\.)?(api|endpoint|method|param|params|query)$/i,
-  /^(.+\.)?(script|scripts|code|function|callback)$/i,
-  
-  // Shopify特定
-  /^(.+\.)?(metafield|metafields|namespace|collection_id|product_id)$/i,
-  /^(.+\.)?(vendor|sku|barcode|inventory|variant_id)$/i
-];
 
 /**
  * 判断Theme字段是否需要翻译
@@ -510,90 +503,35 @@ function checkDefaultThemeContent(resource) {
   };
 }
 
-function shouldTranslateThemeFieldWithReason(key, value) {
-  if (typeof value !== 'string' || !value.trim()) {
-    logger.debug(`[Theme翻译] 跳过非字符串字段: ${key}`);
-    return { shouldTranslate: false, reason: '空值或非字符串' };
+function buildSectionTypeMap(themeData) {
+  const map = {};
+  if (!themeData || typeof themeData !== 'object') {
+    return map;
   }
 
-  if (THEME_TECHNICAL_PATTERNS.some((pattern) => pattern.test(key))) {
-    logger.debug(`[Theme翻译] 跳过技术字段: ${key}`);
-    return { shouldTranslate: false, reason: '技术字段' };
-  }
-
-  if (value.includes('{{') || value.includes('{%')) {
-    logger.debug(`[Theme翻译] 跳过Liquid模板: ${key}`);
-    return { shouldTranslate: false, reason: 'Liquid模板' };
-  }
-
-  if (/^\d+$/.test(value) || /^#[0-9A-Fa-f]{3,6}$/.test(value)) {
-    logger.debug(`[Theme翻译] 跳过数字/颜色值: ${key}`);
-    return { shouldTranslate: false, reason: '数字或颜色值' };
-  }
-
-  if (/^https?:\/\//.test(value) && !value.includes(' ')) {
-    logger.debug(`[Theme翻译] 跳过纯URL: ${key}`);
-    return { shouldTranslate: false, reason: '纯URL' };
-  }
-
-  const isTranslatable = THEME_TRANSLATABLE_PATTERNS.some((pattern) => pattern.test(key));
-  if (isTranslatable) {
-    logger.debug(`[Theme翻译] 需要翻译字段: ${key}`);
-    return { shouldTranslate: true, reason: null };
-  }
-
-  const placeholderTexts = [
-    'Your content',
-    'Paragraph',
-    'Image with text',
-    'Subheading',
-    'Easy Setup',
-    'rear went mesh',
-    'Item',
-    'Content',
-    'Title',
-    'Description'
-  ];
-
-  if (placeholderTexts.includes(value)) {
-    logger.debug(`[Theme翻译] 检测到占位符文本，需要翻译: ${key} = "${value}"`);
-    return { shouldTranslate: true, reason: null };
-  }
-
-  if (value.length >= 2 && /[a-zA-Z]/.test(value)) {
-    if (/[®™]/.test(value) || /^(Onewind|Shopify|Amazon|Google|Facebook|Apple|Microsoft)/i.test(value)) {
-      logger.debug(`[Theme翻译] 跳过品牌名: ${key} = "${value}"`);
-      return { shouldTranslate: false, reason: '品牌名' };
-    }
-
-    if (value.split(' ').length > 1) {
-      logger.debug(`[Theme翻译] 检测到多词文本内容，需要翻译: ${key} = "${value}"`);
-      return { shouldTranslate: true, reason: null };
-    }
-
-    if (value.length >= 4 && /^[A-Z][a-z]+/.test(value)) {
-      logger.debug(`[Theme翻译] 检测到可能的UI文本，需要翻译: ${key} = "${value}"`);
-      return { shouldTranslate: true, reason: null };
-    }
-
-    if (
-      value.length >= 2 &&
-      value.length <= 20 &&
-      !/^[0-9#.]/.test(value) &&
-      !/^\w+\.(jpg|png|gif|svg|webp|css|js)$/i.test(value) &&
-      !/^(true|false|null|undefined)$/i.test(value)
-    ) {
-      logger.debug(`[Theme翻译] 检测到短文本，考虑翻译: ${key} = "${value}"`);
-      return { shouldTranslate: true, reason: null };
+  const sections = themeData.sections;
+  if (sections && typeof sections === 'object') {
+    for (const [sectionId, sectionConfig] of Object.entries(sections)) {
+      if (sectionConfig && typeof sectionConfig === 'object' && sectionConfig.type) {
+        map[sectionId] = sectionConfig.type;
+      }
     }
   }
 
-  logger.debug(`[Theme翻译] 跳过字段: ${key} = "${value}"`);
-  return { shouldTranslate: false, reason: '不匹配翻译模式' };
+  return map;
 }
 
-function shouldTranslateThemeField(key, value) {
-  return shouldTranslateThemeFieldWithReason(key, value).shouldTranslate;
+function getSectionTypeFromKey(fullKey, sectionTypeMap) {
+  if (!sectionTypeMap) {
+    return null;
+  }
+
+  const match = fullKey.match(/^sections\.([^./]+)/);
+  if (!match) {
+    return null;
+  }
+
+  return sectionTypeMap[match[1]] || null;
 }
 
 /**
@@ -649,21 +587,50 @@ function restoreLiquidVariables(text, protectedMap) {
  * @returns {Promise<any>} 翻译后的数据
  */
 async function translateThemeJsonData(data, targetLang, parentKey = '', options = {}) {
+  if (!options.__fieldContextResolver) {
+    options.__fieldContextResolver = (field) => {
+      if (!options.sectionTypeMap) {
+        return {};
+      }
+      const sectionType = getSectionTypeFromKey(field.key, options.sectionTypeMap);
+      return sectionType ? { sectionType } : {};
+    };
+  }
+
+  const computeFieldContext = options.__fieldContextResolver;
+  const metricsTracker = options.__metricsTracker;
+
   if (!data || typeof data !== 'object') {
     return data;
   }
 
   if (Array.isArray(data)) {
     const translatedArray = [];
+    const stringFields = data
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => typeof item === 'string')
+      .map(({ item, index }) => ({ key: `${parentKey}[${index}]`, value: item }));
+
+    let evaluationMap = new Map();
+    if (stringFields.length) {
+      recordBatchMetrics(metricsTracker, stringFields.length);
+      evaluationMap = evaluateThemeFieldsBatch(stringFields, {
+        computeContext: computeFieldContext,
+        returnAsMap: true
+      });
+    }
 
     for (let index = 0; index < data.length; index++) {
       const item = data[index];
       const itemKey = `${parentKey}[${index}]`;
 
       if (typeof item === 'string') {
-        const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(itemKey, item);
+        const evaluation = evaluationMap.get(itemKey) || {
+          shouldTranslate: false,
+          reason: '空值或非字符串'
+        };
 
-        if (shouldTranslate) {
+        if (evaluation.shouldTranslate) {
           const ctx = getErrorContext();
           try {
             const { protectedText, protectedMap } = protectLiquidVariables(item);
@@ -682,7 +649,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
           }
         } else {
           const ctx = getErrorContext();
-          ctx?.recordSkip(reason, itemKey, item);
+          ctx?.recordSkip(evaluation.reason, itemKey, item);
           translatedArray.push(item);
         }
       } else if (item && typeof item === 'object') {
@@ -696,14 +663,29 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
   }
 
   const translated = {};
+  const objectEntries = Object.entries(data);
+  const stringFields = objectEntries
+    .filter(([, value]) => typeof value === 'string')
+    .map(([key, value]) => ({ key: parentKey ? `${parentKey}.${key}` : key, value }));
+  let objectEvaluationMap = new Map();
+  if (stringFields.length) {
+    recordBatchMetrics(metricsTracker, stringFields.length);
+    objectEvaluationMap = evaluateThemeFieldsBatch(stringFields, {
+      computeContext: computeFieldContext,
+      returnAsMap: true
+    });
+  }
 
-  for (const [key, value] of Object.entries(data)) {
+  for (const [key, value] of objectEntries) {
     const fullKey = parentKey ? `${parentKey}.${key}` : key;
 
     if (typeof value === 'string') {
-      const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(fullKey, value);
+      const evaluation = objectEvaluationMap.get(fullKey) || {
+        shouldTranslate: false,
+        reason: '空值或非字符串'
+      };
 
-      if (shouldTranslate) {
+      if (evaluation.shouldTranslate) {
         const ctx = getErrorContext();
         try {
           const { protectedText, protectedMap } = protectLiquidVariables(value);
@@ -712,6 +694,21 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
           translatedText = await postProcessTranslation(translatedText, targetLang, value, {
             linkConversion: options?.linkConversion
           });
+
+          if (isThemeUrlField(fullKey)) {
+            const validation = validateThemeUrl(translatedText, { fieldPath: fullKey, targetLang });
+            if (!validation.valid) {
+              logger.warn('[Theme翻译] URL校验失败，回退原值', {
+                fieldPath: fullKey,
+                original: value,
+                translated: translatedText,
+                error: validation.error
+              });
+              ctx?.recordSkip('URL格式无效', fullKey, translatedText);
+              translated[key] = value;
+              continue;
+            }
+          }
 
           translated[key] = translatedText;
           ctx?.recordTranslation(fullKey);
@@ -725,7 +722,7 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
         }
       } else {
         const ctx = getErrorContext();
-        ctx?.recordSkip(reason, fullKey, value);
+        ctx?.recordSkip(evaluation.reason, fullKey, value);
         translated[key] = value;
       }
     } else if (value && typeof value === 'object') {
@@ -745,7 +742,15 @@ async function translateThemeJsonData(data, targetLang, parentKey = '', options 
  * @returns {Promise<Object>} 翻译结果
  */
 export async function translateThemeResource(resource, targetLang, options = {}) {
-  const errorContext = new ThemeErrorContext(resource, targetLang);
+  const errorContext = new ThemeErrorContext(resource, targetLang, { sectionTypeMap: {} });
+  const metricsTracker = createMetricsTracker();
+  const runtimeOptions = { ...options, __metricsTracker: metricsTracker };
+  const operationStart = performance.now();
+  const startHeap = process.memoryUsage().heapUsed;
+  let translationError = null;
+  let translationSkipped = false;
+  let translationSkipReason = null;
+  let result;
 
   return themeErrorContextStorage.run(errorContext, async () => {
     try {
@@ -759,6 +764,8 @@ export async function translateThemeResource(resource, targetLang, options = {})
           reason: defaultThemeCheck.reason,
           title: resource.title?.slice(0, 50)
         });
+        translationSkipped = true;
+        translationSkipReason = defaultThemeCheck.reason;
 
         return {
           titleTrans: resource.title,
@@ -772,7 +779,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
         };
       }
 
-      const result = {
+      result = {
         titleTrans: resource.title,
         descTrans: null,
         handleTrans: null,
@@ -807,6 +814,8 @@ export async function translateThemeResource(resource, targetLang, options = {})
               const reason = 'Theme资源结构不匹配(无有效themeData)';
               errorContext.recordSkip(reason, 'themeData', contentFields.themeData);
               logger.warn(`[Theme翻译] Theme资源缺少有效themeData，跳过翻译: ${resource.id}`);
+              translationSkipped = true;
+              translationSkipReason = reason;
               return {
                 ...result,
                 skipped: true,
@@ -821,7 +830,14 @@ export async function translateThemeResource(resource, targetLang, options = {})
                   ? JSON.parse(contentFields.themeData)
                   : contentFields.themeData;
 
-              const translatedData = await translateThemeJsonData(themeData, targetLang, '', options);
+              const sectionTypeMap = buildSectionTypeMap(themeData);
+              errorContext.setSectionTypeMap(sectionTypeMap);
+              const translatedData = await translateThemeJsonData(
+                themeData,
+                targetLang,
+                '',
+                { ...runtimeOptions, sectionTypeMap }
+              );
               result.translationFields.themeData = JSON.stringify(translatedData, null, 2);
               logger.debug(`[Theme翻译] themeData翻译完成`);
             } catch (error) {
@@ -841,6 +857,9 @@ export async function translateThemeResource(resource, targetLang, options = {})
               const fieldValue = Object.prototype.hasOwnProperty.call(fieldData, 'value')
                 ? fieldData.value
                 : fieldData;
+              if (typeof fieldValue === 'string') {
+                recordFieldMetrics(metricsTracker);
+              }
 
               let decision =
                 typeof fieldValue === 'string'
@@ -875,7 +894,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
                   let translatedText = await translateThemeValue(protectedText, targetLang);
                   translatedText = restoreLiquidVariables(translatedText, protectedMap);
                   translatedText = await postProcessTranslation(translatedText, targetLang, fieldValue, {
-                    linkConversion: options?.linkConversion
+                    linkConversion: runtimeOptions?.linkConversion
                   });
 
                   translatedDynamic[key] = {
@@ -907,6 +926,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
 
             for (const field of contentFields.translatableFields) {
               if (typeof field.value === 'string') {
+                recordFieldMetrics(metricsTracker);
                 const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(
                   field.key,
                   field.value
@@ -918,7 +938,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
                     let translatedText = await translateThemeValue(protectedText, targetLang);
                     translatedText = restoreLiquidVariables(translatedText, protectedMap);
                     translatedText = await postProcessTranslation(translatedText, targetLang, field.value, {
-                      linkConversion: options?.linkConversion
+                      linkConversion: runtimeOptions?.linkConversion
                     });
 
                     translatedFields.push({
@@ -951,11 +971,12 @@ export async function translateThemeResource(resource, targetLang, options = {})
 
           if (contentFields.localeContent) {
             try {
+              recordFieldMetrics(metricsTracker);
               const { protectedText, protectedMap } = protectLiquidVariables(contentFields.localeContent);
               let translatedText = await translateThemeValue(protectedText, targetLang);
               translatedText = restoreLiquidVariables(translatedText, protectedMap);
               translatedText = await postProcessTranslation(translatedText, targetLang, contentFields.localeContent, {
-                linkConversion: options?.linkConversion
+                linkConversion: runtimeOptions?.linkConversion
               });
               result.translationFields.localeContent = translatedText;
               errorContext.recordTranslation('localeContent');
@@ -974,6 +995,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
 
           for (const [key, value] of Object.entries(contentFields)) {
             if (typeof value === 'string') {
+              recordFieldMetrics(metricsTracker);
               const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(key, value);
 
               if (shouldTranslate) {
@@ -982,7 +1004,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
                   let translatedText = await translateThemeValue(protectedText, targetLang);
                   translatedText = restoreLiquidVariables(translatedText, protectedMap);
                   translatedText = await postProcessTranslation(translatedText, targetLang, value, {
-                    linkConversion: options?.linkConversion
+                    linkConversion: runtimeOptions?.linkConversion
                   });
 
                   result.translationFields[key] = translatedText;
@@ -997,7 +1019,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
                 result.translationFields[key] = value;
               }
             } else if (value && typeof value === 'object') {
-              result.translationFields[key] = await translateThemeJsonData(value, targetLang, key, options);
+              result.translationFields[key] = await translateThemeJsonData(value, targetLang, key, runtimeOptions);
             } else {
               result.translationFields[key] = value;
             }
@@ -1009,6 +1031,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
 
           for (const [key, value] of Object.entries(contentFields)) {
             if (typeof value === 'string') {
+              recordFieldMetrics(metricsTracker);
               const { shouldTranslate, reason } = shouldTranslateThemeFieldWithReason(key, value);
 
               if (shouldTranslate) {
@@ -1017,7 +1040,7 @@ export async function translateThemeResource(resource, targetLang, options = {})
                   let translatedText = await translateThemeValue(protectedText, targetLang);
                   translatedText = restoreLiquidVariables(translatedText, protectedMap);
                   translatedText = await postProcessTranslation(translatedText, targetLang, value, {
-                    linkConversion: options?.linkConversion
+                    linkConversion: runtimeOptions?.linkConversion
                   });
                   result.translationFields[key] = translatedText;
                   errorContext.recordTranslation(key);
@@ -1062,9 +1085,34 @@ export async function translateThemeResource(resource, targetLang, options = {})
 
       return result;
     } catch (error) {
+      translationError = error;
       errorContext.recordError(error, { phase: 'main', operation: 'translateThemeResource' });
       throw error;
     } finally {
+      const durationMs = Math.max(0, performance.now() - operationStart);
+      const memoryDelta = Math.max(0, process.memoryUsage().heapUsed - startHeap);
+      const finalSkipped = translationSkipped || Boolean(result?.skipped);
+      const finalSkipReason = translationSkipReason || result?.skipReason || null;
+      try {
+        await collectMetric(
+          METRIC_OPERATION,
+          {
+            resourceId: resource.id,
+            resourceType: resource.resourceType,
+            shopId: resource.shopId,
+            language: targetLang,
+            durationMs: Math.round(durationMs),
+            memoryDelta,
+            fieldCount: metricsTracker.totalFields,
+            batchCount: metricsTracker.batchCalls,
+            skipped: finalSkipped,
+            skipReason: finalSkipReason
+          },
+          { success: !translationError }
+        );
+      } catch (metricError) {
+        logger.warn('[Theme翻译] collectMetric失败', { error: metricError?.message || metricError });
+      }
       try {
         await errorContext.flush();
       } catch (flushError) {

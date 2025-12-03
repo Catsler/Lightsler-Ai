@@ -304,8 +304,8 @@ function shouldSkipUrl(url) {
  * @returns {boolean}
  */
 function hasLocalePrefix(url) {
-  // 常见的语言代码模式
-  const localePattern = /^\/[a-z]{2}(-[A-Z]{2})?(\/|$)/;
+  // 支持市场后缀形式：/de-de, /en-eu, /fr-ca 等
+  const localePattern = /^\/[a-z]{2}(?:-[a-z0-9]{2,4})?(\/|$)/i;
   return localePattern.test(url);
 }
 
@@ -315,7 +315,7 @@ function hasLocalePrefix(url) {
  * @returns {string}
  */
 function removeLocalePrefix(path) {
-  const localePattern = /^\/[a-z]{2}(-[A-Z]{2})?\//;
+  const localePattern = /^\/[a-z]{2}(?:-[a-z0-9]{2,4})?\//i;
   return path.replace(localePattern, '/');
 }
 

@@ -1,0 +1,28 @@
+{
+  "name": "t:Customer_order",
+  "type": null,
+  "settings": [],
+  "blocks": [
+    {
+      "type": "@app",
+      "settings": []
+    },
+    {
+      "type": "liquid",
+      "name": "t:Liquid",
+      "settings": [
+        {
+          "id": "liquid",
+          "type": "liquid",
+          "label": "t:Liquid",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "order",
+      "name": "t:Order_details",
+      "settings": []
+    }
+  ]
+}

@@ -107,6 +107,10 @@ export const performanceLogger = persistenceEnabled
 
 export const systemLogger = persistenceEnabled ? persistentLogger : createBaseLogger('SYSTEM');
 
+export const billingLogger = persistenceEnabled
+  ? new PersistentTranslationLogger('BILLING')
+  : createBaseLogger('BILLING');
+
 export function logTranslationSession(sessionId, sessionData) {
   logger.info('翻译会话', {
     sessionId,

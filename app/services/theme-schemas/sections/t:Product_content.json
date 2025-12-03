@@ -1,0 +1,231 @@
+{
+  "name": "t:Product_content",
+  "type": null,
+  "settings": [
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "@app",
+      "settings": []
+    },
+    {
+      "type": "app_content",
+      "name": "t:App_content",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:This_block_is_used_to_display_third_party_app",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Title",
+          "translate": true
+        }
+      ]
+    },
+    {
+      "type": "description",
+      "name": "t:Description",
+      "settings": []
+    },
+    {
+      "type": "content",
+      "name": "t:Content",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Title",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "page",
+          "type": "page",
+          "label": "t:Content_from_page",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "liquid",
+      "name": "t:Custom_Liquid",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Title",
+          "translate": true
+        },
+        {
+          "id": "liquid",
+          "type": "liquid",
+          "label": "t:Liquid",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "reviews",
+      "name": "t:Reviews",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:To_show_review_add_the_official_product_reviews_app",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "complementary_products",
+      "name": "t:Complementary_products",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:To_select_complementary_products_use_the_search_and_discovery_app",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        }
+      ]
+    },
+    {
+      "type": "trust",
+      "name": "t:Trust_icons",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:Show_extra_text_next_to_your_product_description_to_improve_trust",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Text_1",
+          "translate": false
+        },
+        {
+          "id": "icon_1",
+          "type": "select",
+          "label": "t:Icon",
+          "translate": false
+        },
+        {
+          "id": "custom_icon_1",
+          "type": "image_picker",
+          "label": "t:Custom_icon",
+          "translate": false
+        },
+        {
+          "id": "title_1",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content_1",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "type": "header",
+          "label": "t:Text_2",
+          "translate": false
+        },
+        {
+          "id": "icon_2",
+          "type": "select",
+          "label": "t:Icon",
+          "translate": false
+        },
+        {
+          "id": "custom_icon_2",
+          "type": "image_picker",
+          "label": "t:Custom_icon",
+          "translate": false
+        },
+        {
+          "id": "title_2",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content_2",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "type": "header",
+          "label": "t:Text_3",
+          "translate": false
+        },
+        {
+          "id": "icon_3",
+          "type": "select",
+          "label": "t:Icon",
+          "translate": false
+        },
+        {
+          "id": "custom_icon_3",
+          "type": "image_picker",
+          "label": "t:Custom_icon",
+          "translate": false
+        },
+        {
+          "id": "title_3",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content_3",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "name": "t:Contact",
+  "type": null,
+  "settings": [
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Image",
+      "translate": false
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "type": "header",
+      "label": "t:Block_1",
+      "translate": false
+    },
+    {
+      "id": "text_1_heading",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "text_1_text",
+      "type": "richtext",
+      "label": "t:Text",
+      "translate": true
+    },
+    {
+      "type": "header",
+      "label": "t:Block_2",
+      "translate": false
+    },
+    {
+      "id": "text_2_heading",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "text_2_text",
+      "type": "richtext",
+      "label": "t:Text",
+      "translate": true
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "id": "button_background",
+      "type": "color",
+      "label": "t:Button_background",
+      "translate": false
+    },
+    {
+      "id": "button_text_color",
+      "type": "color",
+      "label": "t:Button_text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "text",
+      "name": "t:Text_field",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Name",
+          "translate": true
+        },
+        {
+          "id": "use_long_text",
+          "type": "checkbox",
+          "label": "t:Use_long_text",
+          "translate": false
+        },
+        {
+          "id": "is_required",
+          "type": "checkbox",
+          "label": "t:Field_is_required",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "dropdown",
+      "name": "t:Dropdown",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Name",
+          "translate": true
+        },
+        {
+          "id": "values",
+          "type": "text",
+          "label": "t:Values",
+          "translate": true
+        }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "name": "t:Checkbox",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Name",
+          "translate": true
+        },
+        {
+          "id": "is_required",
+          "type": "checkbox",
+          "label": "t:Field_is_required",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

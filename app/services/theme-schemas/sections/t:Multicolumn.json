@@ -1,0 +1,180 @@
+{
+  "name": "t:Multicolumn",
+  "type": null,
+  "settings": [
+    {
+      "id": "reveal_on_scroll",
+      "type": "checkbox",
+      "label": "t:Reveal_on_scroll",
+      "translate": false
+    },
+    {
+      "id": "stack_items",
+      "type": "checkbox",
+      "label": "t:Stack_items",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "id": "column_alignment",
+      "type": "select",
+      "label": "t:Column_header_alignment",
+      "translate": false
+    },
+    {
+      "id": "mobile_item_size",
+      "type": "select",
+      "label": "t:Mobile_tablet_column_size",
+      "translate": false
+    },
+    {
+      "id": "desktop_item_size",
+      "type": "select",
+      "label": "t:Desktop_column_size",
+      "translate": false
+    },
+    {
+      "id": "spacing",
+      "type": "select",
+      "label": "t:Spacing",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "t:Column",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_width",
+          "type": "range",
+          "label": "t:Image_width",
+          "translate": false
+        },
+        {
+          "id": "image_border",
+          "type": "color",
+          "label": "t:Image_border",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "link_text",
+          "type": "text",
+          "label": "t:Link_text",
+          "translate": false
+        },
+        {
+          "id": "link_url",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "id": "link_style",
+          "type": "select",
+          "label": "t:Link_style",
+          "translate": false
+        },
+        {
+          "id": "text_alignment",
+          "type": "select",
+          "label": "t:Text_alignment",
+          "translate": false
+        },
+        {
+          "id": "vertical_alignment",
+          "type": "select",
+          "label": "t:Vertical_alignment",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

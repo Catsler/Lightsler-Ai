@@ -1,0 +1,114 @@
+{
+  "name": "t:Image_with_text_overlay",
+  "type": "image-with-text-overlay",
+  "settings": [
+    {
+      "id": "reveal_on_scroll",
+      "type": "checkbox",
+      "label": "t:Reveal_on_scroll",
+      "translate": false
+    },
+    {
+      "id": "section_height",
+      "type": "select",
+      "label": "t:Section_height",
+      "translate": false
+    },
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Image",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "id": "button_text",
+      "type": "text",
+      "label": "t:Button_text",
+      "translate": true
+    },
+    {
+      "id": "button_link",
+      "type": "url",
+      "label": "t:Button_link",
+      "translate": false
+    },
+    {
+      "id": "link_style",
+      "type": "select",
+      "label": "t:Link_style",
+      "translate": false
+    },
+    {
+      "id": "background_type",
+      "type": "select",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_width",
+      "type": "select",
+      "label": "t:Text_width",
+      "translate": false
+    },
+    {
+      "id": "text_position",
+      "type": "select",
+      "label": "t:Text_position",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "id": "button_background",
+      "type": "color",
+      "label": "t:Button_background",
+      "translate": false
+    },
+    {
+      "id": "button_text_color",
+      "type": "color",
+      "label": "t:Button_text",
+      "translate": false
+    },
+    {
+      "id": "overlay_color",
+      "type": "color",
+      "label": "t:Overlay",
+      "translate": false
+    },
+    {
+      "id": "overlay_opacity",
+      "type": "range",
+      "label": "t:Overlay_opacity",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

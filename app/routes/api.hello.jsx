@@ -21,11 +21,11 @@ async function handlePostHello() {
 }
 
 export const loader = createApiRoute(handleGetHello, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: 'Hello GET测试'
 });
 
 export const action = createApiRoute(handlePostHello, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: 'Hello POST测试'
 });

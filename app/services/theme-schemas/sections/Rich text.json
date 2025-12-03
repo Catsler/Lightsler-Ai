@@ -1,0 +1,56 @@
+{
+  "name": "Rich text",
+  "type": "rich-text",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "translate": true
+    },
+    {
+      "id": "text",
+      "type": "richtext",
+      "label": "Text",
+      "translate": true
+    },
+    {
+      "id": "button_label",
+      "type": "text",
+      "label": "Button label",
+      "translate": true
+    },
+    {
+      "id": "button_link",
+      "type": "url",
+      "label": "Button link",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "text_block",
+      "name": "Text block",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Block title",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "textarea",
+          "label": "Block content",
+          "translate": true
+        },
+        {
+          "id": "cta_link",
+          "type": "url",
+          "label": "CTA link",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

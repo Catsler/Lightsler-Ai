@@ -1,0 +1,50 @@
+{
+  "name": "Featured collection",
+  "type": "featured-collection",
+  "settings": [
+    {
+      "id": "title",
+      "type": "text",
+      "label": "Title",
+      "translate": true
+    },
+    {
+      "id": "description",
+      "type": "textarea",
+      "label": "Description",
+      "translate": true
+    },
+    {
+      "id": "cta_text",
+      "type": "text",
+      "label": "CTA text",
+      "translate": true
+    },
+    {
+      "id": "cta_url",
+      "type": "url",
+      "label": "CTA URL",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "product",
+      "name": "Product",
+      "settings": [
+        {
+          "id": "badge_text",
+          "type": "text",
+          "label": "Badge text",
+          "translate": true
+        },
+        {
+          "id": "link_label",
+          "type": "text",
+          "label": "Link label",
+          "translate": true
+        }
+      ]
+    }
+  ]
+}

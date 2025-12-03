@@ -1,0 +1,64 @@
+{
+  "name": "t:Gift_card",
+  "type": null,
+  "settings": [
+    {
+      "type": "header",
+      "label": "t:Logo",
+      "translate": false
+    },
+    {
+      "id": "logo",
+      "type": "image_picker",
+      "label": "t:Image",
+      "translate": false
+    },
+    {
+      "id": "logo_max_width",
+      "type": "range",
+      "label": "t:Image_width",
+      "translate": false
+    },
+    {
+      "id": "mobile_logo_max_width",
+      "type": "range",
+      "label": "t:Mobile_image_width",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Content",
+      "translate": false
+    },
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Gift_card_image",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "content_background",
+      "type": "color",
+      "label": "t:Content_background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

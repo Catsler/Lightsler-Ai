@@ -1,5 +1,5 @@
 /**
- * 发布管理页面
+ * 页面
  * 管理翻译内容到Shopify的发布
  */
 
@@ -29,6 +29,7 @@ import { getSyncStatusStats } from "../services/sync-to-shopify.server.js";
 import prisma from "../db.server.js";
 import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
 import { useAppRefresh } from "../utils/use-app-refresh.client";
+import { useTranslation } from "react-i18next";
 
 /**
  * Loader函数：获取发布状态数据
@@ -89,7 +90,8 @@ export default function SyncManagementPage() {
   const submit = useSubmit();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
-  const { refresh } = useAppRefresh(); // App Bridge 安全刷新
+  const { refresh } = useAppRefresh();
+  const { t, i18n } = useTranslation("home"); // App Bridge 安全刷新
   
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [selectedResourceType, setSelectedResourceType] = useState("");
@@ -159,41 +161,46 @@ export default function SyncManagementPage() {
     <Text variant="bodyMd" as="p" tone="critical">
       {getSyncErrorMessage(item.syncError)}
     </Text>,
-    new Date(item.updatedAt).toLocaleString('zh-CN')
+    new Date(item.updatedAt).toLocaleString(i18n.language || 'en')
   ]);
+
+  const tableHeadings = t('ui.syncTableHeadings', {
+    returnObjects: true,
+    defaultValue: ['Resource', 'Type', 'Language', 'Error', 'Time']
+  });
   
   return (
     <Page
-      title="发布管理"
-      subtitle="管理翻译内容到Shopify的发布"
+      title={t('ui.syncTitle', { ns: 'home', defaultValue: 'Publish management' })}
+      subtitle={t('ui.syncSubtitle', { ns: 'home', defaultValue: 'Manage publishing translated content to Shopify' })}
       primaryAction={{
-        content: "立即发布",
+        content: t('ui.syncActionPublish', { ns: 'home', defaultValue: 'Publish now' }),
         onAction: handleSync,
         loading: isLoading,
         disabled: syncStats.pending === 0
       }}
       secondaryActions={[
         {
-          content: "刷新状态",
+          content: t('ui.syncActionRefresh', { ns: 'home', defaultValue: 'Refresh status' }),
           onAction: () => refresh()
         }
       ]}
     >
       {/* 迁移提示 */}
       <Banner
-        title="功能已整合"
+        title={t('ui.syncMigrationTitle', { ns: 'home', defaultValue: 'Feature merged' })}
         status="info"
         onDismiss={() => {}}
-        action={{content: '返回主页', url: '/app'}}
+        action={{content: t('ui.syncBackHome', { ns: 'home', defaultValue: 'Back to home' }), url: '/app'}}
       >
-        <p>发布功能已整合到主页面，您可以直接使用主页的"发布翻译"和"批量发布"按钮。</p>
+        <p>{t('ui.syncMigrationBody', { ns: 'home', defaultValue: 'Publishing has been merged into the home page. Use the publish buttons there.' })}</p>
       </Banner>
 
       <Layout>
         {/* 发布状态概览 */}
         <Layout.Section>
           <Card>
-            <Text variant="headingMd" as="h2">发布状态概览</Text>
+            <Text variant="headingMd" as="h2">{t('ui.syncStatusOverview', { defaultValue: 'Publish status overview' })}</Text>
             <div style={{ marginTop: '16px' }}>
               <BlockStack gap="500">
                 <ProgressBar 
@@ -203,13 +210,13 @@ export default function SyncManagementPage() {
                 />
                 <InlineStack align="space-between">
                   <InlineStack gap="200">
-                    <Badge status="attention">待发布: {syncStats.pending}</Badge>
-                    <Badge status="info">发布中: {syncStats.syncing}</Badge>
-                    <Badge status="success">已发布: {syncStats.synced}</Badge>
-                    <Badge status="critical">失败: {syncStats.failed}</Badge>
+                    <Badge status="attention">{t('ui.syncPending', { defaultValue: 'Pending' })}: {syncStats.pending}</Badge>
+                    <Badge status="info">{t('ui.syncProcessing', { defaultValue: 'Processing' })}: {syncStats.syncing}</Badge>
+                    <Badge status="success">{t('ui.syncSynced', { defaultValue: 'Published' })}: {syncStats.synced}</Badge>
+                    <Badge status="critical">{t('ui.syncFailed', { defaultValue: 'Failed' })}: {syncStats.failed}</Badge>
                   </InlineStack>
                   <Text variant="bodyMd" as="p" tone="subdued">
-                    总计: {totalTranslations} | 完成率: {syncProgress}%
+                    {t('ui.syncTotal', { total: totalTranslations, progress: syncProgress, defaultValue: 'Total: {{total}} | Progress: {{progress}}%' })}
                   </Text>
                 </InlineStack>
               </BlockStack>
@@ -220,15 +227,15 @@ export default function SyncManagementPage() {
         {/* 发布选项 */}
         <Layout.Section>
           <Card>
-            <Text variant="headingMd" as="h2">发布选项</Text>
+            <Text variant="headingMd" as="h2">{t('ui.syncOptions', { defaultValue: 'Publish options' })}</Text>
             <div style={{ marginTop: '16px' }}>
               <BlockStack gap="500">
                 <InlineStack gap="400">
                   <div style={{ flex: 1 }}>
                     <Select
-                      label="选择语言"
+                      label={t('ui.syncLanguageLabel', { defaultValue: 'Language' })}
                       options={[
-                        { label: "所有语言", value: "" },
+                        { label: t('ui.syncLanguageAll', { defaultValue: 'All languages' }), value: "" },
                         ...(Array.isArray(languages) ? languages : []).map(lang => ({
                           label: `${lang.name} (${lang.code})`,
                           value: lang.code
@@ -240,9 +247,9 @@ export default function SyncManagementPage() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <Select
-                      label="资源类型"
+                      label={t('ui.syncResourceTypeLabel', { defaultValue: 'Resource type' })}
                       options={[
-                        { label: "所有类型", value: "" },
+                        { label: t('ui.syncResourceTypeAll', { defaultValue: 'All types' }), value: "" },
                         ...resourceTypes
                       ]}
                       value={selectedResourceType}
@@ -251,17 +258,17 @@ export default function SyncManagementPage() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <Select
-                      label="批量限制"
+                      label={t('ui.syncBatchLimit', { defaultValue: 'Batch limit' })}
                       options={[
-                        { label: "50 条", value: "50" },
-                        { label: "100 条", value: "100" },
-                        { label: "200 条", value: "200" },
-                        { label: "500 条", value: "500" },
-                        { label: "全部", value: "0" }
+                        { label: t('ui.syncBatch50', { defaultValue: '50 items' }), value: "50" },
+                        { label: t('ui.syncBatch100', { defaultValue: '100 items' }), value: "100" },
+                        { label: t('ui.syncBatch200', { defaultValue: '200 items' }), value: "200" },
+                        { label: t('ui.syncBatch500', { defaultValue: '500 items' }), value: "500" },
+                        { label: t('ui.syncBatchAll', { defaultValue: 'All' }), value: "0" }
                       ]}
                       value={syncLimit}
                       onChange={setSyncLimit}
-                      helpText="每次发布的最大记录数"
+                      helpText={t('ui.syncBatchHelp', { defaultValue: 'Max items per publish job' })}
                     />
                   </div>
                 </InlineStack>
@@ -273,14 +280,14 @@ export default function SyncManagementPage() {
                     loading={isLoading}
                     disabled={syncStats.pending === 0}
                   >
-                    开始发布 ({syncStats.pending} 条待处理)
+                    {t('ui.syncPublishStart', { pending: syncStats.pending, defaultValue: 'Start publish ({{pending}} pending)' })}
                   </Button>
                   {syncStats.failed > 0 && (
                     <Button
                       onClick={() => setShowRetryModal(true)}
                       tone="critical"
                     >
-                      重试失败 ({syncStats.failed} 条)
+                      {t('ui.syncRetryFailed', { failed: syncStats.failed, defaultValue: 'Retry failed ({{failed}})' })}
                     </Button>
                   )}
                 </ButtonGroup>
@@ -295,15 +302,15 @@ export default function SyncManagementPage() {
             <Card>
               <BlockStack gap="500">
                 <InlineStack align="space-between">
-                  <Text variant="headingMd" as="h2">最近失败的发布</Text>
+                  <Text variant="headingMd" as="h2">{t('ui.syncFailedTitle', { defaultValue: 'Recent failed publishes' })}</Text>
                   <Button plain onClick={handleClearErrors}>
-                    清理错误记录
+                    {t('ui.syncClearErrors', { defaultValue: 'Clear error records' })}
                   </Button>
                 </InlineStack>
                 
                 <DataTable
                   columnContentTypes={['text', 'text', 'text', 'text', 'text']}
-                  headings={['资源标题', '类型', '语言', '错误信息', '时间']}
+                  headings={Array.isArray(tableHeadings) ? tableHeadings : ['Resource', 'Type', 'Language', 'Error', 'Time']}
                   rows={failedRows}
                 />
               </BlockStack>
@@ -314,22 +321,23 @@ export default function SyncManagementPage() {
         {/* 使用说明 */}
         <Layout.Section>
           <Card>
-            <Text variant="headingMd" as="h2">使用说明</Text>
+            <Text variant="headingMd" as="h2">{t('ui.syncGuide', { defaultValue: 'How to use' })}</Text>
             <div style={{ marginTop: '16px' }}>
               <TextContainer>
                 <Text variant="bodyMd" as="p">
-                  <strong>新的发布流程：</strong>
+                  <strong>{t('ui.syncGuideNewFlow', { defaultValue: 'New publishing flow:' })}</strong>
                 </Text>
                 <ol>
-                  <li>翻译操作现在只保存到本地数据库，不会直接提交到Shopify</li>
-                  <li>使用此页面将缓存的翻译批量发布到Shopify</li>
-                  <li>支持按语言、资源类型筛选发布内容</li>
-                  <li>失败的发布可以重试，不会丢失翻译结果</li>
-                  <li>系统自动处理Shopify API的100个字段限制，分批提交</li>
+                  <li>{t('ui.syncGuideItem1', { defaultValue: 'Translations save locally only—no direct publish to Shopify.' })}</li>
+                  <li>{t('ui.syncGuideItem2', { defaultValue: 'Use this page to publish cached translations in bulk.' })}</li>
+                  <li>{t('ui.syncGuideItem3', { defaultValue: 'Filter by language or resource type.' })}</li>
+                  <li>{t('ui.syncGuideItem4', { defaultValue: 'Failed publishes can be retried without losing translations.' })}</li>
+                  <li>{t('ui.syncGuideItem5', { defaultValue: 'Handles Shopify 100-field limit automatically via batches.' })}</li>
                 </ol>
                 <Text variant="bodyMd" as="p" tone="success">
-                  <strong>优势：</strong>
-                  避免重复调用GPT API，降低成本；支持断点续传；可以先批量翻译，后续择时发布。
+                  <strong>{t('ui.syncGuideBenefit', { defaultValue: 'Benefits:' })}</strong>
+                  {` ${t('ui.syncBenefitItem1', { defaultValue: 'Avoid repeated GPT calls and lower cost; supports resumable publishing.' })}`}
+                  {` ${t('ui.syncBenefitItem2', { defaultValue: 'Translate first, publish later when ready.' })}`}
                 </Text>
               </TextContainer>
             </div>
@@ -341,15 +349,15 @@ export default function SyncManagementPage() {
       <Modal
         open={showRetryModal}
         onClose={() => setShowRetryModal(false)}
-        title="确认重试失败的发布"
+        title={t('ui.syncConfirmRetryTitle', { defaultValue: 'Confirm retry failed publishes' })}
         primaryAction={{
-          content: "确认重试",
+          content: t('ui.syncConfirmRetryPrimary', { defaultValue: 'Confirm retry' }),
           onAction: handleRetry,
           destructive: false
         }}
         secondaryActions={[
           {
-            content: "取消",
+            content: t('ui.syncConfirmRetryCancel', { defaultValue: 'Cancel' }),
             onAction: () => setShowRetryModal(false)
           }
         ]}
@@ -357,10 +365,10 @@ export default function SyncManagementPage() {
         <Modal.Section>
           <TextContainer>
             <Text variant="bodyMd" as="p">
-              将重试 {syncStats.failed} 条失败的发布记录。
+              {t('ui.syncConfirmRetryBody1', { count: syncStats.failed, defaultValue: 'Retrying {{count}} failed publish records.' })}
             </Text>
             <Text variant="bodyMd" as="p">
-              这些记录将被重置为待发布状态，然后重新尝试发布到Shopify。
+              {t('ui.syncConfirmRetryBody2', { defaultValue: 'Records will reset to pending and re-publish to Shopify.' })}
             </Text>
           </TextContainer>
         </Modal.Section>

@@ -1,0 +1,105 @@
+{
+  "title": "Language domains",
+  "subtitle": "View language URL mappings for {{shop}}",
+  "empty": {
+    "heading": "No languages configured",
+    "action": "Open Shopify Markets settings",
+    "description": "Please configure Markets and languages in Shopify admin first."
+  },
+  "primaryAction": {
+    "syncing": "Syncing...",
+    "refresh": "Refresh config"
+  },
+  "overview": {
+    "primary": "Primary domain",
+    "markets": "Markets",
+    "languages": "Total languages",
+    "updated": "Updated at {{time}}",
+    "title": "Language Capacity",
+    "publishedCount": "Shopify Published",
+    "drafts": "Drafts (Internal)",
+    "addPublished": "Add Published Language",
+    "createDraft": "Create Draft Language",
+    "slotsAvailable": "You have slots available to publish directly to Shopify.",
+    "slotsFull": "Shopify limit reached. New languages will be created as Drafts."
+  },
+  "settings": {
+    "title": "Link conversion",
+    "desc": "Automatically convert internal links to the target language URLs when translating.",
+    "enable": "Enable link conversion",
+    "help": "Automatically convert internal links to the target language URL during translation.",
+    "strategy": "Conversion strategy",
+    "conservative": "Conservative",
+    "conservativeHelp": "Only convert clearly matched domains and paths.",
+    "aggressive": "Aggressive",
+    "aggressiveHelp": "Convert more links; may convert external links.",
+    "save": "Save settings"
+  },
+  "market": {
+    "languages": "{{count}} languages",
+    "primary": "Primary market"
+  },
+  "table": {
+    "headings": [
+      "Language",
+      "URL config",
+      "Type",
+      "Status",
+      "Actions"
+    ],
+    "default": "Default",
+    "alternate": "Alternate",
+    "path": "Path: {{path}}",
+    "visit": "Visit",
+    "published": "Published",
+    "unpublished": "Unpublished",
+    "titleFlat": "Published languages & domains",
+    "flatHeadings": {
+      "language": "Language",
+      "market": "Market",
+      "url": "URL",
+      "status": "Status",
+      "actions": "Actions",
+      "translation": "Translation"
+    },
+    "emptyFlatTitle": "No published languages yet",
+    "emptyFlatDesc": "Refresh to sync the latest language list from Shopify.",
+    "refresh": "Refresh"
+  },
+  "typeBadges": {
+    "primary": "Primary domain",
+    "subfolder": "Subfolder",
+    "subdomain": "Subdomain",
+    "domain": "Dedicated domain",
+    "unknown": "Unconfigured"
+  },
+  "guide": {
+    "title": "URL configuration guide",
+    "subfolder": "Subfolder",
+    "subdomain": "Subdomain",
+    "domain": "Dedicated domain"
+  },
+  "mapping": {
+    "unknownMarket": "Market"
+  },
+  "drafts": {
+    "title": "Staging Queue (Drafts)",
+    "notOnStore": "Not on Store",
+    "warning": "Draft languages are invisible to customers. To publish a draft, you must first unpublish an active language in Shopify Admin.",
+    "draft": "Draft",
+    "ready": "Ready",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Are you sure you want to delete this draft?",
+    "createTitle": "Create Draft Language",
+    "create": "Create Draft",
+    "limitReached": "Shopify language limit reached. This language will be created as a Draft and will NOT be visible on your store until you make space for it.",
+    "selectLanguage": "Select Language",
+    "selectPlaceholder": "Choose a language...",
+    "languageName": "Language Name",
+    "seoWarning": "Warning: Frequent swapping of published languages can negatively impact your SEO rankings."
+  },
+  "common": {
+    "cancel": "Cancel"
+  }
+}

@@ -13,7 +13,7 @@ import { getShopLocales } from "../services/shopify-locales.server.js";
 async function handleTranslate({ request, admin, session }) {
   const formData = await request.formData();
     
-    // 参数验证
+    // Parameter validation
     const params = {
       language: formData.get("language") || "zh-CN",
       resourceIds: formData.get("resourceIds") || "[]",
@@ -23,12 +23,12 @@ async function handleTranslate({ request, admin, session }) {
     };
     
     if (!params.language) {
-      throw new Error('缺少必要参数: language');
+      throw new Error('Missing required parameter: language');
     }
     
     const targetLanguage = params.language;
 
-    // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+    // Defensive: reject primary language translation
     const shopLocales = await getShopLocales(admin);
     const primaryLocale = shopLocales.find((locale) => locale.primary);
 
@@ -41,8 +41,8 @@ async function handleTranslate({ request, admin, session }) {
       });
 
       throw new Error(
-        `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
-        `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+        `Translating to primary language is not allowed ${primaryLocale.name || primaryLocale.locale}。` +
+        `Primary language content is the source; please choose another target language.`
       );
     }
 
@@ -51,18 +51,18 @@ async function handleTranslate({ request, admin, session }) {
     try {
       resourceIds = JSON.parse(params.resourceIds);
     } catch (error) {
-      throw new Error('resourceIds 必须是有效的JSON格式');
+      throw new Error('resourceIds must be valid JSON');
     }
     
-    // 获取店铺记录
+    // Fetch shop record
     const shop = await getOrCreateShop(session.shop, session.accessToken);
     
-    // 获取所有资源
+    // Fetch all resources
     const allResources = await getAllResources(shop.id);
     
-    // 筛选要翻译的资源 - 必须明确指定资源ID
+    // Filter resources to translate - IDs required
     if (resourceIds.length === 0) {
-      throw new Error('请选择要翻译的资源，不能为空');
+      throw new Error('Please select resources to translate; cannot be empty');
     }
     
     const resourcesToTranslate = allResources.filter(r => resourceIds.includes(r.id));
@@ -114,16 +114,16 @@ async function handleTranslate({ request, admin, session }) {
     
     if (resourcesToTranslate.length === 0) {
       return {
-        message: "没有找到需要翻译的资源",
+        message: "No resources found to translate",
         results: [],
         stats: { total: 0, success: 0, failure: 0 }
       };
     }
 
-    // 🆕 自动队列重定向：大批量翻译自动使用异步队列（避免超时）
+    // Auto-queue redirect for large batch to avoid timeout
     const QUEUE_THRESHOLD = 10; // 超过10个资源自动使用队列
     if (resourcesToTranslate.length > QUEUE_THRESHOLD) {
-      console.log(`资源数量(${resourcesToTranslate.length})超过阈值(${QUEUE_THRESHOLD})，自动重定向到队列模式`);
+      console.log(`Resource count(${resourcesToTranslate.length})exceeds threshold(${QUEUE_THRESHOLD})，自动重定向到队列模式`);
 
       // 导入队列服务
       const { addBatchTranslationJob } = await import("../services/queue.server.js");
@@ -140,7 +140,7 @@ async function handleTranslate({ request, admin, session }) {
         }
       );
 
-      // 记录队列任务创建
+      // Log queue job creation
       console.log('[METRICS]', {
         type: 'batch_translation_queued',
         resource_count: jobResult.resourceCount,
@@ -148,21 +148,21 @@ async function handleTranslate({ request, admin, session }) {
         timestamp: Date.now()
       });
 
-      // 返回队列任务信息（前端会显示Toast）
+      // Return queue job info (frontend shows toast)
       return {
         redirected: true,
         mode: 'queue',
         jobId: jobResult.jobId,
         resourceCount: jobResult.resourceCount,
         estimatedMinutes: Math.ceil(jobResult.resourceCount / 20), // 假设20个/分钟
-        message: `已加入翻译队列，共 ${jobResult.resourceCount} 个资源。请前往"资源列表"页面（/app）刷新查看进度，预计 ${Math.ceil(jobResult.resourceCount / 20)} 分钟完成。`,
+        message: `Queued for translation, total ${jobResult.resourceCount} resources. Please refresh the Resources page to view progress. ETA ${Math.ceil(jobResult.resourceCount / 20)}  minutes.`,
         success: true
       };
     }
 
-    // 如果需要清除缓存，先删除现有的翻译记录
+    // If clearing cache, delete existing translations first
     if (clearCache) {
-      console.log('清除缓存：删除现有翻译记录');
+      console.log('Clearing cache: removing existing translations');
       const { deleteTranslations } = await import("../services/database.server.js");
 
       for (const resource of resourcesToTranslate) {
@@ -196,7 +196,7 @@ async function handleTranslate({ request, admin, session }) {
     
     const results = [];
 
-    // 长文本资源优先级排序和分批处理
+    // Long text prioritization and batching
     const isLikelyLongText = (resource) => {
       const textFields = [
         resource.description,
@@ -209,7 +209,7 @@ async function handleTranslate({ request, admin, session }) {
       return textFields.some(text => text && text.length > 1500);
     };
 
-    // 按优先级排序：长文本资源优先
+    // Sort by priority: long text first
     const sortedResources = [...resourcesToTranslate].sort((a, b) => {
       const aIsLong = isLikelyLongText(a);
       const bIsLong = isLikelyLongText(b);
@@ -219,7 +219,7 @@ async function handleTranslate({ request, admin, session }) {
       return 0;
     });
 
-    // 分批处理配置
+    // Batch processing config
     const BATCH_SIZE = 5;
     const batches = [];
     for (let i = 0; i < sortedResources.length; i += BATCH_SIZE) {
@@ -233,17 +233,17 @@ async function handleTranslate({ request, admin, session }) {
       longTextCount: sortedResources.filter(isLikelyLongText).length
     });
 
-    // 🆕 获取链接转换配置（批次循环外，只调用一次）
+    // Fetch link conversion config once per batch loop
     const linkConversionConfig = await getLinkConversionConfig(
       session.shop,
       admin,
       targetLanguage
     ).catch(err => {
-      console.warn('获取链接转换配置失败，将跳过链接转换', err);
+      console.warn('Failed to get link conversion config, skipping conversion', err);
       return null;  // 降级处理
     });
 
-    // 按批次处理
+    // Process by batches
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
       const batchStartTime = Date.now();
@@ -313,7 +313,7 @@ async function handleTranslate({ request, admin, session }) {
             }
           );
 
-          // 返回队列结果并跳过后续同步逻辑
+          // 返回队列结果并skipped后续同步逻辑
           results.push({
             resourceId: resource.id,
             resourceType: resource.resourceType,
@@ -323,7 +323,7 @@ async function handleTranslate({ request, admin, session }) {
             jobId: jobResult.jobId,
             message: `已加入翻译队列，Job ID: ${jobResult.jobId}`
           });
-          continue;  // ⚠️ 关键：跳过后续同步逻辑
+          continue;  // ⚠️ 关键：skipped后续同步逻辑
         } else if (resourceTypeUpper === 'PRODUCT') {
           const { translateProductWithRelated } = await import('../services/product-translation-enhanced.server.js');
 
@@ -348,7 +348,7 @@ async function handleTranslate({ request, admin, session }) {
         
         if (translations.skipped) {
           await updateResourceStatus(resource.id, 'pending');
-          console.log(`ℹ️ 跳过资源翻译（内容未变化）: ${resource.title}`);
+          console.log(`ℹ️ skipped资源翻译（内容未变化）: ${resource.title}`);
 
           const skipReason = translations.reason || translations.skipReason || 'skipped';
           const skipCode = skipReason === 'skipped_by_hooks'
@@ -465,13 +465,13 @@ async function handleTranslate({ request, admin, session }) {
     };
 
     return {
-      message: `翻译完成: ${successCount} 成功, ${failureCount} 失败, ${skippedCount} 跳过`,
+      message: `Translation completed: ${successCount} success, ${failureCount} failed, ${skippedCount} skipped`,
       ...responseData
     };
 }
 
 export const action = createApiRoute(handleTranslate, {
   requireAuth: true,
-  operationName: '批量翻译',
+  operationName: 'batch translation',
   timeout: 60000 // 增加到60秒，支持分批处理
 });

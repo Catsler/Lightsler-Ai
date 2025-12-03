@@ -1,0 +1,132 @@
+{
+  "name": "t:Timeline",
+  "type": null,
+  "settings": [
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "text_position",
+      "type": "select",
+      "label": "t:Desktop_item_text_position",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "id": "item_background",
+      "type": "color",
+      "label": "t:Box_background",
+      "translate": false
+    },
+    {
+      "id": "item_text_color",
+      "type": "color",
+      "label": "t:Box_text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "t:Item",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "label",
+          "type": "text",
+          "label": "t:Progress_bar_label",
+          "translate": true
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "button_text",
+          "type": "text",
+          "label": "t:Button_text",
+          "translate": true
+        },
+        {
+          "id": "button_link",
+          "type": "url",
+          "label": "t:Button_link",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

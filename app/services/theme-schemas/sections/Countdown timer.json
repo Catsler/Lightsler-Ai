@@ -1,0 +1,147 @@
+{
+  "name": "Countdown timer",
+  "type": "countdown",
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "Create urgency with this section. Featuring timezone-sensitive promotion end times and cart drawer countdowns. [Learn more](https://www.zalify.com/theme/help/countdown)",
+      "translate": false
+    },
+    {
+      "id": "mode",
+      "type": "select",
+      "label": "Countdown mode",
+      "translate": false
+    },
+    {
+      "id": "relative_minutes",
+      "type": "number",
+      "label": "Relative minutes",
+      "translate": false
+    },
+    {
+      "id": "specific_time",
+      "type": "text",
+      "label": "Specific time",
+      "translate": false
+    },
+    {
+      "id": "hide_on_complete",
+      "type": "checkbox",
+      "label": "Hide timer on complete",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Content",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "Content",
+      "translate": true
+    },
+    {
+      "id": "button_text",
+      "type": "text",
+      "label": "Button text",
+      "translate": true
+    },
+    {
+      "id": "button_link",
+      "type": "url",
+      "label": "Button link",
+      "translate": false
+    },
+    {
+      "id": "background_type",
+      "type": "select",
+      "label": "Background type",
+      "translate": false
+    },
+    {
+      "id": "text_width",
+      "type": "select",
+      "label": "Text width",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "Text",
+      "translate": false
+    },
+    {
+      "id": "button_background",
+      "type": "color",
+      "label": "Button background",
+      "translate": false
+    },
+    {
+      "id": "button_text_color",
+      "type": "color",
+      "label": "Button text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "Ignore vertical spacing in theme settings.",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "Desktop top padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "Desktop bottom padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "Mobile top padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "Mobile bottom padding",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

@@ -1,8 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { invalidateCoverageCache } from "./language-coverage.server.js";
 import { logger } from "../utils/logger.server.js";
+import { applySoftDeleteMiddleware } from "../utils/prisma-soft-delete.server.js";
 
 const prisma = new PrismaClient();
+applySoftDeleteMiddleware(prisma);
 
 /**
  * 递归清洗 translationFields 对象

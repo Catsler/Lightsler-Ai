@@ -4,9 +4,9 @@
  * 基于Shopify GraphQL Admin API 2025-01
  */
 
-import { authenticate } from '../shopify.server.js';
 import prisma from '../db.server.js';
 import { logger as baseLogger } from '../utils/logger.server.js';
+import { createServiceErrorHandler } from '../utils/service-error-handler.server.js';
 
 // 创建日志记录器
 const localesLogger = {
@@ -58,7 +58,9 @@ function validateLanguageConsistency(code, name) {
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Array>} 可用语言列表
  */
-export async function getAvailableLocales(admin) {
+const handleLocalesServiceError = createServiceErrorHandler('SHOPIFY_LOCALES');
+
+async function getAvailableLocalesInternal(admin) {
   const query = `
     query {
       availableLocales {
@@ -68,29 +70,28 @@ export async function getAvailableLocales(admin) {
     }
   `;
 
-  try {
-    const response = await admin.graphql(query);
-    const result = await response.json();
-    
-    if (result.errors) {
-      localesLogger.error('获取可用语言失败:', result.errors);
-      throw new Error('Failed to fetch available locales');
-    }
+  const response = await admin.graphql(query);
+  const result = await response.json();
 
-    localesLogger.info(`获取到 ${result.data.availableLocales.length} 种可用语言`);
-    return result.data.availableLocales;
-  } catch (error) {
-    localesLogger.error('查询可用语言时出错:', error);
+  if (result.errors) {
+    const error = new Error('Failed to fetch available locales');
+    error.code = 'SHOPIFY_AVAILABLE_LOCALES_ERROR';
+    error.context = { errors: result.errors };
     throw error;
   }
+
+  localesLogger.info(`获取到 ${result.data.availableLocales.length} 种可用语言`);
+  return result.data.availableLocales;
 }
+
+export const getAvailableLocales = handleLocalesServiceError(getAvailableLocalesInternal);
 
 /**
  * 获取店铺已启用的语言
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Array>} 已启用的语言列表
  */
-export async function getShopLocales(admin) {
+async function getShopLocalesInternal(admin) {
   const query = `
     query {
       shopLocales {
@@ -102,22 +103,21 @@ export async function getShopLocales(admin) {
     }
   `;
 
-  try {
-    const response = await admin.graphql(query);
-    const result = await response.json();
-    
-    if (result.errors) {
-      localesLogger.error('获取店铺语言失败:', result.errors);
-      throw new Error('Failed to fetch shop locales');
-    }
+  const response = await admin.graphql(query);
+  const result = await response.json();
 
-    localesLogger.info(`店铺已启用 ${result.data.shopLocales.length} 种语言`);
-    return result.data.shopLocales;
-  } catch (error) {
-    localesLogger.error('查询店铺语言时出错:', error);
+  if (result.errors) {
+    const error = new Error('Failed to fetch shop locales');
+    error.code = 'SHOPIFY_SHOP_LOCALES_ERROR';
+    error.context = { errors: result.errors };
     throw error;
   }
+
+  localesLogger.info(`店铺已启用 ${result.data.shopLocales.length} 种语言`);
+  return result.data.shopLocales;
 }
+
+export const getShopLocales = handleLocalesServiceError(getShopLocalesInternal);
 
 /**
  * 启用新的语言
@@ -125,7 +125,7 @@ export async function getShopLocales(admin) {
  * @param {string} locale - 语言代码（如 'zh-CN', 'fr', 'es'）
  * @returns {Promise<Object>} 启用的语言信息
  */
-export async function enableLocale(admin, locale) {
+async function enableLocaleInternal(admin, locale) {
   const mutation = `
     mutation enableLocale($locale: String!) {
       shopLocaleEnable(locale: $locale) {
@@ -143,32 +143,33 @@ export async function enableLocale(admin, locale) {
     }
   `;
 
-  try {
-    const response = await admin.graphql(mutation, {
-      variables: { locale }
-    });
-    const result = await response.json();
-    
-    if (result.errors) {
-      localesLogger.error('启用语言失败:', result.errors);
-      throw new Error('Failed to enable locale');
-    }
+  const response = await admin.graphql(mutation, {
+    variables: { locale }
+  });
+  const result = await response.json();
 
-    const { userErrors, shopLocale } = result.data.shopLocaleEnable;
-    
-    if (userErrors && userErrors.length > 0) {
-      const errorMessages = userErrors.map(e => e.message).join(', ');
-      localesLogger.error(`启用语言 ${locale} 失败:`, errorMessages);
-      throw new Error(errorMessages);
-    }
-
-    localesLogger.info(`成功启用语言: ${shopLocale.locale} (${shopLocale.name})`);
-    return shopLocale;
-  } catch (error) {
-    localesLogger.error(`启用语言 ${locale} 时出错:`, error);
+  if (result.errors) {
+    const error = new Error('Failed to enable locale');
+    error.code = 'SHOPIFY_ENABLE_LOCALE_ERROR';
+    error.context = { errors: result.errors, locale };
     throw error;
   }
+
+  const { userErrors, shopLocale } = result.data.shopLocaleEnable;
+
+  if (userErrors && userErrors.length > 0) {
+    const errorMessages = userErrors.map(e => e.message).join(', ');
+    const error = new Error(errorMessages);
+    error.code = 'SHOPIFY_ENABLE_LOCALE_USER_ERROR';
+    error.context = { userErrors, locale };
+    throw error;
+  }
+
+  localesLogger.info(`成功启用语言: ${shopLocale.locale} (${shopLocale.name})`);
+  return shopLocale;
 }
+
+export const enableLocale = handleLocalesServiceError(enableLocaleInternal);
 
 /**
  * 禁用语言
@@ -176,7 +177,7 @@ export async function enableLocale(admin, locale) {
  * @param {string} locale - 语言代码
  * @returns {Promise<Object>} 操作结果
  */
-export async function disableLocale(admin, locale) {
+async function disableLocaleInternal(admin, locale) {
   const mutation = `
     mutation disableLocale($locale: String!) {
       shopLocaleDisable(locale: $locale) {
@@ -189,32 +190,33 @@ export async function disableLocale(admin, locale) {
     }
   `;
 
-  try {
-    const response = await admin.graphql(mutation, {
-      variables: { locale }
-    });
-    const result = await response.json();
-    
-    if (result.errors) {
-      localesLogger.error('禁用语言失败:', result.errors);
-      throw new Error('Failed to disable locale');
-    }
+  const response = await admin.graphql(mutation, {
+    variables: { locale }
+  });
+  const result = await response.json();
 
-    const { userErrors, locale: disabledLocale } = result.data.shopLocaleDisable;
-    
-    if (userErrors && userErrors.length > 0) {
-      const errorMessages = userErrors.map(e => e.message).join(', ');
-      localesLogger.error(`禁用语言 ${locale} 失败:`, errorMessages);
-      throw new Error(errorMessages);
-    }
-
-    localesLogger.info(`成功禁用语言: ${disabledLocale}`);
-    return { locale: disabledLocale };
-  } catch (error) {
-    localesLogger.error(`禁用语言 ${locale} 时出错:`, error);
+  if (result.errors) {
+    const error = new Error('Failed to disable locale');
+    error.code = 'SHOPIFY_DISABLE_LOCALE_ERROR';
+    error.context = { errors: result.errors, locale };
     throw error;
   }
+
+  const { userErrors, locale: disabledLocale } = result.data.shopLocaleDisable;
+
+  if (userErrors && userErrors.length > 0) {
+    const errorMessages = userErrors.map(e => e.message).join(', ');
+    const error = new Error(errorMessages);
+    error.code = 'SHOPIFY_DISABLE_LOCALE_USER_ERROR';
+    error.context = { userErrors, locale };
+    throw error;
+  }
+
+  localesLogger.info(`成功禁用语言: ${disabledLocale}`);
+  return { locale: disabledLocale };
 }
+
+export const disableLocale = handleLocalesServiceError(disableLocaleInternal);
 
 /**
  * 同步店铺语言到本地数据库
@@ -222,139 +224,117 @@ export async function disableLocale(admin, locale) {
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Array>} 同步后的语言列表
  */
-export async function syncShopLocalesToDatabase(shopId, admin) {
-  try {
-    // 获取店铺已启用的语言
-    const shopLocales = await getShopLocales(admin);
-    
-    // 获取当前数据库中的语言
-    const existingLanguages = await prisma.language.findMany({
-      where: { shopId }
-    });
-    
-    const existingCodes = new Set(existingLanguages.map(l => l.code));
-    const shopLocaleCodes = new Set(shopLocales.map(l => l.locale));
-    
-    // 找出需要添加的语言
-    const toAdd = shopLocales.filter(l => !existingCodes.has(l.locale));
-    
-    // 找出需要更新的语言
-    const toUpdate = shopLocales.filter(l => existingCodes.has(l.locale));
-    
-    // 找出需要禁用的语言（在数据库中但不在Shopify中）
-    const toDisable = existingLanguages.filter(l => !shopLocaleCodes.has(l.code));
-    
-    // 批量操作
-    const operations = [];
-    
-    // 添加新语言
-    for (const locale of toAdd) {
-      // 验证语言配置一致性
-      if (!validateLanguageConsistency(locale.locale, locale.name)) {
-        localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
-      }
+async function syncShopLocalesToDatabaseInternal(shopId, admin) {
+  const shopLocales = await getShopLocalesInternal(admin);
 
-      operations.push(
-        prisma.language.create({
-          data: {
-            shopId,
-            code: locale.locale,
-            name: locale.name || locale.locale,
-            isActive: locale.published
-          }
-        })
-      );
-    }
-    
-    // 更新现有语言
-    for (const locale of toUpdate) {
-      // 验证语言配置一致性
-      if (!validateLanguageConsistency(locale.locale, locale.name)) {
-        localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
-      }
+  const existingLanguages = await prisma.language.findMany({
+    where: { shopId }
+  });
 
-      operations.push(
-        prisma.language.update({
-          where: {
-            shopId_code: {
-              shopId,
-              code: locale.locale
-            }
-          },
-          data: {
-            name: locale.name || locale.locale,
-            isActive: locale.published
-          }
-        })
-      );
+  const existingCodes = new Set(existingLanguages.map(l => l.code));
+  const shopLocaleCodes = new Set(shopLocales.map(l => l.locale));
+
+  const toAdd = shopLocales.filter(l => !existingCodes.has(l.locale));
+  const toUpdate = shopLocales.filter(l => existingCodes.has(l.locale));
+  const toDisable = existingLanguages.filter(l => !shopLocaleCodes.has(l.code));
+
+  const operations = [];
+
+  for (const locale of toAdd) {
+    if (!validateLanguageConsistency(locale.locale, locale.name)) {
+      localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
     }
-    
-    // 禁用不存在的语言
-    for (const language of toDisable) {
-      operations.push(
-        prisma.language.update({
-          where: {
-            shopId_code: {
-              shopId,
-              code: language.code
-            }
-          },
-          data: {
-            isActive: false
-          }
-        })
-      );
-    }
-    
-    // 执行所有操作
-    if (operations.length > 0) {
-      await prisma.$transaction(operations);
-      localesLogger.info(`同步完成: 添加 ${toAdd.length} 个, 更新 ${toUpdate.length} 个, 禁用 ${toDisable.length} 个语言`);
-    } else {
-      localesLogger.info('语言已同步，无需更新');
-    }
-    
-    // 返回更新后的语言列表
-    return await prisma.language.findMany({
-      where: { shopId, isActive: true },
-      orderBy: { name: 'asc' }
-    });
-  } catch (error) {
-    localesLogger.error('同步语言到数据库失败:', error);
-    throw error;
+
+    operations.push(
+      prisma.language.create({
+        data: {
+          shopId,
+          code: locale.locale,
+          name: locale.name || locale.locale,
+          isActive: locale.published
+        }
+      })
+    );
   }
+
+  for (const locale of toUpdate) {
+    if (!validateLanguageConsistency(locale.locale, locale.name)) {
+      localesLogger.warn(`语言配置不一致，已自动纠正: code=${locale.locale}, name=${locale.name}`);
+    }
+
+    operations.push(
+      prisma.language.update({
+        where: {
+          shopId_code: {
+            shopId,
+            code: locale.locale
+          }
+        },
+        data: {
+          name: locale.name || locale.locale,
+          isActive: locale.published
+        }
+      })
+    );
+  }
+
+  for (const language of toDisable) {
+    operations.push(
+      prisma.language.update({
+        where: {
+          shopId_code: {
+            shopId,
+            code: language.code
+          }
+        },
+        data: {
+          isActive: false
+        }
+      })
+    );
+  }
+
+  if (operations.length > 0) {
+    await prisma.$transaction(operations);
+    localesLogger.info(`同步完成: 添加 ${toAdd.length} 个, 更新 ${toUpdate.length} 个, 禁用 ${toDisable.length} 个语言`);
+  } else {
+    localesLogger.info('语言已同步，无需更新');
+  }
+
+  return prisma.language.findMany({
+    where: { shopId, isActive: true },
+    orderBy: { name: 'asc' }
+  });
 }
+
+export const syncShopLocalesToDatabase = handleLocalesServiceError(syncShopLocalesToDatabaseInternal);
 
 /**
  * 检查是否可以添加更多语言
  * @param {Object} admin - Shopify Admin API客户端
  * @returns {Promise<Object>} 检查结果
  */
-export async function checkLocaleLimit(admin, shopLocalesOverride) {
-  try {
-    const shopLocales = shopLocalesOverride ?? await getShopLocales(admin);
-    const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
-    const alternateLocales = shopLocales.filter((locale) => !locale.primary);
-    const maxAlternate = 20; // Shopify 限制最多 20 个备用语言
-    const remainingAlternateSlots = Math.max(maxAlternate - alternateLocales.length, 0);
+async function checkLocaleLimitInternal(admin, shopLocalesOverride) {
+  const shopLocales = shopLocalesOverride ?? await getShopLocalesInternal(admin);
+  const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+  const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+  const maxAlternate = 20;
+  const remainingAlternateSlots = Math.max(maxAlternate - alternateLocales.length, 0);
 
-    return {
-      primaryLocale: primaryLocale ? formatLocalesForUI([primaryLocale])[0] : null,
-      alternateCount: alternateLocales.length,
-      maxAlternate,
-      canAddMore: alternateLocales.length < maxAlternate,
-      remainingAlternateSlots,
-      totalLocales: shopLocales.length,
-      // 向后兼容字段
-      currentCount: alternateLocales.length,
-      maxLimit: maxAlternate,
-      remainingSlots: remainingAlternateSlots
-    };
-  } catch (error) {
-    localesLogger.error('检查语言限制失败:', error);
-    throw error;
-  }
+  return {
+    primaryLocale: primaryLocale ? formatLocalesForUI([primaryLocale])[0] : null,
+    alternateCount: alternateLocales.length,
+    maxAlternate,
+    canAddMore: alternateLocales.length < maxAlternate,
+    remainingAlternateSlots,
+    totalLocales: shopLocales.length,
+    currentCount: alternateLocales.length,
+    maxLimit: maxAlternate,
+    remainingSlots: remainingAlternateSlots
+  };
 }
+
+export const checkLocaleLimit = handleLocalesServiceError(checkLocaleLimitInternal);
 
 /**
  * 格式化语言列表以供UI使用

@@ -72,22 +72,82 @@ const RECOVERY_CONFIG = {
 
 // 错误恢复管理器
 export class ErrorRecoveryManager {
-  constructor() {
+  constructor(options = {}) {
+    const {
+      strategies,
+      checkInterval = 30000,
+      enabled = true,
+      instanceId = `instance-${typeof process !== 'undefined' ? process.pid : Math.random().toString(36).slice(2)}`
+    } = options;
+
+    const availableStrategies = new Set(Object.values(RECOVERY_STRATEGIES));
+    const resolvedStrategies = Array.isArray(strategies) && strategies.length > 0
+      ? strategies.filter((strategy) => availableStrategies.has(strategy))
+      : Array.from(availableStrategies);
+
+    this.enabled = enabled;
+    this.instanceId = instanceId;
+    this.enabledStrategies = new Set(resolvedStrategies);
+
     this.recoveryHistory = [];
     this.activeRecoveries = new Map();
     this.circuitBreakers = new Map();
     this.retryQueues = new Map();
-    this.checkInterval = 30000; // 30秒检查一次
+    this.checkInterval = checkInterval;
     this.checkTimer = null;
+    this.isRunning = false;
+  }
+  
+  validateConfig() {
+    if (!this.enabledStrategies || this.enabledStrategies.size === 0) {
+      logger.error('错误恢复服务未启用任何策略');
+      return false;
+    }
+    return true;
+  }
+
+  isStrategyEnabled(strategy) {
+    return this.enabledStrategies.has(strategy);
   }
   
   // 启动自动恢复
   start() {
+    if (!this.enabled) {
+      logger.info('错误自动恢复服务已禁用');
+      return false;
+    }
+
+    if (this.isRunning) {
+      return true;
+    }
+
+    if (!this.validateConfig()) {
+      logger.error('错误自动恢复服务配置验证失败，未启动');
+      return false;
+    }
+
+    this.isRunning = true;
+
     this.checkTimer = setInterval(() => {
-      this.checkAndRecover();
+      this.checkAndRecover().catch((error) => {
+        logger.error('错误恢复定时检查失败', {
+          error: error.message
+        });
+      });
     }, this.checkInterval);
-    
-    logger.info('错误自动恢复服务已启动');
+
+    // 启动时立即执行一次检查
+    this.checkAndRecover().catch((error) => {
+      logger.error('错误恢复初始检查失败', {
+        error: error.message
+      });
+    });
+    logger.info('错误自动恢复服务已启动', {
+      strategies: Array.from(this.enabledStrategies),
+      checkInterval: this.checkInterval,
+      instanceId: this.instanceId
+    });
+    return true;
   }
   
   // 停止自动恢复
@@ -96,12 +156,17 @@ export class ErrorRecoveryManager {
       clearInterval(this.checkTimer);
       this.checkTimer = null;
     }
+    this.isRunning = false;
     
     logger.info('错误自动恢复服务已停止');
   }
   
   // 检查并恢复错误
   async checkAndRecover() {
+    if (!this.enabled || !this.isRunning) {
+      return;
+    }
+
     try {
       // 获取最近的未解决错误
       const recentErrors = await this.getRecoverableErrors();
@@ -156,6 +221,14 @@ export class ErrorRecoveryManager {
       const config = RECOVERY_CONFIG[error.errorCode];
       if (!config) {
         logger.warn('没有找到恢复策略', { errorCode: error.errorCode });
+        return;
+      }
+
+      if (!this.isStrategyEnabled(config.strategy)) {
+        logger.debug('恢复策略未启用，跳过处理', {
+          errorCode: error.errorCode,
+          strategy: config.strategy
+        });
         return;
       }
       

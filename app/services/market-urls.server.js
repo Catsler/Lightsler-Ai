@@ -32,8 +32,12 @@ export async function getMarketsWebPresences(admin) {
                 url
               }
               subfolderSuffix
-              defaultLocale
-              alternateLocales
+              defaultLocale {
+                locale
+              }
+              alternateLocales {
+                locale
+              }
             }
           }
         }
@@ -49,10 +53,62 @@ export async function getMarketsWebPresences(admin) {
   `;
 
   try {
-    logger.info('开始获取Markets配置', { apiVersion: '2025-01+' });
+    logger.info('开始获取Markets配置', { apiVersion: '2025-07' });
 
     const response = await admin.graphql(query);
     const { data, errors } = await response.json();
+
+    // DEBUG: 原始返回关键字段
+    if (data?.markets?.nodes) {
+      logger.info('[DEBUG] GraphQL Markets 原始响应', {
+        totalMarkets: data.markets.nodes.length,
+        shopPrimaryDomain: data.shop?.primaryDomain?.host,
+        marketsDetail: data.markets.nodes.map((market) => ({
+          marketId: market.id,
+          marketName: market.name,
+          enabled: market.enabled,
+          isPrimary: market.primary,
+          webPresencesCount: market.webPresences?.nodes?.length || 0,
+          webPresences: (market.webPresences?.nodes || []).map((presence) => ({
+            presenceId: presence.id,
+            defaultLocale_RAW: presence.defaultLocale,
+            defaultLocale_locale: presence.defaultLocale?.locale,
+            alternateLocales_RAW: presence.alternateLocales,
+            alternateLocales_count:
+              Array.isArray(presence.alternateLocales)
+                ? presence.alternateLocales.length
+                : presence.alternateLocales?.nodes?.length || 0,
+            subfolderSuffix: presence.subfolderSuffix,
+            domain_host: presence.domain?.host,
+            domain_url: presence.domain?.url
+          }))
+        }))
+      });
+
+      const germanyMarket = data.markets.nodes.find(
+        (m) =>
+          (m.name || '').toLowerCase().includes('german') ||
+          (m.name || '').toLowerCase().includes('deutschland') ||
+          (m.webPresences?.nodes || []).some(
+            (p) =>
+              p.defaultLocale?.locale === 'de' ||
+              p.defaultLocale?.locale === 'de-de' ||
+              p.subfolderSuffix === 'de' ||
+              p.subfolderSuffix === 'de-de'
+          )
+      );
+
+      if (germanyMarket) {
+        logger.info('[DEBUG] Germany Market 详细信息', {
+          marketId: germanyMarket.id,
+          marketName: germanyMarket.name,
+          webPresencesRaw: germanyMarket.webPresences?.nodes,
+          firstPresence: germanyMarket.webPresences?.nodes?.[0]
+        });
+      } else {
+        logger.warn('[DEBUG] 未找到 Germany Market');
+      }
+    }
 
     if (errors?.length) {
       // 记录详细错误（与日志格式一致）
@@ -120,6 +176,13 @@ async function getMarketsWebPresencesMinimal(admin) {
               domain {
                 host
                 url
+              }
+              subfolderSuffix
+              defaultLocale {
+                locale
+              }
+              alternateLocales {
+                locale
               }
             }
           }
@@ -218,31 +281,77 @@ function normalizeLocaleEntries(raw) {
   return [];
 }
 
-function parseMarketsConfig(data) {
+/**
+ * 构建包含市场后缀的子路径片段（支持 de-de / en-eu 等）
+ * @param {string} locale - 语言代码
+ * @param {string} subfolderSuffix - 市场后缀
+ * @returns {string} 规范化后的子路径片段
+ */
+export function buildSubfolderSegment(locale, subfolderSuffix) {
+  const localePart = (locale || '').toLowerCase();
+  const rawSuffix = (subfolderSuffix || '').toLowerCase().replace(/^\/+|\/+$/g, '');
+
+  // 规则 1：无自定义后缀 → 回退到语言码
+  if (!rawSuffix) return localePart;
+
+  // 规则 2：locale 已包含连字符（已是完整形式，如 en-gb），suffix 视为市场路径，保持原样
+  if (localePart.includes('-')) {
+    return rawSuffix;
+  }
+
+  // 规则 3：suffix 已包含连字符（商家已配置完整路径），保持原样
+  if (rawSuffix.includes('-')) {
+    return rawSuffix;
+  }
+
+  // 规则 4：suffix 等于 locale（单一市场），保持原样
+  if (rawSuffix === localePart) {
+    return localePart;
+  }
+
+  // 规则 5：简单语言码 + 纯市场后缀 → 组合语言-市场
+  return `${localePart}-${rawSuffix}`;
+}
+
+export function parseMarketsConfig(data) {
   const primaryHost = data.shop.primaryDomain.host;
   const primaryUrl = data.shop.primaryDomain.url.replace(/\/$/, ''); // 移除尾部斜杠
   const shopName = data.shop.name;
 
   const mappings = {};
+  const mappingVariants = {};
   const marketsList = [];
 
-  const markets = Array.isArray(data.markets?.nodes) ? data.markets.nodes : [];
+    const markets = Array.isArray(data.markets?.nodes) ? data.markets.nodes : [];
 
-  markets.forEach((market) => {
-    if (!market?.enabled) return;
+    markets.forEach((market) => {
+      if (!market?.enabled) return;
 
-    const marketInfo = {
-      id: market.id,
-      name: market.name,
-      primary: market.primary,
-      languages: []
-    };
+      // DEBUG: 记录市场和 webPresence 规范化前后信息
+      const presences = Array.isArray(market.webPresences?.nodes) ? market.webPresences.nodes : [];
+      presences.forEach((presence, idx) => {
+        const localeInfo = getLocaleInfo(presence?.defaultLocale);
+        const normalizedSegment = buildSubfolderSegment(localeInfo.code, presence?.subfolderSuffix);
+        logger.info(`[DEBUG] WebPresence ${idx + 1}/${presences.length}`, {
+          marketName: market.name,
+          defaultLocale_RAW: presence?.defaultLocale,
+          defaultLocale_code: localeInfo.code,
+          subfolderSuffix_RAW: presence?.subfolderSuffix,
+          normalizedSegment,
+          isNormalized: presence?.subfolderSuffix === normalizedSegment
+        });
+      });
 
-    const presences = Array.isArray(market.webPresences?.nodes) ? market.webPresences.nodes : [];
+      const marketInfo = {
+        id: market.id,
+        name: market.name,
+        primary: market.primary,
+        languages: []
+      };
 
-    presences.forEach((presence) => {
-      const defaultLocaleInfo = getLocaleInfo(presence?.defaultLocale);
-      const defaultLocale = defaultLocaleInfo.code;
+      presences.forEach((presence) => {
+        const defaultLocaleInfo = getLocaleInfo(presence?.defaultLocale);
+        const defaultLocale = defaultLocaleInfo.code;
 
       if (!defaultLocale) {
         return;
@@ -257,10 +366,11 @@ function parseMarketsConfig(data) {
 
       if (presence?.subfolderSuffix) {
         // 子路径模式: example.com/fr
+        const subfolderSegment = buildSubfolderSegment(defaultLocale, presence.subfolderSuffix);
         localeConfig.type = 'subfolder';
-        localeConfig.suffix = presence.subfolderSuffix;
-        localeConfig.url = `${primaryUrl}/${presence.subfolderSuffix}`;
-        localeConfig.path = `/${presence.subfolderSuffix}/`;
+        localeConfig.suffix = subfolderSegment;
+        localeConfig.url = `${primaryUrl}/${subfolderSegment}`;
+        localeConfig.path = `/${subfolderSegment}/`;
       } else if (presence?.domain) {
         const domainHost = presence.domain.host;
 
@@ -286,7 +396,16 @@ function parseMarketsConfig(data) {
         localeConfig.url = primaryUrl;
       }
 
-      mappings[defaultLocale] = localeConfig;
+      // 记录单一映射：主市场优先覆盖
+      if (!mappings[defaultLocale] || market.primary) {
+        mappings[defaultLocale] = localeConfig;
+      }
+
+      // 记录多映射列表，供展示多市场路径
+      if (!mappingVariants[defaultLocale]) {
+        mappingVariants[defaultLocale] = [];
+      }
+      mappingVariants[defaultLocale].push(localeConfig);
       marketInfo.languages.push({
         locale: defaultLocale,
         languageTag: defaultLocaleInfo.tag,
@@ -298,18 +417,32 @@ function parseMarketsConfig(data) {
       alternateLocales.forEach((alternateEntry) => {
         const alternateInfo = getLocaleInfo(alternateEntry);
         const altLocale = alternateInfo.code;
-        if (!altLocale || mappings[altLocale]) {
-          return;
-        }
+        if (!altLocale) return;
 
-        const altConfig = {
+        let altConfig = {
           ...localeConfig,
           locale: altLocale,
           languageTag: alternateInfo.tag,
           isAlternate: true
         };
 
-        mappings[altLocale] = altConfig;
+        if (localeConfig.type === 'subfolder' && presence?.subfolderSuffix) {
+          const altSegment = buildSubfolderSegment(altLocale, presence.subfolderSuffix);
+          altConfig = {
+            ...altConfig,
+            suffix: altSegment,
+            url: `${primaryUrl}/${altSegment}`,
+            path: `/${altSegment}/`
+          };
+        }
+
+        if (!mappingVariants[altLocale]) {
+          mappingVariants[altLocale] = [];
+        }
+        mappingVariants[altLocale].push(altConfig);
+        if (!mappings[altLocale] || market.primary) {
+          mappings[altLocale] = altConfig;
+        }
         marketInfo.languages.push({
           locale: altLocale,
           languageTag: alternateInfo.tag,
@@ -331,6 +464,7 @@ function parseMarketsConfig(data) {
     shopName,
     mappings,
     markets: marketsList,
+    mappingVariants,
     timestamp: new Date().toISOString()
   };
 }
@@ -398,14 +532,15 @@ export async function getMarketsLanguagesGrouped(admin) {
     // 增强每个市场的语言元数据
     const enhancedMarkets = config.markets.map(market => {
       const enhancedLanguages = market.languages.map(lang => {
-        const shopLocale = shopLocales.find(l => l.locale === lang.locale);
-        const localeConfig = config.mappings[lang.locale] || {};
+        const localeKey = (lang.locale || '').toLowerCase();
+        const shopLocale = shopLocales.find(l => (l.locale || '').toLowerCase() === localeKey);
+        const localeConfig = config.mappings[lang.locale] || config.mappings[localeKey] || {};
 
         return {
           locale: lang.locale,
           name: shopLocale?.name || getLanguageName(lang.locale),
           type: lang.type,
-          url: lang.url,
+          url: lang.url || localeConfig.url || `${config.primaryUrl}/${lang.locale}`,
           path: localeConfig.path,
           suffix: localeConfig.suffix,
           marketName: market.name,
@@ -506,6 +641,53 @@ export function isValidUrl(url) {
 }
 
 /**
+ * 更新语言的发布状态
+ * @param {Object} admin - Shopify Admin API客户端
+ * @param {string} locale - 语言代码
+ * @param {boolean} published - 是否发布
+ */
+export async function updateShopLocalePublishStatus(admin, locale, published) {
+  const mutation = `#graphql
+    mutation shopLocaleUpdate($locale: String!, $shopLocale: ShopLocaleInput!) {
+      shopLocaleUpdate(locale: $locale, shopLocale: $shopLocale) {
+        shopLocale {
+          locale
+          published
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await admin.graphql(mutation, {
+      variables: {
+        locale,
+        shopLocale: { published }
+      }
+    });
+
+    const payload = await response.json();
+    const result = payload?.data?.shopLocaleUpdate;
+    const errors = result?.userErrors || payload?.errors;
+
+    if (errors?.length) {
+      const message = errors.map((e) => e.message || JSON.stringify(e)).join('; ');
+      throw new Error(message);
+    }
+
+    return result?.shopLocale || null;
+  } catch (error) {
+    await captureError('SHOP_LOCALE_UPDATE', error, { locale, published });
+    logger.error('更新语言发布状态失败', { locale, published, error: error?.message });
+    throw error;
+  }
+}
+
+/**
  * 标准化URL路径
  * @param {string} url - URL或路径
  * @returns {string} 标准化后的URL
@@ -542,7 +724,7 @@ function generateConfigHash(config) {
  * @param {Object} admin - Admin API客户端
  * @returns {Promise<Object>} 配置对象
  */
-export async function syncMarketConfig(shopId, admin) {
+export async function syncMarketConfig(shopId, admin, forceRefresh = false) {
   try {
     logger.info('开始同步Markets配置', { shopId });
     
@@ -562,7 +744,7 @@ export async function syncMarketConfig(shopId, admin) {
       where: { shopId }
     });
     
-    if (existingSettings?.configVersion === configVersion) {
+    if (!forceRefresh && existingSettings?.configVersion === configVersion) {
       logger.info('Markets配置未变更，跳过更新', { shopId, configVersion });
       return existingSettings.marketConfig;
     }

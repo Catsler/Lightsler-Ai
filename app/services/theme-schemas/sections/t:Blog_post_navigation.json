@@ -1,0 +1,12 @@
+{
+  "name": "t:Blog_post_navigation",
+  "type": null,
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:Previous_and_next_article_will_be_displayed_if_they_exists",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

@@ -1,9 +1,5 @@
-/**
- * 语言管理组件
- * 提供语言选择、添加和管理功能
- */
-
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFetcher } from '@remix-run/react';
 import {
   Modal,
@@ -29,8 +25,10 @@ export function LanguageManager({
   primaryLanguage = null,
   onLanguageAdded,
   onLanguagesUpdated,
-  shopId 
+  shopId,
+  languageLimit = null
 }) {
+  const { t } = useTranslation();
   const fetcher = useFetcher();
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,10 +43,16 @@ export function LanguageManager({
     database: { languages: [], count: 0 },
     limit: {
       primaryLocale: null,
-      currentCount: 0,
-      maxLimit: 20,
-      canAddMore: true,
-      remainingSlots: 20,
+      currentCount: languageLimit?.activeLanguagesCount ?? 0,
+      maxLimit: languageLimit?.maxLanguages ?? 20,
+      canAddMore:
+        languageLimit?.remainingLanguageSlots == null
+          ? true
+          : languageLimit.remainingLanguageSlots > 0,
+      remainingSlots:
+        languageLimit?.remainingLanguageSlots == null
+          ? languageLimit?.remainingLanguageSlots ?? 20
+          : Math.max(languageLimit.remainingLanguageSlots, 0),
       totalLocales: 0
     }
   });
@@ -68,6 +72,27 @@ export function LanguageManager({
       }));
     }
   }, [primaryLanguage]);
+
+  // 同步套餐语言上限信息
+  useEffect(() => {
+    if (!languageLimit) return;
+    setLanguageData((prev) => ({
+      ...prev,
+      limit: {
+        ...prev.limit,
+        currentCount: languageLimit.activeLanguagesCount ?? prev.limit.currentCount,
+        maxLimit: languageLimit.maxLanguages ?? prev.limit.maxLimit,
+        remainingSlots:
+          languageLimit.remainingLanguageSlots == null
+            ? languageLimit.remainingLanguageSlots
+            : Math.max(languageLimit.remainingLanguageSlots, 0),
+        canAddMore:
+          languageLimit.remainingLanguageSlots == null
+            ? true
+            : languageLimit.remainingLanguageSlots > 0
+      }
+    }));
+  }, [languageLimit]);
 
   // 加载语言数据
   const loadLanguageData = useCallback(() => {
@@ -119,7 +144,7 @@ export function LanguageManager({
     setLoading(false);
 
     if (!fetcher.data.success) {
-      setError(fetcher.data.message || '加载语言数据失败');
+      setError(fetcher.data.message || t('languages.errorLoad'));
       return;
     }
 
@@ -170,7 +195,7 @@ export function LanguageManager({
     }
   };
 
-  // 同步语言到数据库
+  // {t('languages.sync')}到数据库
   const syncLanguages = () => {
     setLoading(true);
     fetcher.submit(
@@ -214,6 +239,10 @@ export function LanguageManager({
 
       const remainingSlots = languageData?.limit?.remainingSlots ?? 0;
 
+      if (!isFinite(remainingSlots)) {
+        return [...prev, code];
+      }
+
       if (remainingSlots <= 0 || prev.length >= remainingSlots) {
         return prev;
       }
@@ -224,56 +253,54 @@ export function LanguageManager({
 
   // 地区选项
   const regionOptions = [
-    { label: '所有地区', value: 'all' },
-    { label: '亚洲', value: 'Asia' },
-    { label: '欧洲', value: 'Europe' },
-    { label: '美洲', value: 'Americas' },
-    { label: '非洲', value: 'Africa' },
-    { label: '大洋洲', value: 'Oceania' },
-    { label: '其他', value: 'Other' }
+    { label: t('languages.regions.all'), value: 'all' },
+    { label: t('languages.regions.asia'), value: 'Asia' },
+    { label: t('languages.regions.europe'), value: 'Europe' },
+    { label: t('languages.regions.americas'), value: 'Americas' },
+    { label: t('languages.regions.africa'), value: 'Africa' },
+    { label: t('languages.regions.oceania'), value: 'Oceania' },
+    { label: t('languages.regions.other'), value: 'Other' }
   ];
 
-  const remainingSlots = languageData?.limit?.remainingSlots ?? 0;
+  const rawRemainingSlots = languageData?.limit?.remainingSlots;
+  const remainingSlots = rawRemainingSlots == null ? Infinity : rawRemainingSlots;
   const currentCount = languageData?.limit?.currentCount ?? 0;
-  const maxLimit = languageData?.limit?.maxLimit ?? 20;
+  const maxLimit = languageData?.limit?.maxLimit ?? null;
+  const hasLimit = maxLimit !== null;
   const canAddMore = languageData?.limit?.canAddMore ?? true;
   const primaryLocale = languageData?.shop?.primary ?? languageData?.limit?.primaryLocale ?? null;
-  const selectionProgress = maxLimit === 0
-    ? 0
-    : Math.min(((currentCount + selectedLanguages.length) / maxLimit) * 100, 100);
+  const selectionProgress = hasLimit
+    ? Math.min(((currentCount + selectedLanguages.length) / (maxLimit || 1)) * 100, 100)
+    : 0;
   const selectionTone = remainingSlots > 0 && selectedLanguages.length >= remainingSlots ? 'critical' : 'primary';
-  const remainingSelectable = Math.max(remainingSlots - selectedLanguages.length, 0);
+  const remainingSelectable = !isFinite(remainingSlots)
+    ? Infinity
+    : Math.max(remainingSlots - selectedLanguages.length, 0);
   const filteredLanguages = getFilteredLanguages();
 
   return (
     <>
-      {/* 触发按钮 */}
-      <Button
-        onClick={() => setShowModal(true)}
-        size="slim"
-      >
-        管理语言
+      <Button onClick={() => setShowModal(true)} size="slim">
+        {t('languages.manage')}
       </Button>
-
-      {/* 语言管理模态框 */}
       <Modal
         open={showModal}
         onClose={() => setShowModal(false)}
-        title="语言管理"
+        title={t('languages.modalTitle')}
         primaryAction={{
-          content: `添加选中的语言 (${selectedLanguages.length})`,
+          content: t('languages.addSelected', { count: selectedLanguages.length }),
           onAction: enableSelectedLanguages,
           disabled: selectedLanguages.length === 0 || loading,
           loading: loading
         }}
         secondaryActions={[
           {
-            content: '同步语言',
+            content: t('languages.sync'),
             onAction: syncLanguages,
             disabled: loading
           },
           {
-            content: '取消',
+            content: t('languages.cancel'),
             onAction: () => setShowModal(false)
           }
         ]}
@@ -281,38 +308,35 @@ export function LanguageManager({
       >
         <Modal.Section>
           <BlockStack gap="400">
-            {/* 语言限制提示 */}
             {error && (
               <Banner tone="critical">
                 <Text variant="bodySm">{error}</Text>
               </Banner>
             )}
             <Banner
-              title={`目标语言配额: ${currentCount} / ${maxLimit}`}
+              title={t('languages.quotaTitle', { current: currentCount, max: maxLimit })}
               tone={remainingSlots <= 3 ? 'warning' : 'info'}
             >
               <BlockStack gap="100">
                 <Text variant="bodySm">
                   {canAddMore
-                    ? `还可以添加 ${remainingSlots} 个语言`
-                    : '已达到最大目标语言数量限制'}
+                    ? t('languages.quotaRemaining', { count: remainingSlots })
+                    : t('languages.quotaFull')}
                 </Text>
                 {primaryLocale && (
                   <Text variant="bodySm" tone="subdued">
-                    默认语言：{primaryLocale.label || primaryLocale.value}
+                    ${t('languages.primary', { label: primaryLocale.label || primaryLocale.value })}
                   </Text>
                 )}
               </BlockStack>
             </Banner>
-
-            {/* 当前已启用的语言 */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">已启用的目标语言 ({languageData.shop.count})</Text>
+                <Text variant="headingMd">${t('languages.enabledTitle', { count: languageData.shop.count })}</Text>
                 <InlineStack gap="200" wrap>
                   {primaryLocale && (
                     <Badge tone="success">
-                      {primaryLocale.label || primaryLocale.value} (默认)
+                      {primaryLocale.label || primaryLocale.value} ()
                     </Badge>
                   )}
                   {(languageData?.shop?.locales ?? []).map((locale) => (
@@ -328,36 +352,32 @@ export function LanguageManager({
             </Card>
 
             <Divider />
-
-            {/* 搜索和过滤 */}
             <InlineStack gap="300">
               <div style={{ flex: 1 }}>
                 <TextField
-                  label="搜索语言"
+                  label="${t('languages.searchLabel')}"
                   value={searchTerm}
                   onChange={setSearchTerm}
-                  placeholder="输入语言名称或代码..."
+                  placeholder="${t('languages.searchPlaceholder')}"
                   clearButton
                   onClearButtonClick={() => setSearchTerm('')}
                 />
               </div>
               <Select
-                label="地区筛选"
+                label="${t('languages.regionFilter')}"
                 options={regionOptions}
                 value={selectedRegion}
                 onChange={setSelectedRegion}
               />
             </InlineStack>
-
-            {/* 可添加的语言列表 */}
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between">
                   <Text variant="headingMd">
-                    可添加的语言 ({filteredLanguages.length})
+                    ${t('languages.availableTitle', { count: filteredLanguages.length })}
                   </Text>
                   <Text variant="bodySm" tone="subdued">
-                    已选择: {selectedLanguages.length} / {remainingSlots}
+                    ${t('languages.selectedCount', { selected: selectedLanguages.length, remaining: remainingSlots })}
                   </Text>
                 </InlineStack>
 
@@ -414,18 +434,16 @@ export function LanguageManager({
                 )}
               </BlockStack>
             </Card>
-
-            {/* 选择进度 */}
             {selectedLanguages.length > 0 && (
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="headingSm">选择进度</Text>
+                  <Text variant="headingSm">${t('languages.progress')}</Text>
                   <ProgressBar
                     progress={selectionProgress}
                     tone={selectionTone}
                   />
                   <Text variant="bodySm" tone="subdued">
-                    {`已选择 ${selectedLanguages.length} 个语言，还可选择 ${remainingSelectable} 个`}
+                    ${t('languages.progressDesc', { selected: selectedLanguages.length, remaining: remainingSelectable })}
                   </Text>
                 </BlockStack>
               </Card>

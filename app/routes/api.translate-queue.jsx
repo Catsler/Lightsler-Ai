@@ -11,7 +11,7 @@ import { logger } from "../utils/logger.server.js";
 async function handleTranslateQueue({ request, admin, session }) {
     const formData = await request.formData();
     
-    // 参数验证
+    // Parameter validation
     const action = formData.get("action");
     const singleResourceId = formData.get("resourceId");
     const params = {
@@ -27,20 +27,20 @@ async function handleTranslateQueue({ request, admin, session }) {
     
     const targetLanguage = params.language;
 
-    // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+    // Defensive: reject primary language translation
     const shopLocales = await getShopLocales(admin);
     const primaryLocale = shopLocales.find((locale) => locale.primary);
 
     if (primaryLocale && targetLanguage.toLowerCase() === primaryLocale.locale.toLowerCase()) {
       throw new Error(
-        `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
-        `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+        `Translating to primary language is not allowed ${primaryLocale.name || primaryLocale.locale}。` +
+        `Primary language content is the source; please choose another target language.`
       );
     }
 
     let resourceIds;
 
-    // 处理重新翻译按钮传递的单个资源ID
+    // Handle single resource re-translate
     if (action === "retranslate" && singleResourceId) {
       resourceIds = [singleResourceId];
       console.log('[重新翻译] 处理单个资源:', { action, singleResourceId, targetLanguage });
@@ -48,7 +48,7 @@ async function handleTranslateQueue({ request, admin, session }) {
       try {
         resourceIds = JSON.parse(params.resourceIds);
       } catch (error) {
-        throw new Error('resourceIds 必须是有效的JSON格式');
+        throw new Error('resourceIds must be valid JSON');
       }
     }
     const mode = params.mode;
@@ -60,11 +60,11 @@ async function handleTranslateQueue({ request, admin, session }) {
       throw new Error('缺少店铺上下文，无法创建翻译任务');
     }
 
-    // 获取店铺记录
+    // Fetch shop record
     const shop = await getOrCreateShop(shopDomain, session.accessToken);
 
     
-    // 获取所有资源
+    // Fetch all resources
     const allResources = await getAllResources(shop.id);
     
     // 筛选要翻译的资源
@@ -76,7 +76,7 @@ async function handleTranslateQueue({ request, admin, session }) {
       return {
         jobs: [],
         stats: { total: 0, queued: 0 },
-        message: "没有找到需要翻译的资源"
+        message: "No resources found to translate"
       };
     }
     
@@ -134,6 +134,6 @@ async function handleTranslateQueue({ request, admin, session }) {
 
 export const action = createApiRoute(handleTranslateQueue, {
   requireAuth: true,
-  operationName: '队列翻译',
+  operationName: 'queue translation',
   timeout: 90000  // 增加超时到90秒，解决Bull队列写入Redis时超时问题
 });

@@ -1,0 +1,31 @@
+{
+  "name": "t:Color_swatch_patterns",
+  "type": null,
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:Customize_image_patterns_for_specific_colors",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "pattern",
+      "name": "t:Pattern",
+      "settings": [
+        {
+          "id": "color_name",
+          "type": "text",
+          "label": "t:Color_name",
+          "translate": false
+        },
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

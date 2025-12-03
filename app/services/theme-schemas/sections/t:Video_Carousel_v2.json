@@ -1,0 +1,172 @@
+{
+  "name": "t:Video_Carousel_v2",
+  "type": null,
+  "settings": [
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Title",
+      "translate": true
+    },
+    {
+      "id": "products_count",
+      "type": "range",
+      "label": "t:Products_to_show",
+      "translate": false
+    },
+    {
+      "id": "products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    },
+    {
+      "id": "type",
+      "type": "select",
+      "label": "t:Type",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "video",
+      "name": "t:Video",
+      "settings": [
+        {
+          "id": "product",
+          "type": "product",
+          "label": "t:Product",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Preview_video",
+          "translate": false
+        },
+        {
+          "id": "preview_video_poster",
+          "type": "image_picker",
+          "label": "t:Video_cover_image",
+          "translate": false
+        },
+        {
+          "id": "preview_video",
+          "type": "video",
+          "label": "t:Preview_video",
+          "translate": false
+        },
+        {
+          "id": "preview_video_url",
+          "type": "video_url",
+          "label": "t:Preview_video_url",
+          "translate": false
+        },
+        {
+          "id": "preview_video_play_button_color",
+          "type": "color",
+          "label": "t:Play_button_color",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Main_video",
+          "translate": false
+        },
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Cover_image",
+          "translate": false
+        },
+        {
+          "id": "main_video",
+          "type": "video",
+          "label": "t:Main_video",
+          "translate": false
+        },
+        {
+          "id": "main_video_url",
+          "type": "video_url",
+          "label": "t:Main_video_url",
+          "translate": false
+        },
+        {
+          "id": "autoplay",
+          "type": "checkbox",
+          "label": "t:Autoplay",
+          "translate": false
+        },
+        {
+          "id": "show_video_controls",
+          "type": "checkbox",
+          "label": "t:Show_video_controls",
+          "translate": false
+        },
+        {
+          "id": "main_video_play_button_color",
+          "type": "color",
+          "label": "t:Play_button_color",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "name": "t:Search",
+  "type": null,
+  "settings": [
+    {
+      "type": "header",
+      "label": "t:Product_results",
+      "translate": false
+    },
+    {
+      "id": "show_sort_by",
+      "type": "checkbox",
+      "label": "t:Show_sort_by",
+      "translate": false
+    },
+    {
+      "id": "products_per_page",
+      "type": "range",
+      "label": "t:Products_per_page",
+      "translate": false
+    },
+    {
+      "id": "mobile_products_per_row",
+      "type": "select",
+      "label": "t:Products_per_row_mobile",
+      "translate": false
+    },
+    {
+      "id": "desktop_products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Product_filters",
+      "translate": false
+    },
+    {
+      "id": "show_filters",
+      "type": "checkbox",
+      "label": "t:Show_filters",
+      "translate": false
+    },
+    {
+      "id": "show_filter_group_name",
+      "type": "checkbox",
+      "label": "t:Show_group_name",
+      "translate": false
+    },
+    {
+      "id": "show_color_swatch",
+      "type": "checkbox",
+      "label": "t:Show_filter_color_swatch",
+      "translate": false
+    },
+    {
+      "id": "open_first_filter_group",
+      "type": "checkbox",
+      "label": "t:Open_first_group_by_default",
+      "translate": false
+    },
+    {
+      "id": "filter_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Blog_post_results",
+      "translate": false
+    },
+    {
+      "id": "show_category",
+      "type": "checkbox",
+      "label": "t:Show_category",
+      "translate": false
+    },
+    {
+      "id": "show_excerpt",
+      "type": "checkbox",
+      "label": "t:Show_excerpt",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

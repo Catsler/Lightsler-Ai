@@ -1,5 +1,6 @@
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-console */
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useFetcher, useLoaderData, useNavigate } from "@remix-run/react";
+import { useFetcher, useLoaderData, useNavigate, useSearchParams, useRevalidator } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -13,8 +14,12 @@ import {
   Checkbox,
   Badge,
   Banner,
+  Modal,
+  Tooltip,
+  List,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { TitleBar } from "@shopify/app-bridge-react";
+import { useSafeAppBridge } from "../hooks/useSafeAppBridge";
 import { authenticate } from "../shopify.server";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ResourceCategoryDisplay } from "../components/ResourceCategoryDisplay";
@@ -26,35 +31,24 @@ import {
 } from "../utils/storage.client";
 import { getShopLocales } from "../services/shopify-locales.server.js";
 import prisma from "../db.server";
+import { subscriptionManager } from "../services/subscription-manager.server.js";
+import { creditManager } from "../services/credit-manager.server.js";
+import { CreditBar } from "../components/billing/CreditBar.jsx";
+import { PRICING_CONFIG } from "../utils/pricing-config.js";
+import { useTranslation } from "react-i18next";
 
-const RESOURCE_TYPE_LABELS = {
-  PRODUCT: '产品',
-  COLLECTION: '集合',
-  PRODUCT_OPTION: '产品选项',
-  PRODUCT_METAFIELD: '产品元字段',
-  PRODUCT_OPTION_VALUE: '产品选项值',
-  ARTICLE: '博客文章',
-  BLOG: '博客',
-  PAGE: '页面',
-  FILTER: '筛选条件',
-  MENU: '菜单',
-  LINK: '链接',
-  SHOP: '店铺',
-  SHOP_POLICY: '店铺政策',
-  ONLINE_STORE_THEME: '主题资源',
-  ONLINE_STORE_THEME_JSON_TEMPLATE: '主题模板',
-  ONLINE_STORE_THEME_SETTINGS_CATEGORY: '主题设置',
-  ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS: '主题区块',
-  ONLINE_STORE_THEME_SECTION_GROUP: '主题区块组',
-  ONLINE_STORE_THEME_APP_EMBED: '主题App嵌入',
-  ONLINE_STORE_THEME_LOCALE_CONTENT: '主题语言内容',
-  SELLING_PLAN: '订阅计划',
-  SELLING_PLAN_GROUP: '订阅计划组'
-};
+const DEFAULT_AVERAGE_CHARS_PER_RESOURCE = 5_000;
 
-function getResourceTypeLabel(type) {
+function getResourceTypeLabel(type, t) {
   const normalized = String(type || '').toUpperCase();
-  return RESOURCE_TYPE_LABELS[normalized] || normalized || 'UNKNOWN';
+  return t(`resourceTypes.${normalized}`, { defaultValue: normalized || 'UNKNOWN' });
+}
+
+function formatCompactNumber(value) {
+  if (value == null) return '--';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toLocaleString();
 }
 
 // 添加全局错误监听
@@ -79,6 +73,15 @@ if (typeof window !== 'undefined') {
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
+
+  const [plans, subscription, credits, activeLanguagesCount] = await Promise.all([
+    subscriptionManager.listActivePlans(),
+    subscriptionManager.getSubscription(session.shop),
+    creditManager.getAvailableCredits(session.shop).catch(() => null),
+    prisma.language.count({
+      where: { shopId: session.shop, isActive: true, enabled: true }
+    })
+  ]);
 
   // 从 Shopify 读取店铺语言，区分默认语言与目标语言
   const shopLocales = await getShopLocales(admin);
@@ -117,20 +120,60 @@ export const loader = async ({ request }) => {
     }
   }
 
+  const currentPlan =
+    subscription?.planId
+      ? plans.find((plan) => plan.id === subscription.planId)
+      : plans.find((plan) => plan.id === 'free');
+
+  const maxLanguages = currentPlan?.maxLanguages ?? 2;
+  const remainingLanguageSlots =
+    maxLanguages === null ? null : Math.max(0, maxLanguages - activeLanguagesCount);
+
   return {
     supportedLanguages,
     primaryLanguage: primaryLocale
       ? { label: primaryLocale.name || primaryLocale.locale, value: primaryLocale.locale }
       : null,
-    shopId: session.shop
+    shopId: session.shop,
+    billing: {
+      plans: plans.map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        displayName: plan.displayName,
+        price: plan.price,
+        monthlyCredits: plan.monthlyCredits,
+        maxLanguages: plan.maxLanguages,
+        features: plan.features
+      })),
+      subscription: subscription
+        ? {
+            status: subscription.status,
+            planId: subscription.planId,
+            planName: subscription.plan?.name,
+            planDisplayName: subscription.plan?.displayName,
+            shopifyChargeId: subscription.shopifyChargeId,
+            billingCycle: subscription.billingCycle,
+            startDate: subscription.startDate,
+            endDate: subscription.endDate,
+            cancelledAt: subscription.cancelledAt
+          }
+        : null,
+      credits,
+      languageLimit: {
+        activeLanguagesCount,
+        maxLanguages,
+        remainingLanguageSlots
+      }
+    }
   };
 };
 
 function Index() {
   console.log('[Index Component] Rendering started');
   
-  const { supportedLanguages, primaryLanguage, shopId } = useLoaderData();
-  console.log('[Index Component] Loader data:', { supportedLanguages, primaryLanguage, shopId });
+  const { supportedLanguages, primaryLanguage, shopId, billing } = useLoaderData();
+  console.log('[Index Component] Loader data:', { supportedLanguages, primaryLanguage, shopId, billing });
+  const { t } = useTranslation(['home', 'common']);
   
   const scanProductsFetcher = useFetcher();
   const scanCollectionsFetcher = useFetcher();
@@ -138,17 +181,29 @@ function Index() {
   const scanAllFetcher = useFetcher();
   const translateFetcher = useFetcher();
   const statusFetcher = useFetcher();
+  const billingFetcher = useFetcher();
+  const cancelFetcher = useFetcher();
   const clearFetcher = useFetcher();
+  const revalidator = useRevalidator();
   
   const shopQueryParam = shopId ? `shop=${encodeURIComponent(shopId)}` : '';
   
   // React Hooks必须在顶层调用，不能在条件语句中
-  const shopify = useAppBridge();
+  const shopify = useSafeAppBridge();
+  const [searchParams] = useSearchParams();
+  const hasHostParam = Boolean(searchParams.get('host'));
+  const isAppBridgeReady = Boolean(shopify);
   const navigate = useNavigate();
-  console.log('[Index Component] App Bridge initialized successfully');
+  if (typeof window !== 'undefined') {
+    if (shopify) {
+      console.log('[Index Component] App Bridge ready');
+    } else {
+      console.warn('[Index Component] App Bridge not ready, host param may be missing');
+    }
+  }
   
   // Language selector persistence: read saved preference on init
-  const [viewMode, setViewMode] = useState('all');  // 新增：视图模式状态
+  const [viewMode, setViewMode] = useState('all');
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     const defaultTarget = supportedLanguages[0]?.value;
 
@@ -174,6 +229,9 @@ function Index() {
   });
   const [selectedResourceType, setSelectedResourceType] = useState('PRODUCT');
   const [selectedResources, setSelectedResources] = useState([]);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   // 语言级数据隔离：使用对象存储各语言的独立数据
   const [allLanguagesData, setAllLanguagesData] = useState({});
   
@@ -226,6 +284,87 @@ function Index() {
   // 操作锁和防抖机制
   const [operationLock, setOperationLock] = useState(new Set());
   const debounceTimers = useRef(new Map());
+  const billingResultRef = useRef(null);
+  const cancelResultRef = useRef(null);
+
+  const plans = billing?.plans ?? [];
+  const subscription = billing?.subscription ?? null;
+  const credits = billing?.credits ?? null;
+  const creditToChars = PRICING_CONFIG.CREDIT_TO_CHARS;
+  const hasActiveSubscription = subscription?.status === 'active';
+  const availableCredits = credits?.available ?? 0;
+  const translateDisabledReason = useMemo(() => {
+    if (!hasActiveSubscription) {
+      return t('errors.noActiveSubscription', { ns: 'home', defaultValue: 'No active subscription. Please subscribe to a plan.' });
+    }
+    if (availableCredits <= 0) {
+      return t('errors.noCreditsAvailable', { ns: 'home', defaultValue: 'Insufficient credits. Please top up or upgrade your plan.' });
+    }
+    if (translationService && translationService.status === 'unhealthy') {
+      return t('errors.serviceUnhealthy', { ns: 'home', defaultValue: 'Translation service is temporarily unavailable.' });
+    }
+    if (resources.length === 0) {
+      return t('errors.noResources', { ns: 'home', defaultValue: 'No resources available to translate.' });
+    }
+    return null;
+  }, [hasActiveSubscription, availableCredits, translationService, resources.length, t]);
+  const resourceCountForEstimation = (selectedResources.length > 0 ? selectedResources.length : resources.length) || 0;
+  const estimatedCharacters = resourceCountForEstimation * DEFAULT_AVERAGE_CHARS_PER_RESOURCE;
+  const estimatedCredits = resourceCountForEstimation > 0
+    ? Math.max(
+        PRICING_CONFIG.MIN_CREDIT_CHARGE,
+        Math.ceil(estimatedCharacters / creditToChars)
+      )
+    : 0;
+  const canTranslate = hasActiveSubscription && availableCredits > 0;
+  const estimatedSummaryText = resourceCountForEstimation > 0
+    ? t('ui.estimatedCost', { ns: 'home', credits: formatCompactNumber(estimatedCredits), chars: formatCompactNumber(estimatedCharacters) })
+    : t('ui.selectForEstimate', { ns: 'home' });
+
+  const currentPlan = useMemo(() => {
+    if (!subscription?.planId) return null;
+    return plans.find((plan) => plan.id === subscription.planId) || null;
+  }, [plans, subscription]);
+
+  const upgradeOptions = useMemo(() => {
+    if (plans.length === 0) return [];
+    return plans.filter((plan) => {
+      if (!currentPlan) return true;
+      return plan.monthlyCredits > (currentPlan.monthlyCredits ?? 0);
+    });
+  }, [plans, currentPlan]);
+
+  const creditWarningLevel = useMemo(() => {
+    if (!credits || !credits.total) return null;
+    const ratio = credits.available / credits.total;
+    if (ratio <= 0.1) return 'critical';
+    if (ratio <= 0.25) return 'warning';
+    return null;
+  }, [credits]);
+
+  const selectedUpgradePlan = useMemo(() => {
+    if (!selectedPlanId) return upgradeOptions[0] || null;
+    return upgradeOptions.find((plan) => plan.id === selectedPlanId) || upgradeOptions[0] || null;
+  }, [selectedPlanId, upgradeOptions]);
+
+  const upgradeDelta = useMemo(() => {
+    if (!selectedUpgradePlan) return null;
+    const base = currentPlan?.monthlyCredits ?? 0;
+    return selectedUpgradePlan.monthlyCredits - base;
+  }, [selectedUpgradePlan, currentPlan]);
+
+  const canCancelSubscription = useMemo(() => {
+    if (!subscription) return false;
+    if (subscription.status !== 'active') return false;
+    if (!currentPlan) return false;
+    return currentPlan.price > 0;
+  }, [subscription, currentPlan]);
+
+  useEffect(() => {
+    if (!selectedPlanId && upgradeOptions.length > 0) {
+      setSelectedPlanId(upgradeOptions[0].id);
+    }
+  }, [upgradeOptions, selectedPlanId]);
 
   // 防抖函数
   const debounce = useCallback((key, fn, delay = 1000) => {
@@ -243,6 +382,38 @@ function Index() {
     debounceTimers.current.set(key, timer);
   }, []);
 
+  const isUpgrading = billingFetcher.state !== 'idle';
+  const isCancelling = cancelFetcher.state !== 'idle';
+
+  const handleOpenUpgrade = useCallback(() => {
+    if (upgradeOptions.length === 0) return;
+    if (!selectedPlanId && upgradeOptions.length > 0) {
+      setSelectedPlanId(upgradeOptions[0].id);
+    }
+    setUpgradeModalOpen(true);
+  }, [upgradeOptions, selectedPlanId]);
+
+  const handleSubmitUpgrade = useCallback(() => {
+    if (!selectedPlanId) return;
+    billingFetcher.submit(
+      { planId: selectedPlanId },
+      { method: 'post', action: '/api/billing/subscribe' }
+    );
+  }, [billingFetcher, selectedPlanId]);
+
+  const handleOpenCancel = useCallback(() => {
+    setCancelModalOpen(true);
+  }, []);
+
+  const handleConfirmCancel = useCallback(() => {
+    cancelFetcher.submit(
+      { reason: 'CUSTOMER_REQUEST', prorate: 'false' },
+      { method: 'post', action: '/api/billing/cancel' }
+    );
+  }, [cancelFetcher]);
+
+  // handled after toast helpers are defined
+
   // 添加日志
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -259,19 +430,59 @@ function Index() {
         addLog(message, options.isError ? 'error' : 'info');
       }
     } catch (error) {
-      console.error('Toast显示错误:', error);
+      console.error('Toast display error:', error);
       addLog(message, options.isError ? 'error' : 'info');
       setAppBridgeError(true);
     }
   }, [shopify, addLog]);
+
+  useEffect(() => {
+    if (billingFetcher.state !== 'idle') return;
+    const result = billingFetcher.data;
+    if (!result) return;
+    const marker = result.timestamp || JSON.stringify(result);
+    if (billingResultRef.current === marker) return;
+    billingResultRef.current = marker;
+
+    if (result.success) {
+      const confirmationUrl = result.data?.confirmationUrl;
+      if (confirmationUrl) {
+        window.open(confirmationUrl, '_blank', 'noopener');
+        showToast(t('home.toasts.billingOpened'));
+      } else {
+        showToast(t('home.toasts.upgradeSuccess'));
+        revalidator.revalidate();
+      }
+      setUpgradeModalOpen(false);
+    } else {
+      showToast(result.message || t('home.toasts.upgradeFailed'), { isError: true });
+    }
+  }, [billingFetcher.state, billingFetcher.data, revalidator, showToast]);
+
+  useEffect(() => {
+    if (cancelFetcher.state !== 'idle') return;
+    const result = cancelFetcher.data;
+    if (!result) return;
+    const marker = result.timestamp || JSON.stringify(result);
+    if (cancelResultRef.current === marker) return;
+    cancelResultRef.current = marker;
+
+    if (result.success) {
+      showToast(t('home.toasts.cancelSuccess'));
+      setCancelModalOpen(false);
+      revalidator.revalidate();
+    } else {
+      showToast(result.message || t('home.toasts.cancelFailed'), { isError: true });
+    }
+  }, [cancelFetcher.state, cancelFetcher.data, revalidator, showToast]);
 
   // 操作锁机制
   const withOperationLock = useCallback((operationKey, fn) => {
     return async (...args) => {
       // 检查是否已有相同操作在进行
       if (operationLock.has(operationKey)) {
-        console.warn(`[UI] 操作 ${operationKey} 正在进行中，跳过重复请求`);
-        addLog(`⚠️ ${operationKey} 操作正在进行中...`, 'warning');
+        console.warn(`[UI] Operation ${operationKey} already in progress, skipping duplicate request`);
+        addLog(t('logs.operationRunning', { ns: 'home', operation: operationKey }), 'warning');
         return;
       }
 
@@ -282,8 +493,8 @@ function Index() {
         // 执行操作
         await fn(...args);
       } catch (error) {
-        console.error(`[UI] 操作 ${operationKey} 失败:`, error);
-        addLog(`❌ ${operationKey} 操作失败: ${error.message}`, 'error');
+        console.error(`[UI] Operation ${operationKey} failed:`, error);
+        addLog(t('logs.operationFailed', { ns: 'home', operation: operationKey, error: error.message }), 'error');
         throw error;
       } finally {
         // 释放操作锁
@@ -357,9 +568,9 @@ function Index() {
     // 检查新语言是否有缓存数据
     const languageData = allLanguagesData[selectedLanguage];
     if (!languageData) {
-      console.log(`[Language Switch] 语言 ${selectedLanguage} 暂无数据`);
+      console.log(`[Language Switch] No data for ${selectedLanguage} yet`);
     } else {
-      console.log(`[Language Switch] 加载 ${selectedLanguage} 缓存数据，资源数: ${languageData.resources?.length || 0}`);
+      console.log(`[Language Switch] Loaded ${selectedLanguage} cached data, resources: ${languageData.resources?.length || 0}`);
     }
   }, [selectedLanguage, allLanguagesData]);
   
@@ -391,31 +602,22 @@ function Index() {
 
   // 资源类型选项（对齐 Shopify 官方分类；隐藏非翻译项与暂不支持项）
   const resourceTypeOptions = useMemo(() => [
-    // Products
-    { label: 'Products', value: 'PRODUCT' },
-    { label: 'Collections', value: 'COLLECTION' },
-
-    // Online Store
-    { label: 'Blog posts', value: 'ARTICLE' },
-    { label: 'Blog titles', value: 'BLOG' },
-    { label: 'Pages', value: 'PAGE' },
-    { label: 'Filters', value: 'FILTER' },
-    // Metafields（探测性支持，避免默认暴露扫描入口）——如需扫描可手动添加
-    // { label: 'Metafields', value: 'METAFIELD' },
-    { label: 'Policies', value: 'SHOP_POLICY' },
-    { label: 'Store metadata', value: 'SHOP' },
-
-    // Content
-    { label: 'Menu', value: 'MENU' },
-
-    // Theme
-    { label: 'App embeds', value: 'ONLINE_STORE_THEME_APP_EMBED' },
-    { label: 'Section groups', value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
-    { label: 'Static sections', value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
-    { label: 'Templates', value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
-    { label: 'Theme settings', value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
-    { label: 'Locale content', value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' },
-  ], []);
+    { label: t('resourceTypeOptions.products'), value: 'PRODUCT' },
+    { label: t('resourceTypeOptions.collections'), value: 'COLLECTION' },
+    { label: t('resourceTypeOptions.blogPosts'), value: 'ARTICLE' },
+    { label: t('resourceTypeOptions.blogTitles'), value: 'BLOG' },
+    { label: t('resourceTypeOptions.pages'), value: 'PAGE' },
+    { label: t('resourceTypeOptions.filters'), value: 'FILTER' },
+    { label: t('resourceTypeOptions.policies'), value: 'SHOP_POLICY' },
+    { label: t('resourceTypeOptions.storeMetadata'), value: 'SHOP' },
+    { label: t('resourceTypeOptions.menu'), value: 'MENU' },
+    { label: t('resourceTypeOptions.appEmbeds'), value: 'ONLINE_STORE_THEME_APP_EMBED' },
+    { label: t('resourceTypeOptions.sectionGroups'), value: 'ONLINE_STORE_THEME_SECTION_GROUP' },
+    { label: t('resourceTypeOptions.staticSections'), value: 'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS' },
+    { label: t('resourceTypeOptions.templates'), value: 'ONLINE_STORE_THEME_JSON_TEMPLATE' },
+    { label: t('resourceTypeOptions.themeSettings'), value: 'ONLINE_STORE_THEME_SETTINGS_CATEGORY' },
+    { label: t('resourceTypeOptions.localeContent'), value: 'ONLINE_STORE_THEME_LOCALE_CONTENT' }
+  ], [t]);
 
   // 加载状态
   const isScanning = scanProductsFetcher.state === 'submitting' || 
@@ -448,8 +650,8 @@ function Index() {
         statusFetcher.load(`/api/status?${params.toString()}`);
       } catch (error) {
         if (error.name !== 'AbortError') {
-          console.error('状态加载失败:', error);
-          addLog('⚠️ 网络连接异常，请检查网络设置', 'error');
+          console.error('Failed to load status:', error);
+          addLog(t('logs.networkIssue', { ns: 'home' }), 'error');
           setAppBridgeError(true);
         }
       }
@@ -526,14 +728,14 @@ function Index() {
         
         // 检查翻译服务状态并显示提示 - 只在错误变化时记录
         if (serviceData && serviceData.status === 'unhealthy') {
-          const currentError = serviceData.errors?.[0] || '未知错误';
+          const currentError = serviceData.errors?.[0] || 'Unknown error';
           if (currentError !== lastServiceError) {
-            addLog(`⚠️ 翻译服务异常: ${currentError}`, 'error');
+            addLog(t('logs.translationServiceError', { ns: 'home', error: currentError }), 'error');
             setLastServiceError(currentError);
           }
         } else if (lastServiceError) {
           // Service recovered normally
-          addLog('[RECOVERY] Translation service restored', 'success');
+          addLog(t('logs.serviceRestored', { ns: 'home' }), 'success');
           setLastServiceError(null);
         }
       }
@@ -564,18 +766,18 @@ function Index() {
             const failureCount = fetcher.data.data?.stats?.failure || 0;
             
             if (successCount > 0) {
-              addLog(`✅ ${categoryKey} 分类翻译完成: 成功 ${successCount} 个，失败 ${failureCount} 个`, 'success');
-              showToast(`${categoryKey} 分类翻译完成！`, { duration: 3000 });
+              addLog(t('logs.categoryTranslateDone', { ns: 'home', category: categoryKey, success: successCount, failed: failureCount }), 'success');
+              showToast(t('home.toasts.categoryTranslateDone', { category: categoryKey }), { duration: 3000 });
             } else {
-              addLog(`⚠️ ${categoryKey} 分类翻译完成，但没有成功的项目`, 'warning');
+              addLog(t('logs.categoryTranslateNone', { ns: 'home', category: categoryKey }), 'warning');
             }
             
             // 刷新状态
             loadStatus();
           } else {
-            const errorMsg = fetcher.data.error || '翻译失败';
-            addLog(`❌ ${categoryKey} 分类翻译失败: ${errorMsg}`, 'error');
-            showToast(`翻译失败: ${errorMsg}`, { isError: true });
+            const errorMsg = fetcher.data.error || t('home.toasts.translationFailed');
+            addLog(t('logs.categoryTranslateFailed', { ns: 'home', category: categoryKey, error: errorMsg }), 'error');
+            showToast(t('home.toasts.translationFailedWithMsg', { message: errorMsg }), { isError: true });
           }
           
           // 清理fetcher映射
@@ -599,20 +801,21 @@ function Index() {
           const { successCount = 0, failedCount = 0 } = syncFetcher.data.result || {};
           
           if (successCount > 0) {
-            addLog(`✅ 分类发布完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'success');
-            showToast(`分类发布成功！`, { duration: 3000 });
+            addLog(`✅ Category publish finished: ${successCount} success, ${failedCount} failed`, 'success');
+            showToast(t('home.toasts.categoryPublishSuccess'), { duration: 3000 });
           } else if (failedCount > 0) {
-            addLog(`⚠️ 分类发布完成，但有 ${failedCount} 个失败`, 'warning');
+            addLog(`⚠️ Category publish finished with ${failedCount} failures`, 'warning');
           } else {
-            addLog(`ℹ️ 分类暂无需要发布的内容`, 'info');
+            addLog('ℹ️ No items to publish in this category', 'info');
+            showToast(t('home.toasts.noTranslations'), { duration: 2000 });
           }
           
           // 刷新状态
           loadStatus();
         } else {
-          const errorMsg = syncFetcher.data.error || '发布失败';
-          addLog(`❌ 分类发布失败: ${errorMsg}`, 'error');
-          showToast(`发布失败: ${errorMsg}`, { isError: true });
+          const errorMsg = syncFetcher.data.error || t('home.toasts.publishFailed');
+          addLog(`❌ Category publish failed: ${errorMsg}`, 'error');
+          showToast(t('home.toasts.publishFailedWithMsg', { message: errorMsg }), { isError: true });
         }
         
         // 清理发布状态
@@ -638,32 +841,56 @@ function Index() {
 
     setIsPublishing(false);
 
-    if (typeof responseData !== 'object' || !('success' in responseData)) {
-      addLog('❌ 发布失败: API响应格式异常', 'error');
-      showToast('发布失败: API响应格式异常', { isError: true });
+    if (typeof responseData !== 'object') {
+      addLog('❌ Publish failed: invalid API response', 'error');
+      showToast(t('home.toasts.publishApiError'), { isError: true });
       return;
     }
 
-    if (responseData.success) {
-      const { published = 0, total = 0, errors = [] } = responseData;
-      const successRate = total > 0 ? ((published / total) * 100).toFixed(1) : '100';
+    const payload = responseData.data ?? responseData;
+    const successFlag = responseData.success ?? payload.success ?? false;
 
-      addLog(`✅ 发布完成: ${published}/${total} 成功 (${successRate}%)`, 'success');
-      showToast(`发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
-
-      if (errors.length > 0) {
-        addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
-      }
-
-      // 刷新状态
-      loadStatus();
-    } else {
-      // 🔍 调试：保留原始响应结构供排查
+    if (!successFlag) {
       console.debug('[Publish Error] Raw response:', responseData);
-      const errorMsg = responseData.error || responseData.message || '发布失败';
-      addLog(`❌ 发布失败: ${errorMsg}`, 'error');
-      showToast(`发布失败: ${errorMsg}`, { isError: true });
+      const errorMsg = payload.error || payload.message || t('home.toasts.publishFailed');
+      addLog(`❌ Publish failed: ${errorMsg}`, 'error');
+      showToast(t('home.toasts.publishFailedWithMsg', { message: errorMsg }), { isError: true });
+      return;
     }
+
+    const {
+      published = 0,
+      total = 0,
+      errors = [],
+      warnings = [],
+      message: payloadMessage
+    } = payload;
+
+    if (total === 0) {
+      const msg = payloadMessage || t('home.toasts.noTranslations');
+      addLog(`ℹ️ ${msg}`, 'info');
+      showToast(msg, { duration: 2000 });
+      return;
+    }
+
+    const successRate = total > 0 ? ((published / total) * 100).toFixed(1) : '100';
+
+    addLog(`✅ Publish completed: ${published}/${total} succeeded (${successRate}%)`, 'success');
+    showToast(t('home.toasts.publishSuccessCount', { count: published }), { duration: 3000 });
+
+    if (warnings.length > 0) {
+      const warningSummary = warnings
+        .map(w => `${w.resourceTitle || w.translationId}(${w.language})`)
+        .join(', ');
+      addLog(`⚠️ Some translations have unsynced fields: ${warningSummary}`, 'warning');
+    }
+
+    if (errors.length > 0) {
+      addLog(`⚠️ ${errors.length} translations failed to publish, see error list`, 'warning');
+    }
+
+    // 刷新状态
+    loadStatus();
   }, [publishFetcher.state, publishFetcher.data, addLog, showToast, loadStatus]);
 
   // 处理批量发布响应
@@ -679,68 +906,98 @@ function Index() {
 
     setIsPublishing(false);
 
-    if (typeof responseData !== 'object' || !('success' in responseData)) {
-      addLog('❌ 批量发布失败: API响应格式异常', 'error');
-      showToast('批量发布失败: API响应格式异常', { isError: true });
+    if (typeof responseData !== 'object') {
+      addLog('❌ Bulk publish failed: invalid API response', 'error');
+      showToast(t('home.toasts.bulkPublishApiError'), { isError: true });
       return;
     }
 
-    if (responseData.success) {
-      const {
-        published = 0,
-        total = 0,
-        successRate = '0%',
-        byType = {},
-        errors = []
-      } = responseData;
+    const payload = responseData.data ?? responseData;
+    const successFlag = responseData.success ?? payload.success ?? false;
 
-      let detailMessage = `✅ 批量发布完成: ${published}/${total} 成功 (${successRate})`;
-
-      const typeEntries = Object.entries(byType);
-      if (typeEntries.length > 0) {
-        const hiddenTypes = new Set(['PRODUCT_OPTION', 'PRODUCT_METAFIELD', 'PRODUCT_OPTION_VALUE']);
-        detailMessage += '\n\n按类型统计:';
-        typeEntries
-          .sort(([a], [b]) => a.localeCompare(b))
-          .forEach(([type, stats]) => {
-            const successCount = stats?.success ?? 0;
-            const failedCount = stats?.failed ?? 0;
-            const suffix = hiddenTypes.has(type) ? ' (自动处理)' : '';
-            detailMessage += `\n  • ${getResourceTypeLabel(type)}: ${successCount} 成功`;
-            if (failedCount > 0) {
-              detailMessage += `, ${failedCount} 失败`;
-            }
-            detailMessage += suffix;
-          });
-      }
-
-      addLog(detailMessage, 'success');
-      showToast(`批量发布成功！已发布 ${published} 个翻译`, { duration: 3000 });
-
-      // 检查是否有 PRODUCT_OPTION 相关发布，添加友好说明
-      if (byType && byType['PRODUCT_OPTION']) {
-        const optionStats = byType['PRODUCT_OPTION'];
-        if (optionStats.success > 0) {
-          addLog(
-            `ℹ️ 产品选项翻译说明: 已发布 ${optionStats.success} 个选项名称。选项值（如 S/M/L）因 Shopify API 限制无法发布，这些记录会显示为 partial 状态（部分成功），这是正常现象。`,
-            'info'
-          );
-        }
-      }
-
-      if (Array.isArray(errors) && errors.length > 0) {
-        addLog(`⚠️ 有 ${errors.length} 个翻译发布失败，请查看详细错误`, 'warning');
-      }
-
-      // 刷新状态
-      loadStatus();
-    } else {
-      // 🔍 调试：保留原始响应结构供排查
+    if (!successFlag) {
       console.debug('[Batch Publish Error] Raw response:', responseData);
-      const errorMsg = responseData.error || responseData.message || '批量发布失败';
-      addLog(`❌ 批量发布失败: ${errorMsg}`, 'error');
-      showToast(`批量发布失败: ${errorMsg}`, { isError: true });
+      const errorMsg = payload.error || payload.message || t('home.toasts.bulkPublishFailed');
+      addLog(`❌ Bulk publish failed: ${errorMsg}`, 'error');
+      showToast(t('home.toasts.bulkPublishFailedWithMsg', { message: errorMsg }), { isError: true });
+      return;
     }
+
+    const {
+      published = 0,
+      total = 0,
+      successRate = '0%',
+      byType = {},
+      errors = [],
+      warnings = [],
+      skipped = 0,
+      skippedReasons = {},
+      message: payloadMessage
+    } = payload;
+
+    if (total === 0) {
+      const msg = payloadMessage || t('home.toasts.noTranslations');
+      addLog(`ℹ️ ${msg}`, 'info');
+      showToast(msg, { duration: 2000 });
+      return;
+    }
+
+    let detailMessage = `✅ Bulk publish completed: ${published}/${total} succeeded (${successRate})`;
+
+    const typeEntries = Object.entries(byType);
+    if (typeEntries.length > 0) {
+      const hiddenTypes = new Set(['PRODUCT_OPTION', 'PRODUCT_METAFIELD', 'PRODUCT_OPTION_VALUE']);
+      detailMessage += '\n\nBy type:';
+      typeEntries
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([type, stats]) => {
+          const successCount = stats?.success ?? 0;
+          const failedCount = stats?.failed ?? 0;
+          const suffix = hiddenTypes.has(type) ? ' (自动处理)' : '';
+          detailMessage += `\n  • ${getResourceTypeLabel(type, t)}: ${successCount} succeeded`;
+          if (failedCount > 0) {
+            detailMessage += `, ${failedCount} failed`;
+          }
+          detailMessage += suffix;
+        });
+    }
+
+    if (skipped > 0) {
+      detailMessage += `\n⏭️  Skipped ${skipped}`;
+      Object.entries(skippedReasons).forEach(([reason, count]) => {
+        detailMessage += `\n  - ${reason}: ${count}`;
+      });
+    }
+
+    if (warnings.length > 0) {
+      detailMessage += `\n⚠️ Some translations have unsynced fields: ${warnings
+        .map(w => `${w.resourceTitle || w.translationId}(${w.language})`)
+        .join(', ')}`;
+    }
+
+    if (errors.length > 0) {
+      detailMessage += `\n⚠️ ${errors.length} translations failed to publish, see the error list`;
+    }
+
+    addLog(detailMessage, 'success');
+    showToast(t('home.toasts.bulkPublishSuccessCount', { count: published }), { duration: 3000 });
+
+    if (byType && byType['PRODUCT_OPTION']) {
+      const optionStats = byType['PRODUCT_OPTION'];
+      if (optionStats.success > 0) {
+        addLog(
+          `ℹ️ Product options note: published ${optionStats.success} option names. Option values (e.g., S/M/L) cannot be published due to Shopify API limits; those records will show as partial (expected).`,
+          'info'
+        );
+      }
+    }
+
+    if (Array.isArray(errors) && errors.length > 0) {
+      addLog(`⚠️ ${errors.length} translations failed to publish, see error list`, 'warning');
+    }
+
+    // 刷新状态
+    loadStatus();
   }, [batchPublishFetcher.state, batchPublishFetcher.data, addLog, showToast, loadStatus]);
 
   // 页面加载时获取状态 - 只在首次加载时执行
@@ -788,7 +1045,7 @@ function Index() {
   // 扫描产品
   const scanProducts = useCallback(() => {
     try {
-      addLog('🔍 开始扫描产品...', 'info');
+      addLog(t('logs.scanningProducts', { ns: 'home' }), 'info');
       scanProductsFetcher.submit(
         shopId ? { shop: shopId } : {},
         {
@@ -797,8 +1054,8 @@ function Index() {
         }
       );
     } catch (error) {
-      console.error('扫描产品失败:', error);
-      addLog('❌ 扫描产品失败，请检查网络连接', 'error');
+      console.error('Product scan failed:', error);
+      addLog(t('logs.operationFailed', { ns: 'home', operation: 'Product scan', error: error.message }), 'error');
       setAppBridgeError(true);
     }
   }, [addLog, scanProductsFetcher, shopId, shopQueryParam]);
@@ -806,7 +1063,7 @@ function Index() {
   // 扫描集合
   const scanCollections = useCallback(() => {
     try {
-      addLog('🔍 开始扫描集合...', 'info');
+      addLog(t('logs.scanningCollections', { ns: 'home' }), 'info');
       scanCollectionsFetcher.submit(
         shopId ? { shop: shopId } : {},
         {
@@ -815,8 +1072,8 @@ function Index() {
         }
       );
     } catch (error) {
-      console.error('扫描集合失败:', error);
-      addLog('❌ 扫描集合失败，请检查网络连接', 'error');
+      console.error('Collection scan failed:', error);
+      addLog(t('logs.operationFailed', { ns: 'home', operation: 'Collection scan', error: error.message }), 'error');
       setAppBridgeError(true);
     }
   }, [addLog, scanCollectionsFetcher, shopId, shopQueryParam]);
@@ -824,7 +1081,7 @@ function Index() {
   // 扫描所有资源
   const scanAllResources = useCallback(() => {
     try {
-      addLog('🔍 开始扫描所有资源类型...', 'info');
+      addLog(t('logs.scanningAll', { ns: 'home' }), 'info');
       scanAllFetcher.submit(
         shopId ? { shop: shopId } : {},
         {
@@ -833,8 +1090,8 @@ function Index() {
         }
       );
     } catch (error) {
-      console.error('扫描所有资源失败:', error);
-      addLog('❌ 扫描所有资源失败，请检查网络连接', 'error');
+      console.error('Full resource scan failed:', error);
+      addLog(t('logs.operationFailed', { ns: 'home', operation: 'Full resource scan', error: error.message }), 'error');
       setAppBridgeError(true);
     }
   }, [addLog, scanAllFetcher, shopId, shopQueryParam]);
@@ -843,7 +1100,7 @@ function Index() {
   const scanSelectedResourceType = useCallback(() => {
     try {
       const selectedType = resourceTypeOptions.find(opt => opt.value === selectedResourceType);
-      addLog(`🔍 开始扫描${selectedType?.label || selectedResourceType}...`, 'info');
+      addLog(t('logs.scanningType', { ns: 'home', label: selectedType?.label || selectedResourceType }), 'info');
       scanResourcesFetcher.submit(
         { resourceType: selectedResourceType, ...(shopId ? { shop: shopId } : {}) },
         {
@@ -853,8 +1110,8 @@ function Index() {
         }
       );
     } catch (error) {
-      console.error('扫描资源失败:', error);
-      addLog('❌ 扫描资源失败，请检查网络连接', 'error');
+      console.error('Resource scan failed:', error);
+      addLog(t('logs.operationFailed', { ns: 'home', operation: 'Resource scan', error: error.message }), 'error');
       setAppBridgeError(true);
     }
   }, [addLog, scanResourcesFetcher, selectedResourceType, resourceTypeOptions, shopId, shopQueryParam]);
@@ -864,15 +1121,15 @@ function Index() {
     try {
       // 检查是否已在翻译中
       if (translatingCategories.has(categoryKey)) {
-        addLog(`⏳ ${categoryKey} 分类正在翻译中，请稍候...`, 'warning');
+        addLog(`⏳ ${categoryKey} is being translated, please wait...`, 'warning');
         return;
       }
       
       // 检查翻译服务状态
       if (translationService && translationService.status === 'unhealthy') {
-        const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
-        addLog(`❌ 翻译服务异常: ${errorMsg}`, 'error');
-        showToast(`翻译服务异常: ${errorMsg}`, { isError: true });
+        const errorMsg = translationService.errors?.[0] || t('home.toasts.translationServiceUnavailable');
+        addLog(t('logs.translationServiceUnavailable', { ns: 'home', error: errorMsg }), 'error');
+        showToast(t('home.toasts.translationServiceError', { message: errorMsg }), { isError: true });
         return;
       }
       
@@ -892,14 +1149,14 @@ function Index() {
       }
       
       if (!fetcher) {
-        addLog(`⚠️ 同时翻译的分类过多，请稍后再试`, 'warning');
+        addLog(t('logs.tooManyCategories', { ns: 'home' }), 'warning');
         return;
       }
       
       // 设置翻译状态
       setTranslatingCategories(prev => new Set([...prev, categoryKey]));
       
-      addLog(`🔄 开始翻译 ${categoryKey} 分类 (${resourceIds.length} 个资源) 到 ${selectedLanguage}...`, 'info');
+      addLog(t('logs.translatingCategory', { ns: 'home', category: categoryKey, count: resourceIds.length, lang: selectedLanguage }), 'info');
       
       // 提交翻译请求
       fetcher.submit({
@@ -915,8 +1172,8 @@ function Index() {
       });
       
     } catch (error) {
-      console.error('分类翻译失败:', error);
-      addLog(`❌ ${categoryKey} 分类翻译失败: ${error.message}`, 'error');
+      console.error('Category translation failed:', error);
+      addLog(`❌ ${categoryKey} translation failed: ${error.message}`, 'error');
       
       // 清理状态
       setTranslatingCategories(prev => {
@@ -930,16 +1187,16 @@ function Index() {
   // 处理分类发布（发布到Shopify）
   const handleCategorySync = useCallback(async (categoryKey, category) => {
     try {
-      // 检查是否已在发布中
+      // Check if already publishing
       if (syncingCategories.has(categoryKey)) {
-        addLog(`⚠️ ${category.name} 分类正在发布中，请稍候...`, 'warning');
+        addLog(`⚠️ Category ${category.name} is publishing, please wait...`, 'warning');
         return;
       }
       
-      // 设置发布状态
+      // Set publishing state
       setSyncingCategories(prev => new Set([...prev, categoryKey]));
       
-      addLog(`🚀 开始发布 ${category.name} 分类到Shopify...`, 'info');
+      addLog(t('logs.categoryPublishStart', { ns: 'home', name: category.name }), 'info');
       
       // 收集该分类下所有资源的ID
       const categoryResourceIds = [];
@@ -962,8 +1219,8 @@ function Index() {
       });
       
     } catch (error) {
-      console.error('分类发布失败:', error);
-      addLog(`❌ ${category.name} 分类发布失败: ${error.message}`, 'error');
+      console.error('Category publish failed:', error);
+      addLog(t('logs.categoryPublishFailed', { ns: 'home', name: category.name, error: error.message }), 'error');
       
       // 清理状态
       setSyncingCategories(prev => {
@@ -974,34 +1231,40 @@ function Index() {
     }
   }, [selectedLanguage, addLog, syncingCategories, syncFetcher, shopId, shopQueryParam]);
 
-  // 开始翻译（带防抖和操作锁）
+  // Start translation (debounced with operation lock)
   const startTranslation = useCallback(() => {
     debounce('translate', () => {
-      safeAsyncOperation('翻译', async () => {
-        // 提前验证：没有资源时直接返回
+      safeAsyncOperation('translate', async () => {
+        // Validate: nothing to translate
         if (resources.length === 0) {
-          addLog('❌ 没有可翻译的资源', 'warning');
-          showToast('没有可翻译的资源', { isError: true });
+          addLog(t('logs.translationNoResources', { ns: 'home' }), 'warning');
+          showToast(t('home.toasts.noTranslatable'), { isError: true });
           return;
         }
 
-        // 检查翻译服务状态
+        // Check translation service health
         if (translationService && translationService.status === 'unhealthy') {
-          const errorMsg = translationService.errors?.[0] || '翻译服务不可用';
-          addLog(`❌ 翻译服务异常: ${errorMsg}`, 'error');
-          showToast(`翻译服务异常: ${errorMsg}`, { isError: true });
+          const errorMsg = translationService.errors?.[0] || t('home.toasts.translationServiceUnavailable');
+          addLog(t('logs.translationServiceUnavailable', { ns: 'home', error: errorMsg }), 'error');
+          showToast(t('home.toasts.translationServiceError', { message: errorMsg }), { isError: true });
           return;
         }
 
-        // KISS：空选时使用所有可见资源
+        // Use all visible resources when none selected
         const resourceIds = selectedResources.length > 0
           ? selectedResources
           : resources.map(r => r.id);
 
-        // 准确的日志反馈
+        // Precise log feedback
         const count = resourceIds.length;
-        const scope = selectedResources.length > 0 ? '选中的' : '全部';
-        addLog(`🔄 开始翻译${scope} ${count} 个资源到 ${selectedLanguage}...${clearCache ? ' (清除缓存)' : ''}`, 'info');
+        const scope = selectedResources.length > 0 ? 'selected' : 'all';
+        addLog(t('logs.translationStart', {
+          ns: 'home',
+          scope: scope === 'selected' ? t('actions.translateSelected', { ns: 'home', count }) : t('actions.translateAll', { ns: 'home', count }),
+          count,
+          lang: selectedLanguage,
+          cacheNote: clearCache ? ' (clear cache)' : ''
+        }), 'info');
 
         translateFetcher.submit({
           language: selectedLanguage,
@@ -1026,8 +1289,8 @@ function Index() {
 
     const { success, message, data, redirected, mode } = translateFetcher.data;
     if (!success) {
-      addLog(`❌ 翻译失败: ${message || '未知错误'}`, 'error');
-      showToast(message || '翻译失败', { isError: true });
+      addLog(t('logs.translationFailed', { ns: 'home', error: message || 'Unknown error' }), 'error');
+      showToast(message || t('home.toasts.translationFailed'), { isError: true });
       loadStatus();
       return;
     }
@@ -1046,14 +1309,14 @@ function Index() {
     const skippedCount = stats.skipped || 0;
 
     if (successCount > 0) {
-      addLog(`✅ ${successCount} 个资源翻译成功`, 'success');
+      addLog(t('logs.translationSuccessCount', { ns: 'home', count: successCount }), 'success');
     }
     if (skippedCount > 0) {
-      addLog(`ℹ️ ${skippedCount} 个资源内容未变化，已跳过`, 'info');
+      addLog(t('logs.translationSkippedCount', { ns: 'home', count: skippedCount }), 'info');
     }
     if (failureCount > 0) {
-      addLog(`⚠️ ${failureCount} 个资源翻译失败，请检查日志`, 'warning');
-      showToast(`${failureCount} 个资源翻译失败`, { isError: true });
+      addLog(t('logs.translationFailureCount', { ns: 'home', count: failureCount }), 'warning');
+      showToast(t('home.toasts.translationFailureCount', { count: failureCount }), { isError: true });
     }
 
     // 🆕 阶段1：消费 relatedSummary（产品关联内容自动处理）
@@ -1065,7 +1328,7 @@ function Index() {
 
       if (totalRelated > 0) {
         addLog(
-          `ℹ️ 自动处理了 ${totalRelated} 个关联内容（选项: ${optionsCount}，元字段: ${metafieldsCount}）`,
+          `ℹ️ Auto-processed ${totalRelated} related items (options: ${optionsCount}, metafields: ${metafieldsCount})`,
           'info'
         );
       }
@@ -1076,8 +1339,8 @@ function Index() {
   }, [translateFetcher.state, translateFetcher.data, addLog, showToast, loadStatus]);
 
   const clearData = useCallback(() => {
-    safeAsyncOperation('清空数据', async () => {
-      addLog(`🗑️ 清空 ${selectedLanguage} 语言数据...`, 'info');
+    safeAsyncOperation('clear-data', async () => {
+      addLog(t('logs.clearDataStart', { ns: 'home', language: selectedLanguage }), 'info');
 
       clearFetcher.submit({
         type: 'language',
@@ -1088,14 +1351,14 @@ function Index() {
         action: shopQueryParam ? `/api/clear?${shopQueryParam}` : '/api/clear'
       });
 
-      // 只清空当前语言的数据
+      // Only clear current language data
       setAllLanguagesData(prev => ({
         ...prev,
         [selectedLanguage]: null
       }));
 
       setSelectedResources([]);
-    })(); // 立即调用返回的函数
+    })();
   }, [addLog, clearFetcher, selectedLanguage, safeAsyncOperation, shopId, shopQueryParam]);
 
   useEffect(() => {
@@ -1107,14 +1370,14 @@ function Index() {
 
     if (success) {
       const result = data || {};
-      const finalMessage = message || result.message || `${selectedLanguage} 数据已清空`;
+      const finalMessage = message || result.message || `${selectedLanguage} data cleared`;
 
-      addLog(`✅ ${finalMessage}`, 'success');
+      addLog(t('logs.clearDataSuccess', { ns: 'home', language: selectedLanguage, defaultValue: finalMessage }), 'success');
       showToast(finalMessage, { duration: 2000 });
 
       loadStatus(selectedLanguage, viewMode);
     } else {
-      const errorMessage = message || '清空数据失败';
+      const errorMessage = message || t('logs.clearDataFailed', { ns: 'home' });
       addLog(`❌ ${errorMessage}`, 'error');
       showToast(errorMessage, { isError: true });
     }
@@ -1157,43 +1420,43 @@ function Index() {
       }
       return formattedLanguages[0]?.value ?? prev;
     });
-    addLog('✅ 语言列表已更新', 'success');
+    addLog(t('logs.languageUpdated', { ns: 'home' }), 'success');
   }, [addLog, primaryLanguage]);
 
   // 语言选择验证和切换处理
   const handleLanguageChange = useCallback((value) => {
     // 语言验证映射
     const languageNames = {
-      'de': '德语',
-      'nl': '荷兰语',
-      'zh-CN': '简体中文',
-      'zh-TW': '繁体中文',
-      'en': '英语',
-      'fr': '法语',
-      'es': '西班牙语',
-      'ja': '日语',
-      'ko': '韩语'
+      'de': 'German',
+      'nl': 'Dutch',
+      'zh-CN': 'Chinese (Simplified)',
+      'zh-TW': 'Chinese (Traditional)',
+      'en': 'English',
+      'fr': 'French',
+      'es': 'Spanish',
+      'ja': 'Japanese',
+      'ko': 'Korean'
     };
 
     // 记录语言切换
-    addLog(`📝 切换语言至: ${languageNames[value] || value}`, 'info');
+    addLog(t('logs.languageSwitch', { ns: 'home', language: languageNames[value] || value }), 'info');
 
     // 检测潜在的语言混淆
     if (value === 'nl' && selectedLanguage === 'de') {
-      addLog('⚠️ 注意：从德语切换到荷兰语', 'warning');
+      addLog(t('logs.languageSwitchNote1', { ns: 'home' }), 'warning');
     } else if (value === 'de' && selectedLanguage === 'nl') {
-      addLog('⚠️ 注意：从荷兰语切换到德语', 'warning');
+      addLog(t('logs.languageSwitchNote2', { ns: 'home' }), 'warning');
     }
 
     if (primaryLanguage && value === primaryLanguage.value) {
-      addLog('⚠️ 默认语言不可作为翻译目标', 'warning');
+      addLog(t('logs.defaultLanguageWarning', { ns: 'home' }), 'warning');
       return;
     }
 
     // 验证语言是否在可用列表中
     const isValidLanguage = dynamicLanguages.some(lang => lang.value === value);
     if (!isValidLanguage) {
-      addLog(`❌ 警告：语言 ${value} 不在可用列表中`, 'error');
+      addLog(t('logs.languageNotAllowed', { ns: 'home', language: value }), 'error');
       return;
     }
 
@@ -1204,20 +1467,20 @@ function Index() {
   
   // 处理语言添加
   const handleLanguageAdded = useCallback((languageCodes) => {
-    addLog(`✅ 成功添加 ${languageCodes.length} 个语言`, 'success');
-    showToast(`成功添加 ${languageCodes.length} 个语言`, { duration: 3000 });
+    addLog(t('logs.languageAdded', { ns: 'home', count: languageCodes.length }), 'success');
+    showToast(t('home.toasts.addLanguageSuccess', { count: languageCodes.length }), { duration: 3000 });
   }, [addLog, showToast]);
 
   // Phase 2: 发布处理函数（带防抖和操作锁）
   const publishPendingTranslations = useCallback(() => {
     debounce('publish', () => {
-      safeAsyncOperation('发布翻译', async () => {
+      safeAsyncOperation('publish-translations', async () => {
         setIsPublishing(true);
-        addLog('📤 开始发布待发布翻译...', 'info');
+        addLog(t('logs.publishPendingStart', { ns: 'home' }), 'info');
 
         publishFetcher.submit({
           language: selectedLanguage,
-          publishAll: "false", // 只发布当前语言
+          publishAll: "false", // only current language
           shop: shopId
         }, {
           method: 'POST',
@@ -1229,14 +1492,14 @@ function Index() {
 
   const publishAllPending = useCallback(() => {
     debounce('publishAll', () => {
-      safeAsyncOperation('批量发布', async () => {
+      safeAsyncOperation('batch-publish', async () => {
         setIsPublishing(true);
-        addLog('📤 开始批量发布所有待发布翻译...', 'info');
+        addLog(t('logs.publishAllStart', { ns: 'home' }), 'info');
 
         batchPublishFetcher.submit({
-          batchSize: "5", // 每批5个，避免API限流
-          delayMs: "1000", // 批次间延迟1秒
-          filters: JSON.stringify({}), // 发布所有语言
+          batchSize: "5", // limit per batch to avoid rate limits
+          delayMs: "1000", // delay between batches
+          filters: JSON.stringify({}), // publish all languages
           shop: shopId
         }, {
           method: 'POST',
@@ -1248,9 +1511,9 @@ function Index() {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'pending': return <Badge tone="attention">待翻译</Badge>;
-      case 'processing': return <Badge tone="info">翻译中</Badge>;
-      case 'completed': return <Badge tone="success">已完成</Badge>;
+      case 'pending': return <Badge tone="attention">Pending</Badge>;
+      case 'processing': return <Badge tone="info">In progress</Badge>;
+      case 'completed': return <Badge tone="success">Completed</Badge>;
       default: return <Badge>{status}</Badge>;
     }
   };
@@ -1265,9 +1528,9 @@ function Index() {
     
     return (
       <InlineStack gap="200" align="center">
-        <Text variant="bodySm">{icon} 翻译服务:</Text>
+        <Text variant="bodySm">{icon} {t('service.translationLabel', { ns: 'home' })}</Text>
         <Badge tone={tone}>
-          {isHealthy ? '正常' : '异常'}
+          {isHealthy ? t('status.healthy', { ns: 'home' }) : t('status.unhealthy', { ns: 'home' })}
         </Badge>
         {!isHealthy && translationService.errors && (
           <Text variant="bodySm" tone="critical">
@@ -1278,32 +1541,213 @@ function Index() {
     );
   };
 
+  if (typeof window !== 'undefined' && (!hasHostParam || !isAppBridgeReady)) {
+    const loginUrl = shopId
+      ? `/auth/login?shop=${encodeURIComponent(shopId)}`
+      : '/auth/login';
+
+    return (
+      <Page>
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Banner tone="warning" title={t("fallback.missingAppBridge")}>
+                  <List type="number">
+                    <List.Item>{t('fallback.needShopifyAdmin')}</List.Item>
+                    <List.Item>{t('fallback.missingHostTitle')}</List.Item>
+                  </List>
+                  <Text variant="bodySm">
+                    {t('fallback.missingHostTip')} ({hasHostParam ? 'host ✓' : 'host ✗'})
+                  </Text>
+                </Banner>
+                <Text as="h2" variant="headingMd">
+                  {t("fallback.needShopifyAdmin")}
+                </Text>
+                <Text variant="bodyMd">
+                  {t("fallback.missingAppBridge")}
+                </Text>
+                {!hasHostParam && (
+                  <Banner tone="warning" title={t("fallback.missingHostTitle")}>
+                    <Text variant="bodySm">
+                      {t("fallback.missingHostTip")}
+                    </Text>
+                  </Banner>
+                )}
+                <InlineStack gap="200">
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      try {
+                        if (window.top) {
+                          window.top.location.href = loginUrl;
+                          return;
+                        }
+                      } catch {}
+                      window.location.href = loginUrl;
+                    }}
+                  >
+                    {t("actions.reauthorize")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => window.location.reload()}
+                  >
+                    {t("actions.refreshPage")}
+                  </Button>
+                </InlineStack>
+                <Text variant="bodySm" tone="subdued">
+                  {t("fallback.troubleshoot")}
+                </Text>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
+
   return (
     <Page>
-      <TitleBar title="翻译应用测试">
+      <TitleBar title={t("pages.home.testTitle")}>
         <Button variant="primary" onClick={loadStatus}>
-          刷新状态
+          {t("actions.refreshStatus")}
         </Button>
       </TitleBar>
       
       <BlockStack gap="500">
-        {/* 网络状态警告 */}
+        <Layout>
+          <Layout.Section>
+            <CreditBar
+              credits={credits}
+              subscription={subscription}
+              plans={plans}
+              onUpgrade={handleOpenUpgrade}
+              canCancel={canCancelSubscription}
+              onCancel={handleOpenCancel}
+            />
+          </Layout.Section>
+        </Layout>
+
+        {creditWarningLevel && (
+          <Layout>
+            <Layout.Section>
+              <Banner
+                tone={creditWarningLevel === 'critical' ? 'critical' : 'warning'}
+                title={creditWarningLevel === 'critical' ? t('subscription.creditsCriticalTitle', { ns: 'home' }) : t('subscription.creditsLowTitle', { ns: 'home' })}
+              >
+                <Text variant="bodySm">
+                  {t('subscription.remaining', { ns: 'home', available: credits ? formatCompactNumber(credits.available) : '--', total: credits ? formatCompactNumber(credits.total) : '--' })}
+                </Text>
+                {upgradeOptions.length > 0 && (
+                  <InlineStack gap="200" align="end">
+                    <Button onClick={handleOpenUpgrade} size="slim" primary>
+                      {t('actions.upgrade', { ns: 'home', defaultValue: 'Upgrade plan' })}
+                    </Button>
+                  </InlineStack>
+                )}
+              </Banner>
+            </Layout.Section>
+          </Layout>
+        )}
+
+        <Modal
+          open={upgradeModalOpen}
+          onClose={() => setUpgradeModalOpen(false)}
+          title="Upgrade plan"
+          primaryAction={{
+            content: isUpgrading ? 'Upgrading...' : 'Confirm upgrade',
+            onAction: handleSubmitUpgrade,
+            loading: isUpgrading,
+            disabled: !selectedPlanId || upgradeOptions.length === 0
+          }}
+          secondaryActions={[{
+            content: 'Cancel',
+            onAction: () => setUpgradeModalOpen(false),
+            disabled: isUpgrading
+          }]}
+        >
+          <Modal.Section>
+            {upgradeOptions.length === 0 ? (
+              <Text variant="bodyMd">You are already on the highest plan. Contact support for higher limits.</Text>
+            ) : (
+              <BlockStack gap="300">
+                <Select
+                  label="Choose a plan"
+                  options={upgradeOptions.map((plan) => ({
+                    label: `${plan.displayName} · ${plan.monthlyCredits.toLocaleString()} credits/mo · ~${formatCompactNumber(plan.monthlyCredits * creditToChars)} chars`,
+                    value: plan.id
+                  }))}
+                  value={(selectedPlanId || upgradeOptions[0]?.id) ?? ''}
+                  onChange={setSelectedPlanId}
+                />
+                {selectedUpgradePlan && (
+                  <Card>
+                    <BlockStack gap="200">
+                      <Text variant="bodySm">
+                        Price: ${selectedUpgradePlan.price}/month · Credits: {selectedUpgradePlan.monthlyCredits.toLocaleString()} per month (~{formatCompactNumber(selectedUpgradePlan.monthlyCredits * creditToChars)} chars)
+                      </Text>
+                      {currentPlan && upgradeDelta != null && (
+                        <Text variant="bodySm" color="subdued">
+                          Current plan {currentPlan.displayName}: {currentPlan.monthlyCredits.toLocaleString()} credits/mo. This upgrade adds {upgradeDelta.toLocaleString()} credits.
+                        </Text>
+                      )}
+                    </BlockStack>
+                  </Card>
+                )}
+                <Text variant="bodySm" tone="subdued">
+                  New credits take effect immediately; used credits remain. You can cancel later from settings or via support.
+                </Text>
+              </BlockStack>
+            )}
+          </Modal.Section>
+        </Modal>
+
+        <Modal
+          open={cancelModalOpen}
+          onClose={() => setCancelModalOpen(false)}
+          title="Cancel subscription"
+          primaryAction={{
+            content: isCancelling ? 'Processing...' : 'Confirm cancel',
+            destructive: true,
+            onAction: handleConfirmCancel,
+            loading: isCancelling
+          }}
+          secondaryActions={[{
+            content: 'Keep subscription',
+            onAction: () => setCancelModalOpen(false),
+            disabled: isCancelling
+          }]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <Text variant="bodyMd">
+                Confirm cancel plan {currentPlan?.displayName || ''}? You will immediately lose premium credits/features. Used credits are non-refundable.
+              </Text>
+              <Text variant="bodySm" tone="subdued">
+                You can upgrade or resubscribe anytime from this page.
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+
+        {/* Network warning */}
         {appBridgeError && (
           <Layout>
             <Layout.Section>
               <Card tone="critical">
                 <BlockStack gap="300">
-                  <Text as="h3" variant="headingMd">⚠️ 网络连接异常</Text>
+                  <Text as="h3" variant="headingMd">{t('network.issueTitle', { ns: 'home' })}</Text>
                   <Text variant="bodyMd">
-                    检测到网络请求被拦截或失败。这可能是由于：
+                    {t('network.description', { ns: 'home' })}
                   </Text>
                   <BlockStack gap="200">
-                    <Text variant="bodySm">• 浏览器扩展程序干扰（如广告拦截器）</Text>
-                    <Text variant="bodySm">• Shopify App Bridge连接问题</Text>
-                    <Text variant="bodySm">• 网络防火墙或代理设置</Text>
+                    <Text variant="bodySm">• {t('network.browserExtensions', { ns: 'home' })}</Text>
+                    <Text variant="bodySm">• {t('network.appBridge', { ns: 'home' })}</Text>
+                    <Text variant="bodySm">• {t('network.firewall', { ns: 'home' })}</Text>
                   </BlockStack>
                   <Text variant="bodySm" tone="subdued">
-                    建议：尝试禁用浏览器扩展或使用无痕模式访问
+                    {t('network.tip', { ns: 'home' })}
                   </Text>
                 </BlockStack>
               </Card>
@@ -1311,24 +1755,46 @@ function Index() {
           </Layout>
         )}
 
-        {/* 服务状态显示 */}
+        {/* Translation service status */}
         {translationService && (
           <Layout>
             <Layout.Section>
               <Card>
                 <BlockStack gap="300">
-                  <Text as="h3" variant="headingMd">服务状态</Text>
+                  <Text as="h3" variant="headingMd">{t('service.serviceStatus', { ns: 'home' })}</Text>
                   {getTranslationServiceStatus()}
 
                   {translationService.status === 'unhealthy' && (
-                    <Banner tone="critical" title="翻译服务不可用">
+                    <Banner tone="critical" title={t('service.unavailableTitle', { ns: 'home' })}>
                       <BlockStack gap="200">
                         <Text variant="bodySm">
-                          {translationService.errors?.[0] || '无法连接到翻译服务，请稍后重试。'}
+                          {translationService.errors?.[0] || t('service.unableToConnect', { ns: 'home' })}
                         </Text>
+                        {translationService.diagnostics?.endpoints?.[0] && (
+                          <BlockStack gap="100">
+                            <Text variant="bodySm" tone="critical">
+                              {t('service.primaryDiagnostics', { ns: 'home', summary: translationService.diagnostics.endpoints[0].summary })}
+                            </Text>
+                            {translationService.diagnostics.endpoints[0].checks?.map((check, index) => (
+                              <Text key={index} variant="bodySm" tone={check.status === 'success' ? 'subdued' : 'critical'}>
+                                · {check.name}: {check.status} {check.data?.httpStatus ? `(HTTP ${check.data.httpStatus})` : ''}
+                              </Text>
+                            ))}
+                          </BlockStack>
+                        )}
+                        {translationService.diagnostics?.recommendations?.length > 0 && (
+                          <BlockStack gap="100">
+                            <Text variant="bodySm" tone="critical">{t('service.suggestedActions', { ns: 'home' })}</Text>
+                            {translationService.diagnostics.recommendations.map((tip, index) => (
+                              <Text key={index} variant="bodySm" tone="critical">
+                                • {tip}
+                              </Text>
+                            ))}
+                          </BlockStack>
+                        )}
                         <InlineStack gap="200">
                           <Button size="slim" onClick={() => loadStatus(selectedLanguage, viewMode, true)}>
-                            重试健康检查
+                            {t('service.retryHealthCheck', { ns: 'home' })}
                           </Button>
                         </InlineStack>
                       </BlockStack>
@@ -1345,17 +1811,27 @@ function Index() {
                     </BlockStack>
                   )}
                   
-                  {translationService.config && (
+                      {translationService.config && (
                     <InlineStack gap="400">
                       <Text variant="bodySm">
-                        API密钥: {translationService.config.apiKeyConfigured ? '✅ 已配置' : '❌ 未配置'}
+                        {translationService.config.apiKeyConfigured ? t('service.apiConfigured', { ns: 'home' }) : t('service.apiNotConfigured', { ns: 'home' })}
                       </Text>
                       <Text variant="bodySm">
-                        模型: {translationService.config.model}
+                        {t('service.modelConnected', { ns: 'home' })}
                       </Text>
                       <Text variant="bodySm">
-                        超时: {translationService.config.timeout}ms
+                        {t('service.timeout', { ns: 'home', value: translationService.config.timeout })}
                       </Text>
+                      {typeof translationService.config.maxRequestsPerMinute === 'number' && (
+                        <Text variant="bodySm">
+                          {t('service.rateLimit', { ns: 'home', value: translationService.config.maxRequestsPerMinute })}
+                        </Text>
+                      )}
+                      {typeof translationService.config.minRequestIntervalMs === 'number' && (
+                        <Text variant="bodySm">
+                          {t('service.minInterval', { ns: 'home', value: translationService.config.minRequestIntervalMs })}
+                        </Text>
+                      )}
                     </InlineStack>
                   )}
                 </BlockStack>
@@ -1364,28 +1840,28 @@ function Index() {
           </Layout>
         )}
 
-        {/* 配置区域 */}
+        {/* Controls */}
         <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">操作面板</Text>
+                <Text as="h2" variant="headingMd">{t('ui.controlPanel', { ns: 'home' })}</Text>
                 
                 <BlockStack gap="400">
                   <Select
-                    label="目标语言"
+                    label={t('ui.targetLanguage', { ns: 'home' })}
                     options={dynamicLanguages}
                     value={selectedLanguage}
                     onChange={handleLanguageChange}
-                    helpText="选择要翻译的目标语言（自动保存选择）"
+                    helpText={t('ui.chooseTargetLanguage', { ns: 'home' })}
                   />
                   
                   <Select
-                    label="显示筛选"
+                    label={t('ui.filterView', { ns: 'home' })}
                     options={[
-                      { label: '全部资源', value: 'all' },
-                      { label: '仅已翻译', value: 'with-translations' },
-                      { label: '仅待翻译', value: 'without-translations' }
+                      { label: t('filterOptions.all', { ns: 'home' }), value: 'all' },
+                      { label: t('filterOptions.withTranslations', { ns: 'home' }), value: 'with-translations' },
+                      { label: t('filterOptions.withoutTranslations', { ns: 'home' }), value: 'without-translations' }
                     ]}
                     value={viewMode}
                     onChange={(value) => {
@@ -1393,8 +1869,10 @@ function Index() {
                       loadStatus(selectedLanguage, value);
                     }}
                     helpText={viewMode !== 'all' ? 
-                      `当前显示: ${viewMode === 'with-translations' ? '已翻译' : '待翻译'}的资源` : 
-                      '显示所有可翻译的资源'
+                      (viewMode === 'with-translations'
+                        ? t('ui.filterHelpWith', { ns: 'home' })
+                        : t('ui.filterHelpWithout', { ns: 'home' })) : 
+                      t('ui.filterHelpAll', { ns: 'home' })
                     }
                   />
                   
@@ -1405,22 +1883,23 @@ function Index() {
                       onLanguageAdded={handleLanguageAdded}
                       onLanguagesUpdated={handleLanguagesUpdated}
                       shopId={shopId}
+                      languageLimit={billing?.languageLimit}
                     />
                   </Box>
                 </BlockStack>
 
                 {primaryLanguage && (
                   <Text variant="bodySm" tone="subdued">
-                    默认语言：{primaryLanguage.label}（不可作为翻译目标）
+                    {t('ui.defaultLanguageNote', { ns: 'home', name: primaryLanguage.label })}
                   </Text>
                 )}
 
                 <Box>
                   <Checkbox
-                    label="清除缓存并重新翻译"
+                    label={t('ui.clearCacheAndRetranslate', { ns: 'home' })}
                     checked={clearCache}
                     onChange={setClearCache}
-                    helpText="勾选后将删除现有翻译并重新生成（仅影响选中的资源）"
+                    helpText={t('ui.clearCacheHelp', { ns: 'home' })}
                   />
                 </Box>
                 
@@ -1431,32 +1910,67 @@ function Index() {
                       loading={isScanning}
                       variant="primary"
                     >
-                      扫描所有资源
+                      {t('actions.scanResources', { ns: 'home' })}
                     </Button>
-                    <Button
-                      onClick={startTranslation}
-                      loading={isTranslating}
-                      variant="primary"
-                      disabled={resources.length === 0 || (translationService && translationService.status === 'unhealthy')}
+                    <Tooltip
+                      content={translateDisabledReason}
+                      active={Boolean(translateDisabledReason)}
+                      preferredPosition="above"
                     >
-                      {selectedResources.length > 0
-                        ? `翻译选中 ${selectedResources.length} 项`
-                        : resources.length > 0
-                          ? `翻译全部 ${resources.length} 项`
-                          : '暂无资源'}
-                    </Button>
+                      <Button
+                        onClick={startTranslation}
+                        loading={isTranslating}
+                        variant="primary"
+                        disabled={
+                          resources.length === 0 ||
+                          (translationService && translationService.status === 'unhealthy') ||
+                          !canTranslate
+                        }
+                      >
+                        {selectedResources.length > 0
+                          ? t('actions.translateSelected', { ns: 'home', count: selectedResources.length })
+                          : resources.length > 0
+                            ? t('actions.translateAll', { ns: 'home', count: resources.length })
+                            : t('empty.noResources', { ns: 'home' })}
+                      </Button>
+                    </Tooltip>
                     <Button
                       onClick={clearData}
                       loading={isClearing}
                       variant="tertiary"
                       tone="critical"
                     >
-                      清空数据
+                      {t('actions.clearData', { ns: 'home' })}
                     </Button>
                   </InlineStack>
 
+                  <BlockStack gap="150">
+                    <Text variant="bodySm" tone="subdued">
+                      {t('ui.scanningNote', { ns: 'home', credits: formatCompactNumber(availableCredits), chars: formatCompactNumber(availableCredits * creditToChars) })} {` ${estimatedSummaryText}`}
+                    </Text>
+                    {!hasActiveSubscription && (
+                      <Banner tone="warning" title={t('subscription.inactiveTitle', { ns: 'home' })}>
+                        <Text variant="bodySm">
+                          {t('subscription.inactiveBody', { ns: 'home' })}
+                        </Text>
+                      </Banner>
+                    )}
+                    {hasActiveSubscription && availableCredits <= 0 && (
+                      <Banner tone="critical" title={t('home.subscription.noCreditsTitle')}>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Text variant="bodySm">
+                            {t('home.subscription.noCreditsBody')}
+                          </Text>
+              <Button size="slim" onClick={handleOpenUpgrade}>
+                {t('home.subscription.viewPlans')}
+              </Button>
+            </InlineStack>
+          </Banner>
+        )}
+                  </BlockStack>
+
                   <BlockStack gap="200">
-                    <Text variant="headingSm">发布选项</Text>
+                    <Text variant="headingSm">{t('home.publish.title')}</Text>
                     <InlineStack gap="200">
                       <BlockStack gap="100">
                         <Button
@@ -1466,10 +1980,10 @@ function Index() {
                           tone="success"
                           disabled={!stats.pendingTranslations}
                         >
-                          立即发布 (当前语言 {stats.pendingTranslations || 0})
+                          {t('home.publish.now', { count: stats.pendingTranslations || 0 })}
                         </Button>
                         <Text variant="bodySm" tone="subdued">
-                          直接同步，适用所有数据（包括旧记录）
+                          {t('home.publish.nowHelp')}
                         </Text>
                       </BlockStack>
                       <BlockStack gap="100">
@@ -1480,10 +1994,10 @@ function Index() {
                           tone="success"
                           disabled={!stats.totalPendingTranslations}
                         >
-                          批量发布 (所有语言 {stats.totalPendingTranslations || 0})
+                          {t('home.publish.all', { count: stats.totalPendingTranslations || 0 })}
                         </Button>
                         <Text variant="bodySm" tone="subdued">
-                          批量高级发布，支持进度跟踪（已优化验证）
+                          {t('home.publish.allHelp')}
                         </Text>
                       </BlockStack>
                     </InlineStack>
@@ -1498,10 +2012,9 @@ function Index() {
         {stats.total > 0 && resources.some(r => r.resourceType === 'PRODUCT') && (
           <Layout>
             <Layout.Section>
-              <Banner tone="info" title="💡 产品翻译说明">
+              <Banner tone="info" title={t('home.tips.productTitle')}>
                 <Text variant="bodySm">
-                  翻译产品时会自动处理产品选项（Options）和元字段（Metafields）。
-                  可在翻译日志和发布日志中查看处理详情。
+                  {t('home.tips.productBody')}
                 </Text>
               </Banner>
             </Layout.Section>
@@ -1512,8 +2025,8 @@ function Index() {
         {stats.translated === 0 && viewMode === 'all' && resources.length > 0 && (
           <Layout>
             <Layout.Section>
-              <Banner status="info" title="开始翻译">
-                当前语言暂无翻译记录。请选择需要翻译的资源，然后点击"开始翻译"按钮。
+              <Banner status="info" title={t('home.empty.startTitle')}>
+                {t('home.empty.startBody')}
               </Banner>
             </Layout.Section>
           </Layout>
@@ -1523,7 +2036,7 @@ function Index() {
           <Layout>
             <Layout.Section>
               <Banner>
-                没有找到已翻译的资源。请切换到"全部资源"查看所有可翻译内容。
+                {t('home.empty.noTranslated')}
               </Banner>
             </Layout.Section>
           </Layout>
@@ -1535,23 +2048,23 @@ function Index() {
             <InlineStack gap="400">
               <Card>
                 <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">总资源数</Text>
+                  <Text as="h3" variant="headingMd">{t('home.stats.total')}</Text>
                   <Text as="p" variant="headingLg">{stats.total || 0}</Text>
                 </BlockStack>
               </Card>
               <Card>
                 <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">待翻译</Text>
+                  <Text as="h3" variant="headingMd">{t('home.stats.pending')}</Text>
                   <Text as="p" variant="headingLg" tone="critical">{stats.pending || 0}</Text>
                 </BlockStack>
               </Card>
               <Card>
                 <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">已翻译</Text>
+                  <Text as="h3" variant="headingMd">{t('home.stats.translated')}</Text>
                   <Text as="p" variant="headingLg" tone="success">{stats.translated || 0}</Text>
                   {stats.translationRate !== undefined && (
                     <Text variant="bodySm" tone="subdued">
-                      {stats.translationRate}% 完成率
+                      {t('home.stats.completion', { rate: stats.translationRate })}
                     </Text>
                   )}
                 </BlockStack>
@@ -1566,13 +2079,13 @@ function Index() {
               <BlockStack gap="300">
                 <InlineStack align="space-between">
                   <BlockStack gap="100">
-                    <Text variant="headingMd">语言域名配置</Text>
+                    <Text variant="headingMd">{t('stats.languageDomainMapping', { ns: 'home' })}</Text>
                     <Text variant="bodySm" color="subdued">
-                      查看所有语言的URL映射配置
+                      {t('stats.viewUrlMappings', { ns: 'home' })}
                     </Text>
                   </BlockStack>
                   <Button url="/app/language-domains" size="slim">
-                    查看配置
+                    {t('stats.viewConfiguration', { ns: 'home' })}
                   </Button>
                 </InlineStack>
               </BlockStack>
@@ -1580,13 +2093,13 @@ function Index() {
           </Layout.Section>
         </Layout>
 
-        {/* 操作日志 */}
+        {/* Operation logs */}
         {logs.length > 0 && (
           <Layout>
             <Layout.Section>
               <Card>
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">操作日志</Text>
+                  <Text as="h2" variant="headingMd">{t('empty.operationLogs', { ns: 'home' })}</Text>
                   <Box style={{maxHeight: "200px", overflowY: "scroll"}}>
                     <BlockStack gap="100">
                       {logs.map((log, index) => (
@@ -1606,7 +2119,7 @@ function Index() {
           </Layout>
         )}
 
-        {/* 资源分类展示 */}
+        {/* Resource categories */}
         {resources.length > 0 ? (
           <ResourceCategoryDisplay 
             resources={resources}
@@ -1624,7 +2137,7 @@ function Index() {
                                  (supportedLanguages[0]?.value ?? supportedLanguages[0]?.locale);
               if (!targetLang) {
                 if (typeof window !== 'undefined' && window.shopify?.toast) {
-                  window.shopify.toast.show('请先选择目标语言', { isError: true });
+                  window.shopify.toast.show('Please select a target language', { isError: true });
                 }
                 return;
               }
@@ -1648,16 +2161,16 @@ function Index() {
             <Layout.Section>
               <Card>
                 <BlockStack gap="3">
-                  <Text as="h2" variant="headingMd">暂无资源数据</Text>
+                  <Text as="h2" variant="headingMd">{t('empty.noResources', { ns: 'home' })}</Text>
                   <Text as="p" tone="subdued">
-                    请先完成以下流程后再启动翻译：① 扫描资源 ② 执行翻译 ③ 发布同步。当前未检测到任何已扫描资源，请使用下方按钮开始扫描。
+                    {t('empty.scanToStart', { ns: 'home' })}
                   </Text>
                   <InlineStack gap="2">
                     <Button onClick={scanSelectedResourceType} loading={isScanning}>
-                      扫描 {resourceTypeOptions.find(opt => opt.value === selectedResourceType)?.label || selectedResourceType}
+                      {t('empty.scanSelected', { ns: 'home', label: resourceTypeOptions.find(opt => opt.value === selectedResourceType)?.label || selectedResourceType })}
                     </Button>
                     <Button onClick={scanProducts} variant="secondary" loading={isScanning}>
-                      快速扫描产品
+                      {t('empty.quickScanProducts', { ns: 'home' })}
                     </Button>
                   </InlineStack>
                 </BlockStack>

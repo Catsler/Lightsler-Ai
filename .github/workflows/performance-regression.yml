@@ -1,0 +1,47 @@
+name: Performance Regression
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    env:
+      LIGHTHOUSE_CI_THRESHOLD: 90
+      LCP_THRESHOLD: 2500
+      FCP_THRESHOLD: 1800
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Lighthouse Budgets
+        run: |
+          npx @lhci/cli autorun \
+            --collect.url=https://fynony.ease-joy.fun \
+            --collect.url=https://onewind.ease-joy.fun \
+            --collect.settings.chromeFlags=\"--headless\" \
+            --collect.settings.skipAudits=bf-cache \
+            --assert.budgetsFile=scripts/performance/budgets.json
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ Performance regression detected! 请检查 Lighthouse 报告。'
+            })
+*** End Patch

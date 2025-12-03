@@ -30,15 +30,15 @@ async function handleLanguageCoverage({ request, session }) {
   }
 
   if (!language) {
-    throw new Error('language 参数必填');
+    throw new Error('language is required');
   }
 
   if (!ALLOWED_SCOPES.has(scope)) {
-    throw new Error('scope 参数无效，只支持 shop/type/resource');
+    throw new Error('invalid scope, only shop/type/resource supported');
   }
 
   if (scope === 'resource' && !scopeId) {
-    throw new Error('scope=resource 时必须提供 scopeId 或 resourceId 参数');
+    throw new Error('when scope=resource, scopeId or resourceId is required');
   }
 
   const minQuality = COVERAGE_CONFIG.qualityThresholdRange?.min ?? 0;
@@ -73,5 +73,5 @@ async function handleLanguageCoverage({ request, session }) {
 
 export const loader = createApiRoute(handleLanguageCoverage, {
   requireAuth: true,
-  operationName: '获取语言覆盖率'
+  operationName: 'language coverage'
 });

@@ -1,0 +1,91 @@
+{
+  "name": "t:Testimonials",
+  "type": null,
+  "settings": [
+    {
+      "id": "reveal_on_scroll",
+      "type": "checkbox",
+      "label": "t:Reveal_on_scroll",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "testimonial",
+      "name": "t:Testimonial",
+      "settings": [
+        {
+          "id": "content",
+          "type": "text",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "author",
+          "type": "text",
+          "label": "t:Author",
+          "translate": true
+        }
+      ]
+    }
+  ]
+}

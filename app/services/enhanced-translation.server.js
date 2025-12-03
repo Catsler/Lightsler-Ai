@@ -300,7 +300,7 @@ async function translateWithContext(text, targetLang) {
 内容：${text}`;
   
   try {
-    const translated = await translateText(text, targetLang);
+    const translated = await translateText(text, targetLang, { skipBilling: true });
     return {
       success: true,
       text: translated
@@ -402,7 +402,7 @@ async function translateConcise(text, targetLang) {
 内容：${text}`;
   
   try {
-    const translated = await translateText(text, targetLang);
+    const translated = await translateText(text, targetLang, { skipBilling: true });
     return {
       success: true,
       text: translated
@@ -440,7 +440,7 @@ async function performAggressiveTranslation(text, targetLang, remainingParts) {
   // 批量翻译所有标记的内容
   const translationPromises = Array.from(forceTranslateMap.entries()).map(async ([marker, content]) => {
     try {
-      const result = await translateText(content, targetLang);
+      const result = await translateText(content, targetLang, { skipBilling: true });
       return { marker, translated: result };
     } catch (error) {
       logger.error('强力翻译失败', { preview: content.substring(0, 30), targetLang });

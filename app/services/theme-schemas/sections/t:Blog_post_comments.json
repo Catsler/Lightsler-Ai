@@ -1,0 +1,13 @@
+{
+  "name": "t:Blog_post_comments",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_gravatar",
+      "type": "checkbox",
+      "label": "t:Show_comment_gravatar",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

@@ -1,0 +1,258 @@
+{
+  "name": "t:Footer",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_payment_icons",
+      "type": "checkbox",
+      "label": "t:Show_payment_icons",
+      "translate": false
+    },
+    {
+      "id": "show_powered_by",
+      "type": "checkbox",
+      "label": "t:Show_powered_by",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Country_region_selector",
+      "translate": false
+    },
+    {
+      "id": "show_country_selector",
+      "type": "checkbox",
+      "label": "t:Show_country_region_selector",
+      "translate": false
+    },
+    {
+      "id": "show_country_flag",
+      "type": "checkbox",
+      "label": "t:Show_country_region_flag",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Language_selector",
+      "translate": false
+    },
+    {
+      "id": "show_locale_selector",
+      "type": "checkbox",
+      "label": "t:Show_language_selector",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Bottom_bar",
+      "translate": false
+    },
+    {
+      "id": "show_bottom_bar",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "id": "bottom_bar_content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "id": "bottom_bar_menu",
+      "type": "link_list",
+      "label": "t:Menu",
+      "translate": false
+    },
+    {
+      "id": "bottom_bar_mobile_alignment",
+      "type": "select",
+      "label": "t:Mobile_alignment",
+      "translate": false
+    },
+    {
+      "id": "bottom_bar_background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "bottom_bar_text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Customer_privacy_bar",
+      "translate": false
+    },
+    {
+      "id": "show_cookie_bar",
+      "type": "checkbox",
+      "label": "t:Show_privacy_bar",
+      "translate": false
+    },
+    {
+      "id": "cookie_bar_title",
+      "type": "text",
+      "label": "t:Title",
+      "translate": true
+    },
+    {
+      "id": "cookie_bar_content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "t:Image",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_width",
+          "type": "range",
+          "label": "t:Image_width",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "name": "t:Text",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "mobile_width",
+          "type": "select",
+          "label": "t:Mobile_width",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "links",
+      "name": "t:Links",
+      "settings": [
+        {
+          "id": "menu",
+          "type": "link_list",
+          "label": "t:Menu",
+          "translate": false
+        },
+        {
+          "id": "mobile_width",
+          "type": "select",
+          "label": "t:Mobile_width",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "social_media",
+      "name": "t:Social_media",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:To_configure_social_media_go_to_your_social_media_settings",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "mobile_width",
+          "type": "select",
+          "label": "t:Mobile_width",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "newsletter",
+      "name": "t:Newsletter",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:Customers_who_subscribe_will_have_their_email_address_added_to_the_accepts_marketing_customer_list",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "mobile_width",
+          "type": "select",
+          "label": "t:Mobile_width",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Social_media",
+          "translate": false
+        },
+        {
+          "type": "paragraph",
+          "label": "t:To_configure_social_media_go_to_your_social_media_settings",
+          "translate": false
+        },
+        {
+          "id": "show_social_media",
+          "type": "checkbox",
+          "label": "t:Enable",
+          "translate": false
+        },
+        {
+          "id": "social_media_title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "social_media_content",
+          "type": "richtext",
+          "label": "t:Content",
+          "translate": true
+        }
+      ]
+    }
+  ]
+}

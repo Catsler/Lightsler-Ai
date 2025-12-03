@@ -1,0 +1,70 @@
+{
+  "name": "t:Cart",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_payment_methods",
+      "type": "checkbox",
+      "label": "t:Show_payment_methods",
+      "translate": false
+    },
+    {
+      "id": "show_shipping_estimator",
+      "type": "checkbox",
+      "label": "t:Show_shipping_rates_calculator",
+      "translate": false
+    },
+    {
+      "id": "checkout_button_icon_preset",
+      "type": "select",
+      "label": "t:Checkout_button_icon",
+      "translate": false
+    },
+    {
+      "id": "shipping_estimator_default_country",
+      "type": "text",
+      "label": "t:Default_country",
+      "translate": true
+    },
+    {
+      "id": "empty_button_link",
+      "type": "url",
+      "label": "t:Empty_button_link",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "@app",
+      "settings": []
+    },
+    {
+      "type": "totals",
+      "name": "t:Totals",
+      "settings": []
+    },
+    {
+      "type": "order_note",
+      "name": "t:Order_note",
+      "settings": [
+        {
+          "id": "open_by_default",
+          "type": "checkbox",
+          "label": "t:Open_by_default",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "express_checkout_buttons",
+      "name": "t:Express_checkout_buttons",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:Make_payment_faster_with_accelerated_payment_buttons",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

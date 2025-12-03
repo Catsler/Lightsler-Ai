@@ -1,0 +1,144 @@
+{
+  "name": "t:Featured_collections",
+  "type": "featured-collections",
+  "settings": [
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Content",
+      "translate": true
+    },
+    {
+      "id": "products_count",
+      "type": "range",
+      "label": "t:Products_to_show",
+      "translate": false
+    },
+    {
+      "id": "products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    },
+    {
+      "id": "stack_products",
+      "type": "checkbox",
+      "label": "t:Stack_products",
+      "translate": false
+    },
+    {
+      "id": "show_cta",
+      "type": "checkbox",
+      "label": "t:Show_add_to_cart_below_info",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "id": "button_background",
+      "type": "color",
+      "label": "t:Button_background",
+      "translate": false
+    },
+    {
+      "id": "button_text_color",
+      "type": "color",
+      "label": "t:Button_text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "collection",
+      "name": "t:Collection",
+      "settings": [
+        {
+          "id": "collection",
+          "type": "collection",
+          "label": "t:Collection",
+          "translate": false
+        },
+        {
+          "id": "label",
+          "type": "text",
+          "label": "t:Tab_label",
+          "translate": true
+        },
+        {
+          "id": "button_text",
+          "type": "text",
+          "label": "t:Button_text",
+          "translate": true
+        },
+        {
+          "id": "button_url",
+          "type": "url",
+          "label": "t:Button_link",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

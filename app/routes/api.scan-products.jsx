@@ -36,6 +36,6 @@ async function handleDeprecatedScanProducts() {
 }
 
 export const action = createApiRoute(handleDeprecatedScanProducts, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: '已废弃的产品扫描端点'
 });

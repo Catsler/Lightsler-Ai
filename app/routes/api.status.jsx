@@ -69,6 +69,7 @@ async function handleGetStatus({ session, params }) {
         hasOtherLanguageTranslations,  // 是否有其他语言的翻译
         translationStatus: langTranslation?.status || null,
         translationSyncStatus: langTranslation?.syncStatus || null,
+        translationSyncError: langTranslation?.syncError || null,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         category: categoryInfo ? {

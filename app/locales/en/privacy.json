@@ -1,0 +1,97 @@
+{
+  "page": {
+    "title": "Privacy Policy",
+    "status": "Initial version (continuously improving)"
+  },
+  "intro": {
+    "title": "Introduction",
+    "content": "Lightsler AI Translation is committed to protecting your privacy. This policy explains how we collect, use, and protect your information."
+  },
+  "collection": {
+    "title": "Information We Collect",
+    "types": {
+      "title": "Types of Information",
+      "items": [
+        "Store Information: Store name, URL, owner email",
+        "Translation Content: Product, collection, theme and other resource data",
+        "Usage Data: Translation request logs, API call records",
+        "Technical Data: IP address, browser type, device information"
+      ]
+    },
+    "method": {
+      "title": "Collection Methods",
+      "items": [
+        "Automatically obtained through Shopify API",
+        "Your actions and settings in the app",
+        "Third-party services (such as translation API providers)"
+      ]
+    }
+  },
+  "usage": {
+    "title": "How We Use Information",
+    "items": [
+      "Provide translation services",
+      "Improve service quality and user experience",
+      "Technical support and troubleshooting",
+      "Send service-related notifications",
+      "Comply with legal and regulatory requirements"
+    ]
+  },
+  "sharing": {
+    "title": "Information Sharing",
+    "content": "We do not sell your personal information. We only share in the following situations:",
+    "scenarios": [
+      "Translation Service: Share content to be translated with translation API provider (currently using {{gptApiHost}})",
+      "Legal Requirements: As required by law, regulation, or government",
+      "Business Transfer: During mergers, acquisitions, or asset sales",
+      "Your Consent: Other situations with your explicit authorization"
+    ]
+  },
+  "thirdPartyServices": {
+    "title": "Third-Party Services We Use",
+    "items": [
+      "Crisp Chat (crisp.chat): Used for in-app customer support. When chat is enabled we may share your shop domain and contact email with Crisp. Privacy: https://crisp.chat/en/privacy/",
+      "OpenAI API: Used to process translation content you submit. Content is sent to the translation API for processing. Privacy: https://openai.com/policies/privacy-policy"
+    ]
+  },
+  "security": {
+    "title": "Data Security",
+    "items": [
+      "Use industry-standard encryption technology",
+      "Regular security audits and vulnerability scanning",
+      "Restrict employee access permissions",
+      "Secure data storage and transmission"
+    ]
+  },
+  "retention": {
+    "title": "Data Retention",
+    "content": "Active shops: retained while the app is installed. Uninstalled shops: data is soft-deleted immediately and permanently purged within 48 hours. GDPR deletion requests: processed and purged within 48 hours. System logs/metrics are trimmed within 30 days unless required sooner."
+  },
+  "rights": {
+    "title": "Your Rights",
+    "items": [
+      "Access: View the information we hold about you",
+      "Correction: Request correction of inaccurate information",
+      "Deletion: Request deletion of your personal information",
+      "Restriction: Restrict how we process your information",
+      "Objection: Object to our processing of your information",
+      "Portability: Obtain your data in a structured format"
+    ],
+    "exercise": "To exercise these rights, please contact: {{supportEmail}}"
+  },
+  "children": {
+    "title": "Children's Privacy",
+    "content": "Our service is not directed to children under 13. We do not knowingly collect personal information from children."
+  },
+  "changes": {
+    "title": "Policy Changes",
+    "content": "We may update this policy. Significant changes will be communicated via email or in-app notification."
+  },
+  "contact": {
+    "title": "Contact Us",
+    "content": "If you have questions or concerns, please contact:",
+    "email": "Support Email: {{supportEmail}}"
+  },
+  "disclaimer": "Disclaimer: This privacy policy is the initial version and will be continuously improved to meet the latest legal requirements.",
+  "effectiveDate": "Effective Date: {{date}}"
+}

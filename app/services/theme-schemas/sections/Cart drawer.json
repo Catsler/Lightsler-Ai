@@ -1,0 +1,135 @@
+{
+  "name": "Cart drawer",
+  "type": "cart-drawer",
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "Cart drawer won't appear to your customers if you have set the cart type to Page in the global theme settings.",
+      "translate": false
+    },
+    {
+      "type": "paragraph",
+      "label": "Free shipping bar can be configured in global cart settings. [Learn more](https://www.zalify.com/theme/help/free-shipping-bar)",
+      "translate": false
+    },
+    {
+      "id": "show_cart_note",
+      "type": "checkbox",
+      "label": "Show cart note",
+      "translate": false
+    },
+    {
+      "id": "show_shipping_text",
+      "type": "checkbox",
+      "label": "Show shipping text",
+      "translate": false
+    },
+    {
+      "id": "show_view_cart_button",
+      "type": "checkbox",
+      "label": "Show view cart button",
+      "translate": false
+    },
+    {
+      "id": "show_checkout_button",
+      "type": "checkbox",
+      "label": "Show checkout button",
+      "translate": false
+    },
+    {
+      "id": "empty_button_link",
+      "type": "url",
+      "label": "Empty button link",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Cross-sell",
+      "translate": false
+    },
+    {
+      "id": "show_recommendations",
+      "type": "checkbox",
+      "label": "Show recommendations",
+      "translate": false
+    },
+    {
+      "id": "recommendations_layout",
+      "type": "select",
+      "label": "Layout",
+      "translate": false
+    },
+    {
+      "id": "recommendations_title",
+      "type": "text",
+      "label": "Heading",
+      "translate": true
+    },
+    {
+      "id": "products",
+      "type": "product_list",
+      "label": "Recommendations",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "countdown",
+      "name": "Countdown bar",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "Create urgency with this block. Featuring timezone-sensitive promotion end times and cart drawer countdowns. [Learn more](https://www.zalify.com/theme/help/countdown)",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Heading",
+          "translate": true
+        },
+        {
+          "id": "mode",
+          "type": "select",
+          "label": "Countdown mode",
+          "translate": false
+        },
+        {
+          "id": "relative_minutes",
+          "type": "number",
+          "label": "Relative minutes",
+          "translate": false
+        },
+        {
+          "id": "specific_time",
+          "type": "text",
+          "label": "Specific time",
+          "translate": false
+        },
+        {
+          "id": "hide_on_complete",
+          "type": "checkbox",
+          "label": "Hide timer on complete",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "Colors",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "Text",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

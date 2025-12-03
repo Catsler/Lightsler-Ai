@@ -1,0 +1,337 @@
+{
+  "name": "t:Header",
+  "type": null,
+  "settings": [
+    {
+      "id": "enable_sticky_header",
+      "type": "checkbox",
+      "label": "t:Enable_sticky_header",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Logo",
+      "translate": false
+    },
+    {
+      "id": "logo",
+      "type": "image_picker",
+      "label": "t:Image",
+      "translate": false
+    },
+    {
+      "id": "logo_max_width",
+      "type": "range",
+      "label": "t:Image_width",
+      "translate": false
+    },
+    {
+      "id": "mobile_logo_max_width",
+      "type": "range",
+      "label": "t:Mobile_image_width",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Navigation",
+      "translate": false
+    },
+    {
+      "id": "navigation_menu",
+      "type": "link_list",
+      "label": "t:Menu",
+      "translate": false
+    },
+    {
+      "id": "sidebar_navigation_menu",
+      "type": "link_list",
+      "label": "t:Mobile_menu",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Desktop",
+      "translate": false
+    },
+    {
+      "id": "header_layout",
+      "type": "select",
+      "label": "t:Layout",
+      "translate": false
+    },
+    {
+      "id": "show_icons",
+      "type": "checkbox",
+      "label": "t:Show_icons",
+      "translate": false
+    },
+    {
+      "id": "reduce_desktop_padding",
+      "type": "checkbox",
+      "label": "t:Reduce_padding",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Language_selector",
+      "translate": false
+    },
+    {
+      "id": "show_locale_selector",
+      "type": "checkbox",
+      "label": "t:Show_language_selector",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Country_region_selector",
+      "translate": false
+    },
+    {
+      "id": "show_country_selector",
+      "type": "checkbox",
+      "label": "t:Show_country_region_selector",
+      "translate": false
+    },
+    {
+      "id": "show_only_country_flag",
+      "type": "checkbox",
+      "label": "t:Show_only_country_region_flag",
+      "translate": false
+    },
+    {
+      "id": "show_country_flag_in_popover",
+      "type": "checkbox",
+      "label": "t:Show_country_region_flag",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Transparent_header",
+      "translate": false
+    },
+    {
+      "id": "enable_transparent_header",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "id": "transparent_header_text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "id": "transparent_logo",
+      "type": "image_picker",
+      "label": "t:Logo_image",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Search",
+      "translate": false
+    },
+    {
+      "id": "search_menu",
+      "type": "link_list",
+      "label": "t:Quick_links_menu",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "mega_menu",
+      "name": "t:Mega_menu",
+      "settings": [
+        {
+          "id": "menu_item",
+          "type": "text",
+          "label": "t:Menu_item",
+          "translate": true
+        },
+        {
+          "id": "images_position",
+          "type": "select",
+          "label": "t:Images_position",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_1",
+          "translate": false
+        },
+        {
+          "id": "image_1",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_1_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_1_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_1_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_2",
+          "translate": false
+        },
+        {
+          "id": "image_2",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_2_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_2_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_2_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_3",
+          "translate": false
+        },
+        {
+          "id": "image_3",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_3_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_3_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_3_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_4",
+          "translate": false
+        },
+        {
+          "id": "image_4",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_4_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_4_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_4_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_5",
+          "translate": false
+        },
+        {
+          "id": "image_5",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_5_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_5_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_5_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Image_6",
+          "translate": false
+        },
+        {
+          "id": "image_6",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "image_6_heading",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "image_6_text",
+          "type": "text",
+          "label": "t:Text",
+          "translate": true
+        },
+        {
+          "id": "image_6_link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

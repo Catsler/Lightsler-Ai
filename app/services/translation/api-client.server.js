@@ -1,4 +1,5 @@
 import { config } from '../../utils/config.server.js';
+import { PRICING_CONFIG } from '../../utils/pricing-config.js';
 import {
   createAPIHeaders,
   createTranslationRequestBody,
@@ -8,6 +9,63 @@ import {
   calculateDynamicTokenLimit
 } from '../../utils/api.server.js';
 import { logger } from '../../utils/logger.server.js';
+
+function createRateLimiter({ minIntervalMs = 0, maxRequestsPerMinute = 0 } = {}) {
+  const requestTimestamps = [];
+  let lastRequestTime = 0;
+  let queue = Promise.resolve();
+
+  async function schedule() {
+    const now = Date.now();
+    let delay = 0;
+
+    if (minIntervalMs > 0 && lastRequestTime > 0) {
+      const sinceLast = now - lastRequestTime;
+      if (sinceLast < minIntervalMs) {
+        delay = Math.max(delay, minIntervalMs - sinceLast);
+      }
+    }
+
+    if (maxRequestsPerMinute > 0) {
+      const windowStart = now - 60000;
+      while (requestTimestamps.length > 0 && requestTimestamps[0] < windowStart) {
+        requestTimestamps.shift();
+      }
+
+      if (requestTimestamps.length >= maxRequestsPerMinute) {
+        const earliest = requestTimestamps[0];
+        const waitTime = earliest + 60000 - now;
+        if (waitTime > delay) {
+          delay = waitTime;
+        }
+      }
+    }
+
+    if (delay > 0) {
+      logger.debug('[Translation RateLimiter] 触发限流等待', { delay });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    const timestamp = Date.now();
+    requestTimestamps.push(timestamp);
+    lastRequestTime = timestamp;
+  }
+
+  function acquire() {
+    queue = queue.then(schedule).catch((error) => {
+      logger.warn('[Translation RateLimiter] 计划执行失败', { error: error?.message });
+      throw error;
+    });
+    return queue;
+  }
+
+  return { acquire };
+}
+
+const requestRateLimiter = createRateLimiter({
+  minIntervalMs: Math.max(0, config.translation.minRequestIntervalMs ?? 0),
+  maxRequestsPerMinute: Math.max(0, config.translation.maxRequestsPerMinute ?? 0)
+});
 
 const DEFAULT_OPTIONS = {
   maxRetries: 2,
@@ -76,7 +134,8 @@ function normalizeResponse(result, context = {}) {
     isOriginal: result.isOriginal,
     language: result.language || context.targetLang,
     tokenLimit: result.tokenLimit,
-    raw: result
+    raw: result,
+    meta: result.meta
   };
 }
 
@@ -227,8 +286,11 @@ export function createRequestDeduplicator({ maxInFlight = 500 } = {}) {
 }
 
 async function fetchTranslation({ text, targetLang, systemPrompt, options, context }) {
+  await requestRateLimiter.acquire();
+
   const headers = createAPIHeaders();
   const transformedText = text ?? '';
+  const modelToUse = options.model || PRICING_CONFIG.GPT_MODEL_NAME;
 
   const dynamicMaxTokens = options.maxTokens || calculateDynamicTokenLimit(transformedText, targetLang);
   const estimatedInputTokens = estimateTokenCount(systemPrompt) + estimateTokenCount(transformedText, targetLang);
@@ -269,7 +331,7 @@ async function fetchTranslation({ text, targetLang, systemPrompt, options, conte
     const result = await parseAPIResponse(response, {
       textLength: transformedText.length,
       targetLang,
-      model: config.translation.model,
+      model: modelToUse,
       maxTokens: safeMaxTokens,
       ...context
     });
@@ -281,7 +343,11 @@ async function fetchTranslation({ text, targetLang, systemPrompt, options, conte
       text: translatedText,
       isOriginal: false,
       language: targetLang,
-      tokenLimit: safeMaxTokens
+      tokenLimit: safeMaxTokens,
+      meta: {
+        modelUsed: modelToUse,
+        isFallbackModel: modelToUse !== PRICING_CONFIG.GPT_MODEL_NAME
+      }
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -306,7 +372,11 @@ async function fetchTranslation({ text, targetLang, systemPrompt, options, conte
       text: transformedText,
       error: errorMessage,
       isOriginal: true,
-      originalError: error
+      originalError: error,
+      meta: {
+        modelUsed: modelToUse,
+        isFallbackModel: modelToUse !== PRICING_CONFIG.GPT_MODEL_NAME
+      }
     };
   }
 }
@@ -448,9 +518,24 @@ export class TranslationAPIClient {
       context
     };
 
+    // 构建 Fallback 策略链
+    const defaultFallbacks = [];
+
+    // 如果启用了自动 Fallback 且当前不是在重试 Fallback 本身
+    if (PRICING_CONFIG.FALLBACK_ENABLED && strategy === 'primary') {
+      defaultFallbacks.push({
+        name: 'gpt-4o-fallback',
+        type: 'api',
+        optionsOverride: {
+          model: PRICING_CONFIG.FALLBACK_MODEL_NAME,
+          maxRetries: 1 // Fallback 仅重试一次
+        }
+      });
+    }
+
     const steps = [
       createPrimaryStep({ strategy, text, targetLang, systemPrompt, context, extras }),
-      ...normalizeFallbackDefinitions([...this.defaultFallbacks, ...fallbacks])
+      ...normalizeFallbackDefinitions([...defaultFallbacks, ...this.defaultFallbacks, ...fallbacks])
     ];
 
     let totalRetries = 0;
@@ -529,6 +614,16 @@ export class TranslationAPIClient {
         index: usedFallback.index,
         chain: `${strategy}->${usedFallback.name}`
       };
+      logger.warn('[Translation] Fallback model used', {
+        targetLang,
+        strategyChain: meta.fallback.chain,
+        modelUsed: resultWithoutMeta?.meta?.modelUsed || PRICING_CONFIG.FALLBACK_MODEL_NAME
+      });
+    } else if (resultWithoutMeta?.meta?.modelUsed) {
+      logger.debug('[Translation] Primary model used', {
+        targetLang,
+        modelUsed: resultWithoutMeta.meta.modelUsed
+      });
     }
 
     return {
@@ -638,7 +733,11 @@ export class TranslationAPIClient {
         text: textToUse,
         targetLang: targetLangToUse,
         systemPrompt: systemPromptToUse,
-        options: apiOptions,
+        options: {
+          ...apiOptions,
+          // 优先使用策略指定的模型，否则使用配置的主模型
+          model: requestConfig.model || PRICING_CONFIG.GPT_MODEL_NAME
+        },
         context: contextToUse
       });
 

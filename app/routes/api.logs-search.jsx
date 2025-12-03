@@ -21,7 +21,7 @@ async function handleLogsSearch({ request, session, searchParams }) {
     resourceType: searchParams.get('resourceType') || null,
     resourceId: searchParams.get('resourceId') || null,
     
-    // 时间范围
+    // Time range
     startDate: searchParams.get('startDate') 
       ? new Date(searchParams.get('startDate'))
       : new Date(Date.now() - 24 * 60 * 60 * 1000), // 默认24小时
@@ -32,28 +32,28 @@ async function handleLogsSearch({ request, session, searchParams }) {
     // 搜索关键词
     search: searchParams.get('search') || null,
     
-    // 分页
+    // Pagination
     page: parseInt(searchParams.get('page') || '1'),
     pageSize: parseInt(searchParams.get('pageSize') || '50'),
     
-    // 排序
+    // Sorting
     sortBy: searchParams.get('sortBy') || 'createdAt',
     sortOrder: searchParams.get('sortOrder') || 'desc',
     
-    // 聚合选项
+    // Aggregation options
     aggregate: searchParams.get('aggregate') === 'true',
     groupBy: searchParams.get('groupBy') || null
   };
   
-  // 验证参数
+  // Validate params
   if (params.pageSize > 200) {
     throw new Error('每页最多200条记录');
   }
   
-  // 构建查询条件
+  // Build query conditions
   const where = buildWhereClause(params, shop);
   
-  // 如果需要聚合
+  // If aggregation
   if (params.aggregate && params.groupBy) {
     const aggregatedData = await getAggregatedLogs(where, params.groupBy);
     return {
@@ -64,7 +64,7 @@ async function handleLogsSearch({ request, session, searchParams }) {
     };
   }
   
-  // 执行查询
+  // Execute query
   const [logs, total] = await Promise.all([
     prisma.errorLog.findMany({
       where,
@@ -92,7 +92,7 @@ async function handleLogsSearch({ request, session, searchParams }) {
     prisma.errorLog.count({ where })
   ]);
   
-  // 处理和格式化日志
+  // Process logs
   const formattedLogs = logs.map(log => ({
     ...log,
     level: mapSeverityToLevel(log.severity),
@@ -100,7 +100,7 @@ async function handleLogsSearch({ request, session, searchParams }) {
     summary: generateLogSummary(log)
   }));
   
-  // 生成统计信息
+  // Generate stats
   const stats = await generateLogStats(where);
   
   return {
@@ -147,34 +147,34 @@ export const action = createApiRoute(handleLogsAction, {
   operationName: '日志操作'
 });
 
-// 构建查询条件
+// Build query conditions
 function buildWhereClause(params, shop) {
   const where = {
     shopId: shop
   };
   
-  // 时间范围
+  // Time range
   where.createdAt = {
     gte: params.startDate,
     lte: params.endDate
   };
   
-  // 类型过滤
+  // Type filter
   if (params.type) {
     where.errorType = params.type;
   }
   
-  // 级别过滤（通过severity映射）
+  // Level filter via severity map
   if (params.level) {
     where.severity = mapLevelToSeverity(params.level);
   }
   
-  // 分类过滤
+  // Category filter
   if (params.category) {
     where.errorCategory = params.category;
   }
   
-  // 资源过滤
+  // Resource filter
   if (params.resourceType) {
     where.resourceType = params.resourceType;
   }
@@ -183,7 +183,7 @@ function buildWhereClause(params, shop) {
     where.resourceId = params.resourceId;
   }
   
-  // 关键词搜索
+  // Keyword search
   if (params.search) {
     where.OR = [
       { message: { contains: params.search, mode: 'insensitive' } },
@@ -196,7 +196,7 @@ function buildWhereClause(params, shop) {
   return where;
 }
 
-// 获取聚合日志
+// Get aggregated logs
 async function getAggregatedLogs(where, groupBy) {
   const validGroupByFields = [
     'errorType', 'errorCategory', 'errorCode', 
@@ -236,7 +236,7 @@ async function getAggregatedLogs(where, groupBy) {
   }));
 }
 
-// 生成日志统计
+// Generate log stats
 async function generateLogStats(where) {
   const [
     byType,
@@ -296,7 +296,7 @@ async function generateLogStats(where) {
   };
 }
 
-// 导出日志
+// Export logs
 async function exportLogs(formData, shop) {
   const format = formData.get('format') || 'json';
   const filters = JSON.parse(formData.get('filters') || '{}');
@@ -333,7 +333,7 @@ async function exportLogs(formData, shop) {
   };
 }
 
-// 分析日志
+// Analyze logs
 async function analyzeLogs(formData, shop) {
   const filters = JSON.parse(formData.get('filters') || '{}');
   const analysisType = formData.get('analysisType') || 'patterns';
@@ -418,13 +418,13 @@ async function generateReport(formData, shop) {
   };
 }
 
-// 辅助函数：映射严重度到级别
+// Helper: map severity to level
 function mapSeverityToLevel(severity) {
   const levels = ['debug', 'info', 'warning', 'error', 'critical'];
   return levels[severity - 1] || 'info';
 }
 
-// 辅助函数：映射级别到严重度
+// Helper: map level to severity
 function mapLevelToSeverity(level) {
   const severityMap = {
     debug: 1,
@@ -436,7 +436,7 @@ function mapLevelToSeverity(level) {
   return severityMap[level.toLowerCase()] || 2;
 }
 
-// 辅助函数：提取标签
+// Helper: extract tags
 function extractTags(log) {
   const tags = [];
   
@@ -446,7 +446,7 @@ function extractTags(log) {
   if (log.occurrences > 10) tags.push('frequent');
   if (log.status === 'new') tags.push('unresolved');
   
-  // 从context中提取额外标签
+  // Extract extra tags from context
   if (log.context && typeof log.context === 'object') {
     if (log.context.tags && Array.isArray(log.context.tags)) {
       tags.push(...log.context.tags);
@@ -456,7 +456,7 @@ function extractTags(log) {
   return [...new Set(tags)]; // 去重
 }
 
-// 辅助函数：生成日志摘要
+// Helper: generate log summary
 function generateLogSummary(log) {
   const parts = [];
   
@@ -467,7 +467,7 @@ function generateLogSummary(log) {
   return parts.join(' ');
 }
 
-// 辅助函数：转换为CSV
+// Helper: convert to CSV
 function convertToCSV(logs) {
   const headers = [
     'ID', '时间', '类型', '分类', '错误码', 
@@ -501,7 +501,7 @@ function convertToCSV(logs) {
   return csvContent;
 }
 
-// 辅助函数：分析错误模式
+// Helper: analyze error patterns
 function analyzeErrorPatterns(logs) {
   const patterns = {};
   
@@ -539,7 +539,7 @@ function analyzeErrorPatterns(logs) {
     .slice(0, 20);
 }
 
-// 辅助函数：分析错误趋势
+// Helper: analyze error trends
 function analyzeErrorTrends(logs) {
   const hourlyTrends = {};
   
@@ -559,11 +559,11 @@ function analyzeErrorTrends(logs) {
   }));
 }
 
-// 辅助函数：分析相关性
+// Helper: analyze correlation
 function analyzeCorrelations(logs) {
   const correlations = [];
   
-  // 分析资源类型和错误类型的相关性
+  // Analyze correlation of resource type and error type
   const resourceErrorMap = {};
   logs.forEach(log => {
     if (log.resourceType && log.errorType) {
@@ -587,14 +587,14 @@ function analyzeCorrelations(logs) {
   return correlations.sort((a, b) => b.correlation - a.correlation);
 }
 
-// 辅助函数：分析业务影响
+// Helper: analyze business impact
 function analyzeBusinessImpact(logs) {
   let totalImpact = 0;
   const impactByType = {};
   const criticalErrors = [];
   
   logs.forEach(log => {
-    // 计算影响分数
+    // Calculate impact score
     const impactScore = log.severity * log.occurrences;
     totalImpact += impactScore;
     
@@ -603,7 +603,7 @@ function analyzeBusinessImpact(logs) {
     }
     impactByType[log.errorType] += impactScore;
     
-    // 收集严重错误
+    // Collect critical errors
     if (log.severity >= 4 && log.occurrences > 5) {
       criticalErrors.push({
         message: log.message,
@@ -621,7 +621,7 @@ function analyzeBusinessImpact(logs) {
   };
 }
 
-// 辅助函数：生成趋势数据
+// Helper: generate trend data
 async function generateTrendData(where) {
   // 获取时间范围内的日志
   const logs = await prisma.errorLog.findMany({
@@ -633,7 +633,7 @@ async function generateTrendData(where) {
     }
   });
   
-  // 按天分组
+  // Group by day
   const dailyData = {};
   logs.forEach(log => {
     const date = new Date(log.createdAt).toISOString().split('T')[0];
@@ -658,7 +658,7 @@ async function generateTrendData(where) {
   }));
 }
 
-// 辅助函数：获取Top问题
+// Helper: get top issues
 async function getTopIssues(where) {
   return await prisma.errorLog.findMany({
     where,
@@ -679,7 +679,7 @@ async function getTopIssues(where) {
   });
 }
 
-// 辅助函数：生成摘要报告
+// Helper: generate summary report
 async function generateSummaryReport(logs, where) {
   const stats = await generateLogStats(where);
   
@@ -697,7 +697,7 @@ async function generateSummaryReport(logs, where) {
     recommendations: []
   };
   
-  // 分析分布
+  // Analyze distribution
   logs.forEach(log => {
     // 严重度分布
     const level = mapSeverityToLevel(log.severity);

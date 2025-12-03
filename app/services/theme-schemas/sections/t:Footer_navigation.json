@@ -1,0 +1,70 @@
+{
+  "name": "t:Footer_navigation",
+  "type": null,
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:This_section_is_only_available_on_mobile",
+      "translate": false
+    },
+    {
+      "id": "enable",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Color",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "navigation_item",
+      "name": "t:Navigation_item",
+      "settings": [
+        {
+          "id": "icon",
+          "type": "select",
+          "label": "t:Icon",
+          "translate": false
+        },
+        {
+          "id": "label",
+          "type": "text",
+          "label": "t:Label",
+          "translate": true
+        },
+        {
+          "id": "link",
+          "type": "url",
+          "label": "t:Link",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "search",
+      "name": "t:Search",
+      "settings": []
+    },
+    {
+      "type": "cart",
+      "name": "t:Cart",
+      "settings": []
+    }
+  ]
+}

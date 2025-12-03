@@ -1,0 +1,346 @@
+{
+  "name": "t:Promotion_blocks",
+  "type": "promotion-blocks",
+  "settings": [
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "section_size",
+      "type": "select",
+      "label": "t:Block_height",
+      "translate": false
+    },
+    {
+      "id": "stack_on_mobile",
+      "type": "checkbox",
+      "label": "t:Stack_on_mobile",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "t:Image_with_text",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "highlight",
+          "type": "checkbox",
+          "label": "t:Highlight_tile",
+          "translate": false
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "link_text",
+          "type": "text",
+          "label": "t:Link_text",
+          "translate": false
+        },
+        {
+          "id": "link_url",
+          "type": "url",
+          "label": "t:Link_url",
+          "translate": false
+        },
+        {
+          "id": "link_style",
+          "type": "select",
+          "label": "t:Link_style",
+          "translate": false
+        },
+        {
+          "id": "text_position",
+          "type": "select",
+          "label": "t:Text_position",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text_color",
+          "translate": false
+        },
+        {
+          "id": "button_background",
+          "type": "color",
+          "label": "t:Button_background",
+          "translate": false
+        },
+        {
+          "id": "button_text_color",
+          "type": "color",
+          "label": "t:Button_text_color",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "quote",
+      "name": "t:Quote",
+      "settings": [
+        {
+          "id": "highlight",
+          "type": "checkbox",
+          "label": "t:Highlight_tile",
+          "translate": false
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "text",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "author",
+          "type": "text",
+          "label": "t:Author",
+          "translate": true
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text_color",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "newsletter",
+      "name": "t:Newsletter",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:Customers_who_subscribe_will_have_their_email_address_added_to_the_accepts_marketing_customer_list",
+          "translate": false
+        },
+        {
+          "id": "highlight",
+          "type": "checkbox",
+          "label": "t:Highlight_tile",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "richtext",
+          "label": "t:Rich_text",
+          "translate": true
+        },
+        {
+          "id": "text_position",
+          "type": "select",
+          "label": "t:Text_position",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text_color",
+          "translate": false
+        },
+        {
+          "id": "button_background",
+          "type": "color",
+          "label": "t:Button_background",
+          "translate": false
+        },
+        {
+          "id": "button_text_color",
+          "type": "color",
+          "label": "t:Button_text_color",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "featured_products",
+      "name": "t:Featured_products",
+      "settings": [
+        {
+          "id": "highlight",
+          "type": "checkbox",
+          "label": "t:Highlight_tile",
+          "translate": false
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "product_1",
+          "type": "product",
+          "label": "t:Product_1",
+          "translate": false
+        },
+        {
+          "id": "product_2",
+          "type": "product",
+          "label": "t:Product_2",
+          "translate": false
+        },
+        {
+          "id": "product_3",
+          "type": "product",
+          "label": "t:Product_3",
+          "translate": false
+        },
+        {
+          "id": "product_4",
+          "type": "product",
+          "label": "t:Product_4",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text_color",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "video",
+      "name": "t:Video",
+      "settings": [
+        {
+          "type": "paragraph",
+          "label": "t:Video_may_be_cut_to_adapt_to_the_section_size",
+          "translate": false
+        },
+        {
+          "id": "highlight",
+          "type": "checkbox",
+          "label": "t:Highlight_tile",
+          "translate": false
+        },
+        {
+          "id": "video_file",
+          "type": "video",
+          "label": "t:Video",
+          "translate": false
+        },
+        {
+          "id": "video_url",
+          "type": "video_url",
+          "label": "t:Video",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

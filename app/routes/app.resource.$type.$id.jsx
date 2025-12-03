@@ -1,14 +1,21 @@
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-console */
 import { json } from "@remix-run/node";
 import { useLoaderData, useNavigate, useSearchParams, useParams, useFetcher } from "@remix-run/react";
 import { useEffect } from "react";
 import { Page, Button, BlockStack, Badge, Banner, Card, Text } from "@shopify/polaris";
 import { ArrowLeftIcon } from "@shopify/polaris-icons";
+import { useTranslation } from "react-i18next";
 import { authenticate } from "../shopify.server";
 import { ResourceDetail } from "../components/ResourceDetail";
 import { CoverageCard } from "../components/CoverageCard";
 import { ResourceDetailAdapter } from "./api.resource-detail";
 import prisma from "../db.server";
 import { useAppRefresh } from "../utils/use-app-refresh.client";
+import { getResourceDisplayTitle, getResourceDisplayDescription } from "../utils/resource-display-helpers";
+import { subscriptionManager } from "../services/subscription-manager.server.js";
+import { creditManager } from "../services/credit-manager.server.js";
+import { checkLocaleLimit } from "../services/shopify-locales.server.js";
+import { SAFE_PLANS, ULTRA_PLANS } from "../utils/pricing-config.js";
 
 /**
  * 通用资源详情页路由 - Linus哲学实现
@@ -21,7 +28,7 @@ export const loader = async ({ request, params }) => {
   const { type, id } = params;
   
   if (!type || !id) {
-    throw new Response("资源类型和ID是必需的", { status: 400 });
+    throw new Response("Resource type and ID are required", { status: 400 });
   }
   
   try {
@@ -40,7 +47,7 @@ export const loader = async ({ request, params }) => {
     });
     
     if (!resource) {
-      throw new Response("资源未找到", { status: 404 });
+      throw new Response("Resource not found", { status: 404 });
     }
     
     // 验证权限 - 智能匹配shopId（兼容不同格式）
@@ -59,13 +66,13 @@ export const loader = async ({ request, params }) => {
           session: normalizeShopId(session.shop)
         }
       });
-      throw new Response("无权访问此资源", { status: 403 });
+      throw new Response("Forbidden: you do not have access to this resource", { status: 403 });
     }
     
     // 验证类型匹配
     const resourceType = resource.resourceType.toLowerCase();
     if (resourceType !== type.toLowerCase() && !resourceType.includes(type.toLowerCase())) {
-      throw new Response("资源类型不匹配", { status: 400 });
+      throw new Response("Resource type mismatch", { status: 400 });
     }
     
     // 使用适配器转换为统一格式
@@ -104,12 +111,46 @@ export const loader = async ({ request, params }) => {
       // 不抛出错误，允许页面继续渲染
     }
 
+    // 计算套餐与额度
+    const [limitCheck, subscription, credits] = await Promise.all([
+      checkLocaleLimit(admin),
+      subscriptionManager.getSubscription(session.shop),
+      creditManager.getAvailableCredits(session.shop).catch(() => null)
+    ]);
+
+    const ALL_PLANS = [...ULTRA_PLANS, ...SAFE_PLANS];
+    const freePlanLimit = ALL_PLANS.find(p => p.name?.toLowerCase() === 'free')?.maxLanguages ?? 2;
+    let planLimit = freePlanLimit;
+    if (subscription?.plan && subscription?.status === 'active') {
+      const maxLanguages = subscription.plan.maxLanguages;
+      if (typeof maxLanguages === 'number' && Number.isFinite(maxLanguages)) {
+        planLimit = maxLanguages;
+      } else {
+        const planName = (subscription.plan.name || '').toLowerCase();
+        const planFromConfig = ALL_PLANS.find(p => p.name?.toLowerCase() === planName);
+        const configMax = planFromConfig?.maxLanguages;
+        if (typeof configMax === 'number' && Number.isFinite(configMax)) {
+          planLimit = configMax;
+        } else if (configMax === null || maxLanguages === null) {
+          planLimit = Number.POSITIVE_INFINITY;
+        } else {
+          planLimit = freePlanLimit;
+        }
+      }
+    }
+    const planUsed = limitCheck?.totalLocales || 0;
+
     return json({
       resource: unifiedResource,
       currentLanguage,
       shop: session.shop,
       translatableKeys,
-      coverageData
+      coverageData,
+      billing: {
+        planLimit,
+        planUsed,
+        remainingCredits: credits?.remaining || 0
+      }
     });
     
   } catch (error) {
@@ -119,12 +160,12 @@ export const loader = async ({ request, params }) => {
       throw error;
     }
     
-    throw new Response("加载资源失败", { status: 500 });
+    throw new Response("Failed to load resource", { status: 500 });
   }
 };
 
 export default function ResourceDetailPage() {
-  const { resource, currentLanguage, translatableKeys, coverageData, shop } = useLoaderData();
+  const { resource, currentLanguage, translatableKeys, coverageData, shop, billing } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
@@ -133,6 +174,10 @@ export default function ResourceDetailPage() {
   const coverageFetcher = useFetcher();
   const { refresh } = useAppRefresh(); // App Bridge 安全刷新
   const shopQueryParam = shop ? `shop=${encodeURIComponent(shop)}` : '';
+  const { t, i18n } = useTranslation(['home', 'common']);
+
+  const displayTitle = getResourceDisplayTitle(resource, i18n.language, t);
+  const displayDescription = getResourceDisplayDescription(resource, i18n.language, t);
 
   // 合并覆盖率数据（优先使用 fetcher 的最新数据）
   const displayCoverageData = coverageFetcher.data?.success
@@ -201,7 +246,7 @@ export default function ResourceDetailPage() {
     };
 
     if (success && translatedRecords.length > 0 && !hasFailures) {
-      showToast('翻译成功！正在刷新页面...');
+      showToast(t('home:toasts.translationCreated', { defaultValue: 'Translation task created, refreshing...' }));
       // 延迟刷新覆盖率数据，确保翻译数据已同步
       setTimeout(() => {
         coverageFetcher.load(
@@ -215,15 +260,15 @@ export default function ResourceDetailPage() {
     }
 
     if (success && results.length > 0 && skippedRecords.length === results.length) {
-      const skipMessage = skippedRecords[0]?.translations?.reason || message || '内容未变化，已智能跳过翻译';
+      const skipMessage = skippedRecords[0]?.translations?.reason || message || t('home:logs.translationNoResources', { defaultValue: 'Content unchanged, skipped translation.' });
       showToast(skipMessage, false);
       return;
     }
 
     const failure = results.find((result) => result.success === false);
-    const errorMessage = failure?.error || message || '翻译失败，请重试';
-    showToast(`翻译失败: ${errorMessage}`, true);
-  }, [translateFetcher.type, translateFetcher.data]);
+    const errorMessage = failure?.error || message || t('home:logs.translationFailed', { defaultValue: 'Translation failed, please retry' });
+    showToast(t('home:logs.translationFailed', { error: errorMessage, defaultValue: `Translation failed: ${errorMessage}` }), true);
+  }, [translateFetcher.type, translateFetcher.data, t]);
 
   // 处理编辑操作
   const handleEdit = () => {
@@ -239,7 +284,7 @@ export default function ResourceDetailPage() {
   // 面包屑导航数据
   const breadcrumbs = [
     {
-      content: '资源列表',
+      content: t('navigation.resourceList', { ns: 'home', defaultValue: 'Resource list' }),
       onAction: handleBack
     },
     {
@@ -247,24 +292,24 @@ export default function ResourceDetailPage() {
       onAction: () => navigate(`/app?filter=${resource.type}`)
     },
     {
-      content: resource.title
+      content: displayTitle
     }
   ];
-  
+
   // 页面标题 - 包含图标和类型
-  const pageTitle = `${resource.title}`;
+  const pageTitle = displayTitle;
   
   // 翻译Metafields处理函数
   const handleTranslateMetafields = (analyzeOnly = false) => {
     if (resource.type !== 'PRODUCT') {
-      alert('只有产品资源支持Metafields翻译');
+      alert(t('home:toasts.translateMetafieldsNotSupported', { defaultValue: 'Only product resources support metafields translation.' }));
       return;
     }
 
-    const mode = analyzeOnly ? '分析' : '翻译';
+    const mode = analyzeOnly ? t('home:actions.analyzeMetafields', { defaultValue: 'Analyze metafields' }) : t('home:actions.translateMetafields', { defaultValue: 'Translate metafields' });
     const message = analyzeOnly
-      ? `将分析产品的Metafields规则匹配情况，不会实际翻译。\n\n这有助于了解哪些内容会被翻译、哪些会被跳过以及原因。`
-      : `确定要翻译产品的Metafields到${currentLanguage}吗？\n\n系统会智能识别并跳过不适合翻译的内容（如URL、代码、产品ID等）。`;
+      ? t('home:toasts.metafieldsAnalyzePrompt', { defaultValue: 'Analyze metafields matching rules only. No translation will be performed. This helps you understand what will be translated or skipped.' })
+      : t('home:toasts.metafieldsTranslatePrompt', { language: currentLanguage, defaultValue: `Translate product metafields to ${currentLanguage}? The system will skip URLs, code, IDs, etc.` });
 
     const confirmed = confirm(message);
     if (!confirmed) return;
@@ -300,29 +345,29 @@ export default function ResourceDetailPage() {
         const { mode, stats, summary } = metafieldsResult;
         const isAnalyzeMode = mode === 'analyze';
 
-        let message = `✅ Metafields${isAnalyzeMode ? '分析' : '翻译'}完成!\n\n`;
-        message += `📊 统计信息:\n`;
-        message += `- 总计: ${stats.total} 个\n`;
-        message += `- 可翻译: ${stats.translatable} 个\n`;
+        let message = `✅ ${isAnalyzeMode ? 'Metafields analysis' : 'Metafields translation'} completed!\n\n`;
+        message += `📊 Stats:\n`;
+        message += `- Total: ${stats.total}\n`;
+        message += `- Translatable: ${stats.translatable}\n`;
 
         if (isAnalyzeMode) {
-          message += `- 跳过: ${stats.skipped} 个\n\n`;
-          message += `🔍 分析模式说明:\n`;
-          message += `- 此次只分析了翻译规则，未实际翻译\n`;
-          message += `- 白名单内容（如custom.specifications）将被翻译\n`;
-          message += `- 系统内容（如global.title_tag）会被跳过\n`;
-          message += `- URL、代码、产品ID等会被智能识别并跳过\n\n`;
+          message += `- Skipped: ${stats.skipped}\n\n`;
+          message += `🔍 Analysis notes:\n`;
+          message += `- Rules only, no actual translation\n`;
+          message += `- Whitelisted fields (e.g., custom.specifications) will be translated\n`;
+          message += `- System fields (e.g., global.title_tag) are skipped\n`;
+          message += `- URLs, code, IDs are intelligently skipped\n\n`;
         } else {
-          message += `- 翻译成功: ${stats.translated} 个\n`;
-          message += `- 跳过: ${stats.skipped} 个\n`;
-          message += `- 失败: ${stats.failed} 个\n\n`;
+          message += `- Translated: ${stats.translated}\n`;
+          message += `- Skipped: ${stats.skipped}\n`;
+          message += `- Failed: ${stats.failed}\n\n`;
         }
 
         // 显示前5个跳过原因
         if (summary?.topReasons?.length > 0) {
-          message += `📋 主要决策原因:\n`;
+          message += `📋 Top reasons:\n`;
           summary.topReasons.slice(0, 3).forEach(([reason, count]) => {
-            message += `- ${reason}: ${count} 个\n`;
+            message += `- ${reason}: ${count}\n`;
           });
         }
 
@@ -330,7 +375,7 @@ export default function ResourceDetailPage() {
       }, 100);
     } else {
       setTimeout(() => {
-        alert(`❌ ${metafieldsResult.mode === 'analyze' ? '分析' : '翻译'}失败: ${metafieldsResult.message}`);
+        alert(`❌ ${metafieldsResult.mode === 'analyze' ? 'Analyze' : 'Translate'} failed: ${metafieldsResult.message}`);
       }, 100);
     }
   }
@@ -340,40 +385,40 @@ export default function ResourceDetailPage() {
     // 只有产品资源才显示Metafields翻译按钮
     ...(resource.type === 'PRODUCT' ? [
       {
-        content: isTranslating ? '处理中...' : '翻译Metafields',
+        content: isTranslating ? t('home:actions.processing', { defaultValue: 'Processing...' }) : t('home:actions.translateMetafields', { defaultValue: 'Translate metafields' }),
         onAction: () => handleTranslateMetafields(false),
         disabled: isTranslating,
         loading: isTranslating
       },
       {
-        content: isTranslating ? '分析中...' : '分析Metafields',
+        content: isTranslating ? t('home:actions.analyzing', { defaultValue: 'Analyzing...' }) : t('home:actions.analyzeMetafields', { defaultValue: 'Analyze metafields' }),
         onAction: handleAnalyzeMetafields,
         disabled: isTranslating,
         loading: isTranslating
       }
     ] : []),
     {
-      content: '查看原始数据',
+      content: t('home:actions.viewRaw', { defaultValue: 'View raw data' }),
       onAction: () => {
         console.log('原始资源数据:', resource);
-        alert('原始数据已输出到控制台');
+        alert(t('home:toasts.viewRawOutput', { defaultValue: 'Raw data has been printed to console.' }));
       }
     },
     {
-      content: '刷新',
+      content: t('home:actions.refresh', { defaultValue: 'Refresh' }),
       onAction: () => refresh() // 使用 App Bridge 安全刷新
     }
   ];
   
   return (
     <Page
-      backAction={{ content: '返回', onAction: handleBack }}
+      backAction={{ content: t('home:ui.back', { defaultValue: 'Back' }), onAction: handleBack }}
       title={pageTitle}
-      subtitle={`类型: ${resource.type} | 语言: ${currentLanguage}`}
+      subtitle={t('home:ui.subtitle', { type: resource.type, language: currentLanguage, defaultValue: `Type: ${resource.type} | Language: ${currentLanguage}` })}
       secondaryActions={secondaryActions}
       titleMetadata={
         resource.metadata.errorCount > 0 && (
-          <Badge tone="warning">{resource.metadata.errorCount} 个错误</Badge>
+          <Badge tone="warning">{t('home:ui.errorCount', { count: resource.metadata.errorCount, defaultValue: `${resource.metadata.errorCount} errors` })}</Badge>
         )
       }
     >
@@ -381,8 +426,11 @@ export default function ResourceDetailPage() {
         {/* 错误提示 */}
         {resource.metadata.errorCount > 0 && (
           <Banner tone="warning">
-            此资源有 {resource.metadata.errorCount} 个错误记录，
-            风险评分: {(resource.metadata.riskScore * 100).toFixed(0)}%
+            {t('home:resources.errorSummary', {
+              count: resource.metadata.errorCount,
+              risk: (resource.metadata.riskScore * 100).toFixed(0),
+              defaultValue: `This resource has ${resource.metadata.errorCount} error records, risk score: ${(resource.metadata.riskScore * 100).toFixed(0)}%`
+            })}
           </Banner>
         )}
 
@@ -410,6 +458,7 @@ export default function ResourceDetailPage() {
             }
           }}
           currentLanguage={currentLanguage}
+          billingInfo={billing}
           translatableKeys={translatableKeys}
           onTranslate={handleTranslate}
           onEdit={handleEdit}
@@ -420,7 +469,7 @@ export default function ResourceDetailPage() {
         {process.env.NODE_ENV === 'development' && (
           <Card>
             <BlockStack gap="200">
-              <Text variant="headingMd">调试信息</Text>
+              <Text variant="headingMd">Debug info</Text>
               <Text variant="bodySm" tone="subdued">
                 资源ID: {resource.id}
               </Text>
@@ -445,22 +494,23 @@ export default function ResourceDetailPage() {
 export function ErrorBoundary({ error }) {
   const navigate = useNavigate();
   const { refresh } = useAppRefresh(); // App Bridge 安全刷新
+  const { t } = useTranslation(['common', 'home']);
 
   return (
     <Page
-      backAction={{ content: '返回', onAction: () => navigate('/app') }}
-      title="错误"
+      backAction={{ content: t('common:actions.back'), onAction: () => navigate('/app') }}
+      title={t('common:ui.error')}
     >
       <Card>
         <BlockStack gap="300">
           <Text variant="headingMd" tone="critical">
-            加载资源时出错
+            {t('home:resources.loadFailed')}
           </Text>
           <Text variant="bodyMd">
-            {error?.message || '未知错误'}
+            {error?.message || t('common:ui.unknownError')}
           </Text>
           <Button onClick={() => refresh()}>
-            重试
+            {t('common:actions.retry')}
           </Button>
         </BlockStack>
       </Card>

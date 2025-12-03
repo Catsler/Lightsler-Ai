@@ -1,0 +1,179 @@
+{
+  "name": "Universal Gallery",
+  "type": null,
+  "settings": [
+    {
+      "id": "gallery_type",
+      "type": "select",
+      "label": "Gallery Type",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "Heading",
+      "translate": true
+    },
+    {
+      "id": "columns",
+      "type": "range",
+      "label": "Desktop columns",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Performance",
+      "translate": false
+    },
+    {
+      "id": "eager_load_count",
+      "type": "range",
+      "label": "Eager load images",
+      "translate": false
+    },
+    {
+      "id": "link_behavior",
+      "type": "select",
+      "label": "Link behavior",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "Text color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "Section padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "Ignore vertical spacing",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "Desktop top padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "Desktop bottom padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "Mobile top padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "Mobile bottom padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "Image",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "Image",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Title",
+          "translate": true
+        },
+        {
+          "id": "caption",
+          "type": "richtext",
+          "label": "Caption",
+          "translate": true
+        },
+        {
+          "id": "category",
+          "type": "text",
+          "label": "Category",
+          "translate": true
+        },
+        {
+          "id": "link",
+          "type": "url",
+          "label": "Link (optional)",
+          "translate": false
+        }
+      ]
+    },
+    {
+      "type": "video",
+      "name": "Video",
+      "settings": [
+        {
+          "id": "video",
+          "type": "video",
+          "label": "Video file",
+          "translate": false
+        },
+        {
+          "id": "video_thumbnail",
+          "type": "image_picker",
+          "label": "Video thumbnail",
+          "translate": false
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Title",
+          "translate": true
+        },
+        {
+          "id": "caption",
+          "type": "richtext",
+          "label": "Caption",
+          "translate": true
+        },
+        {
+          "id": "category",
+          "type": "text",
+          "label": "Category",
+          "translate": true
+        },
+        {
+          "id": "video_url",
+          "type": "url",
+          "label": "External video URL",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

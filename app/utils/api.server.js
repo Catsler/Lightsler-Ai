@@ -10,10 +10,16 @@ import { config } from './config.server.js';
  * @returns {Object} 请求头对象
  */
 export function createAPIHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${config.translation.apiKey}`,
+  const headers = {
+    'Content-Type': 'application/json'
   };
+
+  if (config.translation.apiKey) {
+    headers.Authorization = `Bearer ${config.translation.apiKey}`;
+    headers['api-key'] = config.translation.apiKey;
+  }
+
+  return headers;
 }
 
 /**

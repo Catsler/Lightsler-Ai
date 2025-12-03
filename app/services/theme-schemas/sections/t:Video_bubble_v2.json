@@ -1,0 +1,160 @@
+{
+  "name": "t:Video_bubble_v2",
+  "type": null,
+  "settings": [
+    {
+      "id": "enable",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "id": "show_only_on_index",
+      "type": "checkbox",
+      "label": "t:Show_only_on_home_page",
+      "translate": false
+    },
+    {
+      "id": "hide_on_close",
+      "type": "checkbox",
+      "label": "t:Close_and_wont_show_again_on_refresh",
+      "translate": false
+    },
+    {
+      "id": "product",
+      "type": "product",
+      "label": "t:Product",
+      "translate": false
+    },
+    {
+      "id": "preview_video",
+      "type": "video",
+      "label": "t:Preview_video",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Main_video",
+      "translate": false
+    },
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Cover_image",
+      "translate": false
+    },
+    {
+      "id": "main_video",
+      "type": "video",
+      "label": "t:Main_video",
+      "translate": false
+    },
+    {
+      "id": "main_video_url",
+      "type": "video_url",
+      "label": "t:Main_video_url",
+      "translate": false
+    },
+    {
+      "id": "autoplay",
+      "type": "checkbox",
+      "label": "t:Autoplay",
+      "translate": false
+    },
+    {
+      "id": "show_video_controls",
+      "type": "checkbox",
+      "label": "t:Show_video_controls",
+      "translate": false
+    },
+    {
+      "id": "play_button_color",
+      "type": "color",
+      "label": "t:Play_button_color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Desktop_settings",
+      "translate": false
+    },
+    {
+      "id": "desktop_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "id": "desktop_shadow_effect",
+      "type": "select",
+      "label": "t:Shadow_effect",
+      "translate": false
+    },
+    {
+      "id": "desktop_width",
+      "type": "range",
+      "label": "t:Width",
+      "translate": false
+    },
+    {
+      "id": "desktop_border_radius",
+      "type": "range",
+      "label": "t:Border_radius",
+      "translate": false
+    },
+    {
+      "id": "desktop_x_margin",
+      "type": "range",
+      "label": "t:Top_bottom_margin",
+      "translate": false
+    },
+    {
+      "id": "desktop_y_margin",
+      "type": "range",
+      "label": "t:Left_right_margin",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Mobile_settings",
+      "translate": false
+    },
+    {
+      "id": "mobile_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "id": "mobile_shadow_effect",
+      "type": "select",
+      "label": "t:Shadow_effect",
+      "translate": false
+    },
+    {
+      "id": "mobile_width",
+      "type": "range",
+      "label": "t:Width",
+      "translate": false
+    },
+    {
+      "id": "mobile_border_radius",
+      "type": "range",
+      "label": "t:Border_radius",
+      "translate": false
+    },
+    {
+      "id": "mobile_x_margin",
+      "type": "range",
+      "label": "t:Top_bottom_margin",
+      "translate": false
+    },
+    {
+      "id": "mobile_y_margin",
+      "type": "range",
+      "label": "t:Left_right_margin",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

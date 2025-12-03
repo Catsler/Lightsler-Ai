@@ -1,0 +1,112 @@
+{
+  "name": "t:Stories_slider",
+  "type": "stories-slider",
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:This_section_is_only_available_on_mobile",
+      "translate": false
+    },
+    {
+      "id": "shape",
+      "type": "select",
+      "label": "t:Shape",
+      "translate": false
+    },
+    {
+      "id": "spacing",
+      "type": "select",
+      "label": "t:Spacing",
+      "translate": false
+    },
+    {
+      "id": "icon_size",
+      "type": "range",
+      "label": "t:Icon_size",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "top_padding",
+      "type": "range",
+      "label": "t:Top_padding",
+      "translate": false
+    },
+    {
+      "id": "bottom_padding",
+      "type": "range",
+      "label": "t:Bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "story",
+      "name": "t:Story",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "label",
+          "type": "text",
+          "label": "t:label",
+          "translate": true
+        },
+        {
+          "id": "link_url",
+          "type": "url",
+          "label": "t:Link_url",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Colors",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "outline_color",
+          "type": "color",
+          "label": "t:Outline_color",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

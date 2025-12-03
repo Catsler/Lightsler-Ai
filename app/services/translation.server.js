@@ -13,6 +13,7 @@ export {
   translateTextEnhanced,
   validateTranslation,
   validateTranslationConfig,
+  runTranslationDiagnostics,
   getTranslationServiceStatus,
   getTranslationStats,
   getTranslationLogs,

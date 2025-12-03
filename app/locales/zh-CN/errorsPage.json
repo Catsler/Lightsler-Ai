@@ -1,0 +1,125 @@
+{
+  "title": "错误仪表板",
+  "subtitle": "共 {{total}} 个错误，{{unresolved}} 个待处理",
+  "tabs": {
+    "list": "错误列表",
+    "stats": "统计分析",
+    "trend": "趋势图表",
+    "report": "错误报告"
+  },
+  "actions": {
+    "refresh": "刷新",
+    "export": "导出报告",
+    "close": "关闭",
+    "view": "查看",
+    "resolve": "解决",
+    "ignore": "忽略",
+    "confirm": "确认"
+  },
+  "filters": {
+    "status": {
+      "label": "状态",
+      "all": "所有状态",
+      "new": "新建",
+      "ack": "已确认",
+      "investigating": "调查中",
+      "resolved": "已解决",
+      "ignored": "已忽略"
+    },
+    "type": {
+      "label": "类型",
+      "all": "所有类型",
+      "db": "数据库",
+      "validation": "验证",
+      "network": "网络",
+      "translation": "翻译"
+    },
+    "severity": {
+      "label": "级别",
+      "all": "所有级别",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "severe": "严重",
+      "fatal": "致命"
+    },
+    "timeRange": {
+      "label": "时间范围",
+      "1h": "最近1小时",
+      "24h": "最近24小时",
+      "7d": "最近7天",
+      "30d": "最近30天",
+      "all": "所有时间"
+    },
+    "search": "关键字搜索"
+  },
+  "table": {
+    "level": "级别",
+    "message": "错误消息",
+    "type": "类型",
+    "status": "状态",
+    "count": "次数",
+    "last": "最后出现",
+    "actions": "操作"
+  },
+  "pagination": {
+    "page": "第 {{page}} / {{totalPages}} 页",
+    "total": "共 {{total}} 条记录"
+  },
+  "empty": {
+    "heading": "暂无错误记录",
+    "description": "当前筛选条件下没有找到错误记录"
+  },
+  "statsCards": {
+    "today": "今日错误",
+    "todayTrendUp": "上升 {{trend}}%",
+    "todayTrendDown": "下降 {{trend}}%",
+    "critical": "严重错误",
+    "resolvedRate": "解决率",
+    "unique": "独特错误",
+    "typeDist": "不同错误类型"
+  },
+  "detail": {
+    "title": "错误详情 #{{id}}",
+    "basic": "基本信息",
+    "message": "错误消息:",
+    "code": "错误代码:",
+    "fingerprint": "指纹:",
+    "occurrences": "发生次数:",
+    "first": "首次出现:",
+    "last": "最后出现:",
+    "suggestions": "建议修复方案",
+    "stack": "错误堆栈",
+    "related": "相关错误"
+  },
+  "report": {
+    "title": "错误报告",
+    "download": "下载报告",
+    "summary": "报告摘要",
+    "generatedAt": "生成时间: {{time}}",
+    "timeRange": "时间范围: {{range}}",
+    "total": "总错误数: {{count}}",
+    "unique": "独特错误: {{count}}",
+    "resolved": "已解决: {{count}}",
+    "avgResolution": "平均解决时间: {{time}}",
+    "critical": "严重错误: {{count}}",
+    "improvements": "改进建议",
+    "priority": "{{priority}} 优先级"
+  },
+  "trend": {
+    "title": "错误趋势分析",
+    "direction": "趋势方向: {{dir}}",
+    "avgPerHour": "平均每小时: {{avg}}",
+    "peak": "峰值时间: {{time}}",
+    "chartPlaceholder": "图表功能需要集成可视化库"
+  },
+  "statsPanel": {
+    "title": "错误统计分析",
+    "typeDist": "错误类型分布",
+    "severityDist": "严重程度分布",
+    "levelLabel": "级别 {{level}}"
+  },
+  "bulk": {
+    "selected": "已选择 {{count}} 个错误"
+  }
+}

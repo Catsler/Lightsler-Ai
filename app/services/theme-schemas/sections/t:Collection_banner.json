@@ -1,0 +1,82 @@
+{
+  "name": "t:Collection_banner",
+  "type": null,
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:To_change_collection_descriptions_or_collection_images",
+      "translate": false
+    },
+    {
+      "id": "show_mobile_breadcrumb",
+      "type": "checkbox",
+      "label": "t:Show_breadcrumb_on_mobile",
+      "translate": false
+    },
+    {
+      "id": "show_collection_description",
+      "type": "checkbox",
+      "label": "t:Show_collection_description",
+      "translate": false
+    },
+    {
+      "id": "show_collection_image",
+      "type": "checkbox",
+      "label": "t:Show_collection_image",
+      "translate": false
+    },
+    {
+      "id": "show_collection_title",
+      "type": "checkbox",
+      "label": "t:Show_collection_title",
+      "translate": false
+    },
+    {
+      "id": "section_height",
+      "type": "select",
+      "label": "t:Image_height",
+      "translate": false
+    },
+    {
+      "id": "text_width",
+      "type": "select",
+      "label": "t:Text_width",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Color",
+      "translate": false
+    },
+    {
+      "id": "image_text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    },
+    {
+      "id": "image_overlay_color",
+      "type": "color",
+      "label": "t:Overlay",
+      "translate": false
+    },
+    {
+      "id": "image_overlay_opacity",
+      "type": "range",
+      "label": "t:Overlay_opacity",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Navigation",
+      "translate": false
+    },
+    {
+      "id": "quick_links",
+      "type": "link_list",
+      "label": "t:Quick_links",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

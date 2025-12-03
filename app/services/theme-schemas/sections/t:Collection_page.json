@@ -1,0 +1,179 @@
+{
+  "name": "t:Collection_page",
+  "type": "main-collection",
+  "settings": [
+    {
+      "id": "show_product_count",
+      "type": "checkbox",
+      "label": "t:Show_product_count",
+      "translate": false
+    },
+    {
+      "id": "products_per_page",
+      "type": "range",
+      "label": "t:Products_per_page",
+      "translate": false
+    },
+    {
+      "id": "mobile_products_per_row",
+      "type": "select",
+      "label": "t:Products_per_row_mobile",
+      "translate": false
+    },
+    {
+      "id": "desktop_products_per_row",
+      "type": "range",
+      "label": "t:Products_per_row_desktop",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Sort_by",
+      "translate": false
+    },
+    {
+      "id": "show_sort_by",
+      "type": "checkbox",
+      "label": "t:Show_sort_by",
+      "translate": false
+    },
+    {
+      "id": "show_alphabetical_sorting_options",
+      "type": "checkbox",
+      "label": "t:Show_alphabetical_sorting_options",
+      "translate": false
+    },
+    {
+      "id": "show_created_ascending_option",
+      "type": "checkbox",
+      "label": "t:Show_from_old_to_new_date",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Filters",
+      "translate": false
+    },
+    {
+      "id": "show_filters",
+      "type": "checkbox",
+      "label": "t:Show_filters",
+      "translate": false
+    },
+    {
+      "id": "show_filter_group_name",
+      "type": "checkbox",
+      "label": "t:Show_group_name",
+      "translate": false
+    },
+    {
+      "id": "show_color_swatch",
+      "type": "checkbox",
+      "label": "t:Show_filter_color_swatch",
+      "translate": false
+    },
+    {
+      "id": "open_first_filter_group",
+      "type": "checkbox",
+      "label": "t:Open_first_group_by_default",
+      "translate": false
+    },
+    {
+      "id": "filter_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Promotion_blocks",
+      "translate": false
+    },
+    {
+      "id": "promotion_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "id": "promotion_height",
+      "type": "select",
+      "label": "t:Block_height",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "t:Promotion_block",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "link_text",
+          "type": "text",
+          "label": "t:Link_text",
+          "translate": false
+        },
+        {
+          "id": "link_url",
+          "type": "url",
+          "label": "t:Link_url",
+          "translate": false
+        },
+        {
+          "id": "link_style",
+          "type": "select",
+          "label": "t:Link_style",
+          "translate": false
+        },
+        {
+          "id": "text_position",
+          "type": "select",
+          "label": "t:Text_position",
+          "translate": false
+        },
+        {
+          "id": "background",
+          "type": "color",
+          "label": "t:Background",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text_color",
+          "translate": false
+        },
+        {
+          "id": "button_background",
+          "type": "color",
+          "label": "t:Button_background",
+          "translate": false
+        },
+        {
+          "id": "button_text_color",
+          "type": "color",
+          "label": "t:Button_text_color",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

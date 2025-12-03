@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   BlockStack,
@@ -11,10 +12,11 @@ import {
   Collapsible,
   Link
 } from "@shopify/polaris";
-import { RefreshIcon } from "@shopify/polaris-icons";
+
 
 export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
   const [expandedFields, setExpandedFields] = useState(false);
+  const { t } = useTranslation();
 
   if (!data) {
     return null;
@@ -22,16 +24,16 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
 
   const { counts, percentages, fields = [], retriableKeys = [], metadata } = data;
 
-  // 筛选问题字段（STALE/MISSING/LOW_QUALITY/UNSYNCED）
+  // Filter fields with issues (STALE/MISSING/LOW_QUALITY/UNSYNCED)
   const problemFields = fields.filter(field =>
     ['STALE', 'MISSING', 'LOW_QUALITY', 'UNSYNCED'].includes(field.status)
   );
 
-  // 默认显示前 10 个
+  // Show the first 10 items by default
   const visibleFields = expandedFields ? problemFields : problemFields.slice(0, 10);
   const hasMoreFields = problemFields.length > 10;
 
-  // 状态标签的 tone 映射
+  // Tone mapping for status badges
   const getStatusTone = (status) => {
     switch (status) {
       case 'UP_TO_DATE': return 'success';
@@ -43,28 +45,28 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
     }
   };
 
-  // 状态标签的文案映射
+  // Text mapping for status badges
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'UP_TO_DATE': return '已更新';
-      case 'STALE': return '需重译';
-      case 'MISSING': return '缺失';
-      case 'LOW_QUALITY': return '质量低';
-      case 'UNSYNCED': return '未同步';
+      case 'UP_TO_DATE': return t('coverage.status.upToDate');
+      case 'STALE': return t('coverage.status.stale');
+      case 'MISSING': return t('coverage.status.missing');
+      case 'LOW_QUALITY': return t('coverage.status.lowQuality');
+      case 'UNSYNCED': return t('coverage.status.unsynced');
       default: return status;
     }
   };
 
-  // 是否显示警告（stale 比例超过 10%）
+  // Show warning if stale ratio exceeds 10%
   const showStaleWarning = percentages.stale > 10;
 
   return (
     <Card>
       <BlockStack gap="400">
-        {/* 标题栏 */}
+        {/* Title */}
         <InlineStack align="space-between">
           <Text variant="headingMd" as="h2">
-            翻译覆盖率
+            {t('coverage.title')}
           </Text>
           <Button
             onClick={onRefresh}
@@ -72,38 +74,38 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
             icon={RefreshIcon}
             size="slim"
           >
-            {isRefreshing ? <Spinner size="small" /> : '刷新'}
+            {isRefreshing ? <Spinner size="small" /> : t('coverage.refresh')}
           </Button>
         </InlineStack>
 
-        {/* 概览统计 */}
+        {/* Overview stats */}
         <BlockStack gap="200">
           <Text variant="bodyMd" tone="subdued">
-            覆盖率概览
+            {t('coverage.overview')}
           </Text>
 
           <InlineStack gap="400" wrap>
             <InlineStack gap="100">
-              <Text variant="bodyMd" fontWeight="semibold">总计:</Text>
-              <Text variant="bodyMd">{counts.total} 个字段</Text>
+              <Text variant="bodyMd" fontWeight="semibold">{t('coverage.totalLabel')}:</Text>
+              <Text variant="bodyMd">{t('coverage.totalFields', { count: counts.total })}</Text>
             </InlineStack>
 
             <InlineStack gap="100">
-              <Text variant="bodyMd" fontWeight="semibold">已更新:</Text>
+              <Text variant="bodyMd" fontWeight="semibold">{t('coverage.updatedLabel')}:</Text>
               <Text variant="bodyMd" tone="success">
                 {counts.upToDate} ({percentages.coverage}%)
               </Text>
             </InlineStack>
 
             <InlineStack gap="100">
-              <Text variant="bodyMd" fontWeight="semibold">需重译:</Text>
+              <Text variant="bodyMd" fontWeight="semibold">{t('coverage.staleLabel')}:</Text>
               <Text variant="bodyMd" tone="warning">
                 {counts.stale} ({percentages.stale}%)
               </Text>
             </InlineStack>
 
             <InlineStack gap="100">
-              <Text variant="bodyMd" fontWeight="semibold">缺失:</Text>
+              <Text variant="bodyMd" fontWeight="semibold">{t('coverage.missingLabel')}:</Text>
               <Text variant="bodyMd" tone="critical">
                 {counts.missing} ({percentages.missing}%)
               </Text>
@@ -111,7 +113,7 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
 
             {counts.unsynced > 0 && (
               <InlineStack gap="100">
-                <Text variant="bodyMd" fontWeight="semibold">待同步:</Text>
+                <Text variant="bodyMd" fontWeight="semibold">{t('coverage.unsyncedLabel')}:</Text>
                 <Text variant="bodyMd" tone="info">
                   {counts.unsynced}
                 </Text>
@@ -124,7 +126,7 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
         {showStaleWarning && (
           <Banner tone="warning">
             <Text variant="bodyMd">
-              有 {percentages.stale}% 的字段内容已变更，建议重新翻译以保持内容同步。
+              {t('coverage.staleWarning', { percent: percentages.stale })}
             </Text>
           </Banner>
         )}
@@ -133,7 +135,7 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
         {problemFields.length > 0 && (
           <BlockStack gap="300">
             <Text variant="bodyMd" tone="subdued">
-              需要关注的字段 ({problemFields.length})
+              {t('coverage.problemFields', { count: problemFields.length })}
             </Text>
 
             <BlockStack gap="200">
@@ -158,18 +160,18 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
             </BlockStack>
 
             {/* 展开/收起按钮 */}
-            {hasMoreFields && (
-              <Button
-                onClick={() => setExpandedFields(!expandedFields)}
-                plain
-                disclosure={expandedFields ? 'up' : 'down'}
-              >
-                {expandedFields
-                  ? '收起'
-                  : `查看全部 ${problemFields.length} 个字段`
-                }
-              </Button>
-            )}
+                {hasMoreFields && (
+                  <Button
+                    onClick={() => setExpandedFields(!expandedFields)}
+                    plain
+                    disclosure={expandedFields ? 'up' : 'down'}
+                  >
+                    {expandedFields
+                      ? t('coverage.collapse')
+                      : t('coverage.expand', { count: problemFields.length })
+                    }
+                  </Button>
+                )}
           </BlockStack>
         )}
 
@@ -179,13 +181,13 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
             <InlineStack gap="200" align="center">
               <Badge tone="info">{metadata.retriableCount}</Badge>
               <Text variant="bodyMd">
-                个字段可重新翻译
+                {t('coverage.retriable', { count: metadata.retriableCount })}
               </Text>
             </InlineStack>
 
             {retriableKeys.length > 0 && retriableKeys.length <= 5 && (
               <Text variant="bodySm" tone="subdued">
-                包括: {retriableKeys.join(', ')}
+                {t('coverage.retriableList', { list: retriableKeys.join(', ') })}
               </Text>
             )}
           </BlockStack>
@@ -195,10 +197,10 @@ export function CoverageCard({ data, onRefresh, isRefreshing = false }) {
         {process.env.NODE_ENV === 'development' && metadata && (
           <BlockStack gap="100">
             <Text variant="bodySm" tone="subdued">
-              计算时间: {new Date(metadata.calculatedAt).toLocaleTimeString()}
+              {t('coverage.calculatedAt', { time: new Date(metadata.calculatedAt).toLocaleTimeString() })}
             </Text>
             <Text variant="bodySm" tone="subdued">
-              质量阈值: {(metadata.qualityThreshold * 100).toFixed(0)}%
+              {t('coverage.qualityThreshold', { percent: (metadata.qualityThreshold * 100).toFixed(0) })}
             </Text>
           </BlockStack>
         )}

@@ -1,0 +1,125 @@
+{
+  "title": "Error Dashboard",
+  "subtitle": "Total {{total}} errors, {{unresolved}} unresolved",
+  "tabs": {
+    "list": "Error list",
+    "stats": "Analytics",
+    "trend": "Trends",
+    "report": "Reports"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "export": "Export report",
+    "close": "Close",
+    "view": "View",
+    "resolve": "Resolve",
+    "ignore": "Ignore",
+    "confirm": "Confirm"
+  },
+  "filters": {
+    "status": {
+      "label": "Status",
+      "all": "All statuses",
+      "new": "New",
+      "ack": "Acknowledged",
+      "investigating": "Investigating",
+      "resolved": "Resolved",
+      "ignored": "Ignored"
+    },
+    "type": {
+      "label": "Type",
+      "all": "All types",
+      "db": "Database",
+      "validation": "Validation",
+      "network": "Network",
+      "translation": "Translation"
+    },
+    "severity": {
+      "label": "Severity",
+      "all": "All severities",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "severe": "Severe",
+      "fatal": "Fatal"
+    },
+    "timeRange": {
+      "label": "Time range",
+      "1h": "Last 1h",
+      "24h": "Last 24h",
+      "7d": "Last 7d",
+      "30d": "Last 30d",
+      "all": "All time"
+    },
+    "search": "Search keyword"
+  },
+  "table": {
+    "level": "Level",
+    "message": "Message",
+    "type": "Type",
+    "status": "Status",
+    "count": "Count",
+    "last": "Last seen",
+    "actions": "Actions"
+  },
+  "pagination": {
+    "page": "Page {{page}} / {{totalPages}}",
+    "total": "Total {{total}} records"
+  },
+  "empty": {
+    "heading": "No errors",
+    "description": "No records found for the current filters."
+  },
+  "statsCards": {
+    "today": "Errors today",
+    "todayTrendUp": "{{trend}}% up",
+    "todayTrendDown": "{{trend}}% down",
+    "critical": "Critical errors",
+    "resolvedRate": "Resolution rate",
+    "unique": "Unique errors",
+    "typeDist": "Error types"
+  },
+  "detail": {
+    "title": "Error detail #{{id}}",
+    "basic": "Basic info",
+    "message": "Message:",
+    "code": "Code:",
+    "fingerprint": "Fingerprint:",
+    "occurrences": "Occurrences:",
+    "first": "First seen:",
+    "last": "Last seen:",
+    "suggestions": "Suggested fixes",
+    "stack": "Stack trace",
+    "related": "Related errors"
+  },
+  "report": {
+    "title": "Error report",
+    "download": "Download report",
+    "summary": "Report summary",
+    "generatedAt": "Generated at: {{time}}",
+    "timeRange": "Time range: {{range}}",
+    "total": "Total errors: {{count}}",
+    "unique": "Unique: {{count}}",
+    "resolved": "Resolved: {{count}}",
+    "avgResolution": "Avg resolution time: {{time}}",
+    "critical": "Critical: {{count}}",
+    "improvements": "Improvement suggestions",
+    "priority": "Priority {{priority}}"
+  },
+  "trend": {
+    "title": "Error trends",
+    "direction": "Trend: {{dir}}",
+    "avgPerHour": "Avg per hour: {{avg}}",
+    "peak": "Peak time: {{time}}",
+    "chartPlaceholder": "Chart rendering pending (integrate a chart library)"
+  },
+  "statsPanel": {
+    "title": "Error analytics",
+    "typeDist": "Error type distribution",
+    "severityDist": "Severity distribution",
+    "levelLabel": "Level {{level}}"
+  },
+  "bulk": {
+    "selected": "Selected {{count}} errors"
+  }
+}

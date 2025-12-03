@@ -91,7 +91,8 @@ async function handlePublish({ request, admin }) {
     const results = {
       published: 0,
       errors: [],
-      details: []
+      details: [],
+      warnings: []
     };
 
     const resourceResolutionCache = new Map();
@@ -191,6 +192,15 @@ async function handlePublish({ request, admin }) {
           }
         });
 
+        if (hasWarnings && Array.isArray(updateResult.warnings) && updateResult.warnings.length > 0) {
+          results.warnings.push({
+            translationId: translation.id,
+            resourceTitle: translation.resource.title,
+            language: translation.language,
+            warnings: updateResult.warnings
+          });
+        }
+
         results.published++;
         results.details.push({
           translationId: translation.id,
@@ -241,11 +251,13 @@ async function handlePublish({ request, admin }) {
       published: results.published,
       total: translationsToPublish.length,
       errors: results.errors,
-      details: results.details
+      details: results.details,
+      warnings: results.warnings
     };
 }
 
 export const action = createApiRoute(handlePublish, {
   requireAuth: true,
-  operationName: '发布翻译'
+  operationName: '发布翻译',
+  timeout: 120000
 });

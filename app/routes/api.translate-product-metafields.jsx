@@ -7,7 +7,7 @@ import { getShopLocales } from "../services/shopify-locales.server.js";
 async function handleTranslateProductMetafields({ request, admin, session }) {
   const formData = await request.formData();
 
-  // 参数验证
+  // Parameter validation
   const params = {
     productGid: formData.get("productGid"),
     targetLanguage: formData.get("targetLanguage") || "zh-CN",
@@ -20,7 +20,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
 
   const { productGid, targetLanguage, analyzeOnly } = params;
 
-  // 🛡️ 防御深度 - 后端校验：拒绝主语言翻译请求
+  // Defensive: reject primary language translation
   const shopLocales = await getShopLocales(admin);
   const primaryLocale = shopLocales.find((locale) => locale.primary);
 
@@ -34,8 +34,8 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
     });
 
     throw new Error(
-      `不允许翻译到主语言 ${primaryLocale.name || primaryLocale.locale}。` +
-      `主语言内容是翻译源，无需翻译。请在前端"目标语言"选择框中选择其他语言。`
+      `Translating to primary language is not allowed ${primaryLocale.name || primaryLocale.locale}。` +
+      `Primary language content is the source; please choose another target language.`
     );
   }
 
@@ -49,7 +49,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
       admin,
       targetLanguage
     ).catch(err => {
-      console.warn('获取链接转换配置失败，将跳过链接转换', err);
+      console.warn('Failed to get link conversion config, skipping conversion', err);
       return null;  // 降级处理
     });
 
@@ -68,7 +68,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
     console.log(`📊 智能分析结果:`);
     console.log(`- 总数: ${analysis.stats.total}`);
     console.log(`- 可翻译: ${analysis.stats.translatable}`);
-    console.log(`- 跳过: ${analysis.stats.skipped}`);
+    console.log(`- skipped: ${analysis.stats.skipped}`);
     console.log(`📋 决策原因分布:`, Object.entries(analysis.stats.byReason).map(([reason, count]) => `${reason}: ${count}`).join(', '));
 
     const translatableMetafields = analysis.results.filter(result => result.decision.translate);
@@ -104,7 +104,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
     if (analyzeOnly) {
       console.log('📊 仅分析模式，返回决策结果');
       return {
-        message: `分析完成：${analysis.stats.translatable}个可翻译，${analysis.stats.skipped}个跳过`,
+        message: `分析完成：${analysis.stats.translatable}个可翻译，${analysis.stats.skipped}个skipped`,
         mode: 'analyze',
         stats: {
           total: allMetafields.length,
@@ -146,7 +146,15 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
         // 🆕 构建翻译选项
         const translationOptions = {
           admin,
-          shopId: session.shop
+          shopId: session.shop,
+          resourceType: 'PRODUCT_METAFIELD',
+          resourceId: metafield.id,
+          fieldName: `${metafield.namespace}.${metafield.key}`,
+          operation: 'api.translate_product_metafields',
+          metadata: {
+            decisionReason: decision.reason,
+            metafieldType: metafield.type
+          }
         };
         if (linkConversionConfig) {
           translationOptions.linkConversion = linkConversionConfig;
@@ -155,7 +163,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
         // 翻译内容 - 目前只支持文本类型，不处理 rich_text
         const translatedValue = await translateText(metafield.value, targetLanguage, translationOptions);
 
-        console.log(`✅ 翻译完成: "${metafield.value.substring(0, 50)}..." -> "${translatedValue.substring(0, 50)}..."`);
+        console.log(`✅ Translation completed: "${metafield.value.substring(0, 50)}..." -> "${translatedValue.substring(0, 50)}..."`);
 
         // 注册翻译到Shopify
         const registerResult = await registerMetafieldTranslation(
@@ -211,7 +219,7 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
       }
     }
 
-    // 添加跳过的metafields到结果中
+    // 添加skipped的metafields到结果中
     const skippedMetafields = analysis.results.filter(result => !result.decision.translate);
     skippedMetafields.forEach(skippedResult => {
       results.push({
@@ -241,11 +249,11 @@ async function handleTranslateProductMetafields({ request, admin, session }) {
     console.log(`📊 决策原因分布:`, Object.entries(analysis.stats.byReason));
 
     return {
-      message: `Metafields翻译完成：成功 ${successCount} 个，跳过 ${analysis.stats.skipped} 个，失败 ${failedCount} 个`,
+      message: `Metafields翻译完成：成功 ${successCount} 个，skipped ${analysis.stats.skipped} 个，失败 ${failedCount} 个`,
       mode: 'translate',
       stats,
       results: results.sort((a, b) => {
-        // 排序：翻译成功 -> 跳过 -> 失败
+        // Sorting：翻译成功 -> skipped -> 失败
         const order = { translated: 1, skipped: 2, failed: 3 };
         return order[a.decision] - order[b.decision];
       }),

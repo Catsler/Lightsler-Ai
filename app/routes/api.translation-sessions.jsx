@@ -1,5 +1,5 @@
 /**
- * API端点：翻译会话管理
+ * API端点：Translation session management
  * 提供Sequential Thinking智能翻译会话的创建、管理和控制
  */
 
@@ -34,7 +34,7 @@ async function handleTranslationSessionsLoader({ request, admin, session, search
       });
       
       if (!translationSession) {
-        throw new Error("会话不存在");
+        throw new Error("Session not found");
       }
       
       // 获取恢复建议
@@ -64,7 +64,7 @@ async function handleTranslationSessionsLoader({ request, admin, session, search
 
 export const loader = createApiRoute(handleTranslationSessionsLoader, {
   requireAuth: true,
-  operationName: '获取翻译会话信息'
+  operationName: 'translation session info'
 });
 
 /**
@@ -98,7 +98,7 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
           try {
             options.resourceTypes = JSON.parse(resourceTypes);
           } catch (e) {
-            console.error('解析resourceTypes失败:', e);
+            console.error('Failed to parse resourceTypes:', e);
           }
         }
         
@@ -106,7 +106,7 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         
         return {
           success: true,
-          message: `会话创建成功: ${name}`,
+          message: `Session created: ${name}`,
           session: translationSession
         };
       }
@@ -116,14 +116,14 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          throw new Error("会话ID不能为空");
+          throw new Error("Session ID is required");
         }
         
         const translationSession = await startTranslationSession(sessionId);
         
         return {
           success: true,
-          message: "会话已启动",
+          message: "Session started",
           session: translationSession
         };
       }
@@ -133,14 +133,14 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          throw new Error("会话ID不能为空");
+          throw new Error("Session ID is required");
         }
         
         const translationSession = await pauseTranslationSession(sessionId);
         
         return {
           success: true,
-          message: "会话已暂停",
+          message: "Session paused",
           session: translationSession
         };
       }
@@ -150,14 +150,14 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          throw new Error("会话ID不能为空");
+          throw new Error("Session ID is required");
         }
         
         const translationSession = await resumeTranslationSession(sessionId);
         
         return {
           success: true,
-          message: "会话已恢复",
+          message: "Session resumed",
           session: translationSession
         };
       }
@@ -167,7 +167,7 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          throw new Error("会话ID不能为空");
+          throw new Error("Session ID is required");
         }
         
         const { default: prisma } = await import("../db.server.js");
@@ -182,7 +182,7 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         
         return {
           success: true,
-          message: "会话已完成",
+          message: "Session completed",
           session: translationSession
         };
       }
@@ -192,7 +192,7 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         const sessionId = formData.get("sessionId");
         
         if (!sessionId) {
-          throw new Error("会话ID不能为空");
+          throw new Error("Session ID is required");
         }
         
         const { default: prisma } = await import("../db.server.js");
@@ -202,16 +202,16 @@ async function handleTranslationSessionsAction({ request, admin, session }) {
         
         return {
           success: true,
-          message: "会话已删除"
+          message: "Session deleted"
         };
       }
       
       default:
-        throw new Error(`未知操作: ${action}`);
+        throw new Error(`Unknown action: ${action}`);
     }
 }
 
 export const action = createApiRoute(handleTranslationSessionsAction, {
   requireAuth: true,
-  operationName: '翻译会话管理'
+  operationName: 'Translation session management'
 });

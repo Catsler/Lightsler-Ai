@@ -1,0 +1,105 @@
+{
+  "title": "语言域名配置",
+  "subtitle": "查看 {{shop}} 的多语言 URL 映射",
+  "empty": {
+    "heading": "尚未配置语言",
+    "action": "前往 Shopify Markets 设置",
+    "description": "请先在 Shopify 后台配置 Markets 和语言设置"
+  },
+  "primaryAction": {
+    "syncing": "同步中...",
+    "refresh": "刷新配置"
+  },
+  "overview": {
+    "primary": "主域名",
+    "markets": "市场",
+    "languages": "总语言数",
+    "updated": "更新于 {{time}}",
+    "title": "语言容量",
+    "publishedCount": "Shopify 已发布",
+    "drafts": "草稿（内部）",
+    "addPublished": "添加已发布语言",
+    "createDraft": "创建草稿语言",
+    "slotsAvailable": "您有可用名额可直接发布到 Shopify。",
+    "slotsFull": "Shopify 名额已满。新语言将创建为草稿。"
+  },
+  "settings": {
+    "title": "链接转换设置",
+    "desc": "翻译时自动将内部链接转换为目标语言的 URL",
+    "enable": "启用链接转换",
+    "help": "翻译内容时自动将内部链接转换为目标语言的 URL",
+    "strategy": "转换策略",
+    "conservative": "保守模式",
+    "conservativeHelp": "只转换明确匹配的域名和路径",
+    "aggressive": "激进模式",
+    "aggressiveHelp": "尝试转换更多链接，可能误转换外部链接",
+    "save": "保存设置"
+  },
+  "market": {
+    "languages": "{{count}} 种语言",
+    "primary": "主市场"
+  },
+  "table": {
+    "headings": [
+      "语言",
+      "URL 配置",
+      "类型",
+      "状态",
+      "操作"
+    ],
+    "default": "默认",
+    "alternate": "备选",
+    "path": "路径: {{path}}",
+    "visit": "访问",
+    "published": "已发布",
+    "unpublished": "未发布",
+    "titleFlat": "已发布语言与域名",
+    "flatHeadings": {
+      "language": "语言",
+      "market": "市场",
+      "url": "URL",
+      "status": "状态",
+      "actions": "操作",
+      "translation": "翻译"
+    },
+    "emptyFlatTitle": "暂无已发布语言",
+    "emptyFlatDesc": "点击刷新以同步 Shopify 的最新语言列表。",
+    "refresh": "刷新"
+  },
+  "typeBadges": {
+    "primary": "主域名",
+    "subfolder": "子路径",
+    "subdomain": "子域名",
+    "domain": "独立域名",
+    "unknown": "未配置"
+  },
+  "guide": {
+    "title": "URL 配置说明",
+    "subfolder": "子路径",
+    "subdomain": "子域名",
+    "domain": "独立域名"
+  },
+  "mapping": {
+    "unknownMarket": "市场"
+  },
+  "drafts": {
+    "title": "暂存队列（草稿）",
+    "notOnStore": "未在店铺显示",
+    "warning": "草稿语言对客户不可见。要发布草稿，您必须先在 Shopify 后台下架一个已发布的语言。",
+    "draft": "草稿",
+    "ready": "就绪",
+    "edit": "编辑",
+    "delete": "删除",
+    "deleteConfirm": "确定要删除此草稿吗？",
+    "createTitle": "创建草稿语言",
+    "create": "创建草稿",
+    "limitReached": "Shopify 语言上限已达。此语言将创建为草稿，不会在店铺中显示，直到您腾出名额。",
+    "selectLanguage": "选择语言",
+    "selectPlaceholder": "选择一种语言...",
+    "languageName": "语言名称",
+    "seoWarning": "警告：频繁下架已发布语言可能会对 SEO 排名产生负面影响。"
+  },
+  "common": {
+    "cancel": "取消"
+  }
+}

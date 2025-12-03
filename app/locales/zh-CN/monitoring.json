@@ -1,0 +1,67 @@
+{
+  "title": "实时监控仪表板",
+  "actions": {
+    "start": "开始刷新",
+    "stop": "停止刷新"
+  },
+  "tabs": {
+    "overview": "概览",
+    "errors": "错误监控",
+    "performance": "性能指标",
+    "jobs": "任务队列"
+  },
+  "health": {
+    "title": "系统健康状态",
+    "score": "健康分数",
+    "successRate": "翻译成功率",
+    "apiErrorRate": "API 错误率",
+    "queueLength": "队列长度",
+    "avgTranslationTime": "平均翻译时间",
+    "busy": "繁忙",
+    "normal": "正常",
+    "slow": "较慢",
+    "fast": "快速"
+  },
+  "statsCards": {
+    "totalTranslations": "总翻译数",
+    "recent": "最近 {{range}}",
+    "successTranslations": "成功翻译",
+    "totalErrors": "错误总数",
+    "needsAttention": "需要关注",
+    "activeJobs": "活跃任务",
+    "inProgress": "进行中"
+  },
+  "tables": {
+    "overviewHeading": "语言翻译统计",
+    "overviewHeadings": ["语言", "总计", "已同步", "待处理", "失败"],
+    "recentErrors": "最近错误",
+    "viewAll": "查看全部",
+    "errorHeadings": ["时间", "类型", "消息", "资源", "严重度", "状态", "频率"],
+    "noRecent": "最近 {{range}} 内没有错误记录",
+    "errorsByType": "错误类型分布",
+    "jobsHeading": "活跃任务",
+    "jobsBadge": "{{count}} 个任务",
+    "jobsHeadings": ["任务 ID", "开始时间", "状态", "进度", "完成度", "错误"],
+    "noJobs": "当前没有活跃的翻译任务",
+    "queueState": "队列状态",
+    "queuePending": "待处理: {{count}} 项",
+    "queueRunning": "处理中: {{count}} 项",
+    "queuePaused": "已暂停: {{count}} 项"
+  },
+  "performance": {
+    "title": "性能指标",
+    "translation": "翻译性能",
+    "avgResponse": "平均响应时间: {{ms}}ms",
+    "queueSpeed": "队列处理速度: ~50 项/分钟",
+    "concurrency": "并发处理数: 5",
+    "api": "API 性能",
+    "errorRate": "错误率: {{rate}}%",
+    "throttles": "限流触发: 12 次",
+    "retries": "平均重试次数: 1.2",
+    "adviceTitle": "性能优化建议",
+    "adviceApi": "API 错误率较高，建议检查网络连接和 API 配额",
+    "adviceQueue": "队列积压较多，考虑增加并发处理数",
+    "adviceSlow": "翻译响应较慢，可能需要优化批处理大小"
+  },
+  "autoRefresh": "自动刷新已启用，每 {{seconds}} 秒更新一次"
+}

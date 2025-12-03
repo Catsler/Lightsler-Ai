@@ -1,0 +1,66 @@
+{
+  "name": "t:Popup",
+  "type": null,
+  "settings": [
+    {
+      "type": "paragraph",
+      "label": "t:Customers_who_subscribe_will_have_their_email_address_added_to_the_accepts_marketing_customer_list",
+      "translate": false
+    },
+    {
+      "id": "enable",
+      "type": "checkbox",
+      "label": "t:Enable",
+      "translate": false
+    },
+    {
+      "id": "apparition_delay",
+      "type": "range",
+      "label": "t:Delay_until_the_popup_appears",
+      "translate": false
+    },
+    {
+      "id": "show_only_on_index",
+      "type": "checkbox",
+      "label": "t:Show_only_on_home_page",
+      "translate": false
+    },
+    {
+      "id": "show_only_for_visitors",
+      "type": "checkbox",
+      "label": "t:Disable_for_account_holders",
+      "translate": false
+    },
+    {
+      "id": "show_only_once",
+      "type": "checkbox",
+      "label": "t:Show_once_to_visitors",
+      "translate": false
+    },
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Image",
+      "translate": false
+    },
+    {
+      "id": "image_position",
+      "type": "select",
+      "label": "t:Image_position",
+      "translate": false
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "content",
+      "type": "richtext",
+      "label": "t:Text",
+      "translate": true
+    }
+  ],
+  "blocks": []
+}

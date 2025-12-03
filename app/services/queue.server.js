@@ -1228,6 +1228,19 @@ export async function addTranslationJob(resourceId, shopId, language, shopDomain
         stack: error?.stack
       }
     });
+
+    const message = error?.message || '';
+    const shouldFallback = !useMemoryQueue && (
+      message.includes('Command timed out') ||
+      message.includes('ECONNRESET') ||
+      message.includes('ETIMEDOUT')
+    );
+
+    if (shouldFallback) {
+      await requestMemoryFallback('[Queue] 翻译任务添加失败，改用内存队列');
+      return addTranslationJob(resourceId, shopId, language, shopDomain, options);
+    }
+
     throw error;
   }
 }
@@ -1263,23 +1276,48 @@ export async function addBatchTranslationJob(resourceIds, shopId, language, shop
 
   assertBatchJobPayload(jobData);
 
-  const job = await translationQueue.add('batchTranslate', jobData, {
-    attempts: 1,
-    removeOnComplete: 5,
-    removeOnFail: 5
-  });
+  try {
+    const job = await translationQueue.add('batchTranslate', jobData, {
+      attempts: 1,
+      removeOnComplete: 5,
+      removeOnFail: 5
+    });
 
-  logger.info(`[addBatchTranslationJob] 批量任务已添加`, {
-    jobId: job.id,
-    resourceCount: resourceIds.length
-  });
+    logger.info(`[addBatchTranslationJob] 批量任务已添加`, {
+      jobId: job.id,
+      resourceCount: resourceIds.length
+    });
 
-  return {
-    jobId: job.id,
-    resourceCount: resourceIds.length,
-    shopDomain,
-    status: 'queued'
-  };
+    return {
+      jobId: job.id,
+      resourceCount: resourceIds.length,
+      shopDomain,
+      status: 'queued'
+    };
+  } catch (error) {
+    logger.error('[addBatchTranslationJob] ❌ 添加批量任务失败', {
+      resourceCount: resourceIds.length,
+      error: {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      }
+    });
+
+    const message = error?.message || '';
+    const shouldFallback = !useMemoryQueue && (
+      message.includes('Command timed out') ||
+      message.includes('ECONNRESET') ||
+      message.includes('ETIMEDOUT')
+    );
+
+    if (shouldFallback) {
+      await requestMemoryFallback('[Queue] 批量任务添加失败，改用内存队列');
+      return addBatchTranslationJob(resourceIds, shopId, language, shopDomain, options);
+    }
+
+    throw error;
+  }
 }
 
 /**

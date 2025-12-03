@@ -1,0 +1,159 @@
+{
+  "name": "t:Video",
+  "type": null,
+  "settings": [
+    {
+      "id": "image",
+      "type": "image_picker",
+      "label": "t:Cover_image",
+      "translate": false
+    },
+    {
+      "id": "video_file",
+      "type": "video",
+      "label": "t:Video_file",
+      "translate": false
+    },
+    {
+      "id": "video_url",
+      "type": "video_url",
+      "label": "t:Video",
+      "translate": false
+    },
+    {
+      "id": "background_type",
+      "type": "select",
+      "label": "t:Video_mode",
+      "translate": false
+    },
+    {
+      "id": "video_size",
+      "type": "select",
+      "label": "t:Video_size",
+      "translate": false
+    },
+    {
+      "id": "autoplay",
+      "type": "checkbox",
+      "label": "t:Autoplay",
+      "translate": false
+    },
+    {
+      "id": "show_video_controls",
+      "type": "checkbox",
+      "label": "t:Show_video_controls",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Content",
+      "translate": false
+    },
+    {
+      "id": "text_position",
+      "type": "select",
+      "label": "t:Text_position",
+      "translate": false
+    },
+    {
+      "id": "subheading",
+      "type": "text",
+      "label": "t:Subheading",
+      "translate": true
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "label": "t:Heading",
+      "translate": true
+    },
+    {
+      "id": "button_text",
+      "type": "text",
+      "label": "t:Button_text",
+      "translate": true
+    },
+    {
+      "id": "button_link",
+      "type": "url",
+      "label": "t:Button_link",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    },
+    {
+      "id": "button_background",
+      "type": "color",
+      "label": "t:Button_background",
+      "translate": false
+    },
+    {
+      "id": "button_text_color",
+      "type": "color",
+      "label": "t:Button_text",
+      "translate": false
+    },
+    {
+      "id": "play_button_color",
+      "type": "color",
+      "label": "t:Play_button_color",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Section_padding",
+      "translate": false
+    },
+    {
+      "type": "paragraph",
+      "label": "t:Only_used_for_boxed_background",
+      "translate": false
+    },
+    {
+      "id": "ignore_vertical_spacing",
+      "type": "checkbox",
+      "label": "t:Ignore_vertical_spacing_in_global_configuration",
+      "translate": false
+    },
+    {
+      "id": "desktop_top_padding",
+      "type": "range",
+      "label": "t:Desktop_top_padding",
+      "translate": false
+    },
+    {
+      "id": "desktop_bottom_padding",
+      "type": "range",
+      "label": "t:Desktop_bottom_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_top_padding",
+      "type": "range",
+      "label": "t:Mobile_top_padding",
+      "translate": false
+    },
+    {
+      "id": "mobile_bottom_padding",
+      "type": "range",
+      "label": "t:Mobile_bottom_padding",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

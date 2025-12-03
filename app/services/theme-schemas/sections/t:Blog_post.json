@@ -1,0 +1,31 @@
+{
+  "name": "t:Blog_post",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_on_scroll_navigation",
+      "type": "checkbox",
+      "label": "t:Show_on_scroll_navigation",
+      "translate": false
+    },
+    {
+      "id": "show_author",
+      "type": "checkbox",
+      "label": "t:Show_author",
+      "translate": false
+    },
+    {
+      "id": "show_date",
+      "type": "checkbox",
+      "label": "t:Show_date",
+      "translate": false
+    },
+    {
+      "id": "show_share_buttons",
+      "type": "checkbox",
+      "label": "t:Show_share_buttons",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

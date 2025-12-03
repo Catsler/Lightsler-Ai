@@ -1,0 +1,73 @@
+{
+  "name": "t:Announcement_bar",
+  "type": null,
+  "settings": [
+    {
+      "id": "announcement_bar_position",
+      "type": "select",
+      "label": "t:Position",
+      "translate": false
+    },
+    {
+      "id": "announcement_text_size",
+      "type": "select",
+      "label": "t:Text_size",
+      "translate": false
+    },
+    {
+      "id": "message_width",
+      "type": "select",
+      "label": "t:Message_width",
+      "translate": false
+    },
+    {
+      "id": "autoplay",
+      "type": "checkbox",
+      "label": "t:Auto_rotate_between_messages",
+      "translate": false
+    },
+    {
+      "id": "hide_arrows",
+      "type": "checkbox",
+      "label": "t:Hide_arrows_when_there_are_multiple_messages",
+      "translate": false
+    },
+    {
+      "id": "cycle_speed",
+      "type": "range",
+      "label": "t:Change_message_every",
+      "translate": false
+    },
+    {
+      "type": "header",
+      "label": "t:Colors",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "text_color",
+      "type": "color",
+      "label": "t:Text",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "message",
+      "name": "t:Message",
+      "settings": [
+        {
+          "id": "text",
+          "type": "inline_richtext",
+          "label": "t:Text",
+          "translate": true
+        }
+      ]
+    }
+  ]
+}

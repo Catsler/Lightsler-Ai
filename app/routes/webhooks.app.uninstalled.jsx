@@ -1,16 +1,35 @@
 import { authenticate } from "../shopify.server";
-import db from "../db.server";
+import {
+  GDPR_REQUEST_TYPES,
+  softDeleteShopData,
+} from "../services/gdpr-compliance.server.js";
+import { logger } from "../utils/logger.server.js";
 
 export const action = async ({ request }) => {
-  const { shop, session, topic } = await authenticate.webhook(request);
+  try {
+    const { shop, topic, payload } = await authenticate.webhook(request);
+    const retentionDays = Number(process.env.UNINSTALL_PURGE_DAYS || 2); // 默认48小时硬删
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+    const result = await softDeleteShopData({
+      shopId: shop,
+      requestType: GDPR_REQUEST_TYPES.SHOP_REDACT,
+      customerId: null,
+      payload,
+      retentionDays,
+    });
 
-  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
-  // If this webhook already ran, the session may have been deleted previously.
-  if (session) {
-    await db.session.deleteMany({ where: { shop } });
+    logger.info(`处理 ${topic} webhook 完成，已安排硬删除`, {
+      shop,
+      deletionToken: result.deletionToken,
+      scheduledPurgeAt: result.scheduledPurgeAt,
+      retentionDays,
+    });
+    return new Response(null, { status: 200 });
+  } catch (error) {
+    logger.error("处理 app/uninstalled webhook 失败", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return new Response(null, { status: 200 });
   }
-
-  return new Response();
 };

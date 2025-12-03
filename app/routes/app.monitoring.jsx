@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { json } from '@remix-run/node';
 import { useLoaderData, useFetcher } from '@remix-run/react';
 import {
@@ -22,18 +23,13 @@ import {
   InlineStack
 } from '@shopify/polaris';
 import {
-  AlertCircleIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  RefreshIcon,
-  FilterIcon
-} from '@shopify/polaris-icons';
+  RefreshIcon,} from '@shopify/polaris-icons';
 import { authenticate } from '../shopify.server';
 import { prisma } from '../db.server';
 import { withErrorHandling } from '../utils/error-handler.server';
 import { getErrorStats } from '../services/error-collector.server';
 
-// Loader - 获取监控数据
+// Loader - fetch monitoring data
 export const loader = async ({ request }) => {
   return withErrorHandling(async () => {
     const { admin, session } = await authenticate.admin(request);
@@ -43,7 +39,7 @@ export const loader = async ({ request }) => {
     const timeRange = url.searchParams.get('timeRange') || '24h';
     const resourceType = url.searchParams.get('resourceType') || 'all';
     
-    // 获取时间过滤器
+    // Time range helper
     const getTimeFilter = (range) => {
       const now = new Date();
       const filters = {
@@ -57,7 +53,7 @@ export const loader = async ({ request }) => {
     
     const since = getTimeFilter(timeRange);
     
-    // 并行获取各种监控数据
+    // Fetch monitoring data in parallel
     const [
       translationStats,
       errorStats,
@@ -65,7 +61,7 @@ export const loader = async ({ request }) => {
       activeJobs,
       systemHealth
     ] = await Promise.all([
-      // 翻译统计
+      // Translation stats
       prisma.translation.groupBy({
         by: ['targetLang', 'syncStatus'],
         where: {
@@ -75,10 +71,10 @@ export const loader = async ({ request }) => {
         _count: true
       }),
       
-      // 错误统计
+      // Error stats
       getErrorStats(null, timeRange),
       
-      // 最近错误
+      // {t('tables.recentErrors')}
       prisma.errorLog.findMany({
         where: {
           createdAt: { gte: since },
@@ -99,7 +95,7 @@ export const loader = async ({ request }) => {
         }
       }),
       
-      // 活跃任务（从会话表获取）
+      // Active jobs pulled from sessions
       prisma.translationSession.findMany({
         where: {
           status: { in: ['RUNNING', 'PAUSED'] },
@@ -109,11 +105,11 @@ export const loader = async ({ request }) => {
         take: 5
       }),
       
-      // 系统健康指标
+      // System health metrics
       calculateSystemHealth(since)
     ]);
     
-    // 计算翻译成功率
+    // Compute success rate
     const totalTranslations = translationStats.reduce((sum, stat) => sum + stat._count, 0);
     const successfulTranslations = translationStats
       .filter(stat => stat.syncStatus === 'synced')
@@ -122,7 +118,7 @@ export const loader = async ({ request }) => {
       ? ((successfulTranslations / totalTranslations) * 100).toFixed(1)
       : 0;
     
-    // 按语言分组统计
+    // Group stats by language
     const languageStats = {};
     translationStats.forEach(stat => {
       if (!languageStats[stat.targetLang]) {
@@ -155,25 +151,25 @@ export const loader = async ({ request }) => {
       activeJobs,
       systemHealth
     });
-  }, '获取监控数据');
+  }, 'load monitoring data');
 };
 
-// 计算系统健康指标
+// Compute system health
 async function calculateSystemHealth(since) {
   const [
     avgTranslationTime,
     queueLength,
     apiErrorRate
   ] = await Promise.all([
-    // 平均翻译时间（模拟数据，实际应从日志中计算）
+    // Avg translation time (simulated)
     Promise.resolve(1250),
     
-    // 队列长度
+    // {t('health.queueLength')}
     prisma.translation.count({
       where: { syncStatus: 'pending' }
     }),
     
-    // API错误率
+    // {t('health.apiErrorRate')}
     prisma.errorLog.groupBy({
       by: ['errorType'],
       where: {
@@ -184,11 +180,11 @@ async function calculateSystemHealth(since) {
     })
   ]);
   
-  const totalApiCalls = 1000; // 模拟总调用数
+  const totalApiCalls = 1000; // simulated total calls
   const apiErrors = apiErrorRate.reduce((sum, err) => sum + err._count, 0);
   const errorRate = (apiErrors / totalApiCalls * 100).toFixed(2);
   
-  // 计算健康分数
+  // Compute health score
   let healthScore = 100;
   if (errorRate > 5) healthScore -= 30;
   else if (errorRate > 2) healthScore -= 15;
@@ -208,15 +204,16 @@ async function calculateSystemHealth(since) {
   };
 }
 
-// 主组件
+// Main component
 export default function MonitoringDashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
+  const { t } = useTranslation('monitoring');
   const [selectedTab, setSelectedTab] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(30000); // 30秒
+  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds
   
-  // 自动刷新
+  // Auto refresh
   useEffect(() => {
     if (!autoRefresh) return;
     
@@ -227,25 +224,25 @@ export default function MonitoringDashboard() {
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, data.timeRange, data.resourceType]);
   
-  // 健康状态徽章
+  // Health badge renderer
   const getHealthBadge = (status) => {
     const badges = {
-      healthy: <Badge tone="success">健康</Badge>,
-      warning: <Badge tone="warning">警告</Badge>,
-      critical: <Badge tone="critical">危急</Badge>
+      healthy: <Badge tone="success">Healthy</Badge>,
+      warning: <Badge tone="warning">Warning</Badge>,
+      critical: <Badge tone="critical">Critical</Badge>
     };
     return badges[status] || badges.warning;
   };
   
-  // 严重程度徽章
+  // Severity badge
   const getSeverityBadge = (severity) => {
     const tones = ['info', 'attention', 'warning', 'critical', 'critical'];
     return <Badge tone={tones[severity - 1] || 'info'}>L{severity}</Badge>;
   };
   
-  // 错误表格数据
+  // Error table rows
   const errorTableData = data.recentErrors.map(error => [
-    new Date(error.createdAt).toLocaleString('zh-CN'),
+    new Date(error.createdAt).toLocaleString(),
     error.errorType,
     error.message.substring(0, 50) + (error.message.length > 50 ? '...' : ''),
     error.resourceType || '-',
@@ -253,74 +250,74 @@ export default function MonitoringDashboard() {
     <Badge tone={error.status === 'resolved' ? 'success' : 'attention'}>
       {error.status}
     </Badge>,
-    `${error.occurrences}次`
+    `${error.occurrences}`
   ]);
   
-  // 活跃任务表格数据
+  // Jobs table rows
   const jobTableData = data.activeJobs.map(job => [
     job.id.substring(0, 8),
-    new Date(job.startedAt || job.createdAt).toLocaleString('zh-CN'),
+    new Date(job.startedAt || job.createdAt).toLocaleString(),
     <Badge tone={job.status === 'RUNNING' ? 'success' : 'warning'}>
       {job.status}
     </Badge>,
     `${job.processedCount}/${job.totalCount}`,
     <ProgressBar progress={(job.processedCount / job.totalCount) * 100} />,
     job.errorCount > 0 
-      ? <Badge tone="critical">{job.errorCount} 错误</Badge>
-      : <Badge tone="success">无错误</Badge>
+      ? <Badge tone="critical">{job.errorCount} errors</Badge>
+      : <Badge tone="success">No errors</Badge>
   ]);
   
   const tabs = [
     {
       id: 'overview',
-      content: '概览',
+      content: t('tabs.overview'),
       panelID: 'overview-panel'
     },
     {
       id: 'errors',
-      content: '错误监控',
+      content: t('tabs.errors'),
       panelID: 'errors-panel'
     },
     {
       id: 'performance',
-      content: '性能指标',
+      content: t('tabs.performance'),
       panelID: 'performance-panel'
     },
     {
       id: 'jobs',
-      content: '任务队列',
+      content: t('tabs.jobs'),
       panelID: 'jobs-panel'
     }
   ];
   
   return (
     <Page
-      title="实时监控仪表板"
+      title={t('title')}
       titleMetadata={getHealthBadge(data.systemHealth.status)}
       secondaryActions={[
         {
-          content: autoRefresh ? '停止刷新' : '开始刷新',
+          content: autoRefresh ? t('actions.stop') : t('actions.start'),
           onAction: () => setAutoRefresh(!autoRefresh),
           icon: RefreshIcon
         }
       ]}
     >
       <Layout>
-        {/* 系统健康概览卡片 */}
+        {/* System health card */}
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
               <InlineStack align="space-between">
-                <Text variant="headingMd" as="h2">系统健康状态</Text>
+                <Text variant="headingMd" as="h2">{t('health.title')}</Text>
                 <Text variant="bodyLg" fontWeight="bold">
-                  健康分数: {data.systemHealth.healthScore}/100
+                  {t('health.score')}: {data.systemHealth.healthScore}/100
                 </Text>
               </InlineStack>
               
               <Grid>
                 <Grid.Cell columnSpan={{xs: 6, sm: 3, md: 3, lg: 3}}>
                   <BlockStack gap="200">
-                    <Text variant="bodyMd" color="subdued">翻译成功率</Text>
+                    <Text variant="bodyMd" color="subdued">{t('health.successRate')}</Text>
                     <Text variant="headingLg">{data.stats.successRate}%</Text>
                     <ProgressBar progress={parseFloat(data.stats.successRate)} tone="success" />
                   </BlockStack>
@@ -328,7 +325,7 @@ export default function MonitoringDashboard() {
                 
                 <Grid.Cell columnSpan={{xs: 6, sm: 3, md: 3, lg: 3}}>
                   <BlockStack gap="200">
-                    <Text variant="bodyMd" color="subdued">API错误率</Text>
+                    <Text variant="bodyMd" color="subdued">{t('health.apiErrorRate')}</Text>
                     <Text variant="headingLg">{data.systemHealth.apiErrorRate}%</Text>
                     <ProgressBar 
                       progress={parseFloat(data.systemHealth.apiErrorRate)} 
@@ -339,20 +336,20 @@ export default function MonitoringDashboard() {
                 
                 <Grid.Cell columnSpan={{xs: 6, sm: 3, md: 3, lg: 3}}>
                   <BlockStack gap="200">
-                    <Text variant="bodyMd" color="subdued">队列长度</Text>
+                    <Text variant="bodyMd" color="subdued">{t('health.queueLength')}</Text>
                     <Text variant="headingLg">{data.systemHealth.queueLength}</Text>
                     <Badge tone={data.systemHealth.queueLength > 50 ? "warning" : "success"}>
-                      {data.systemHealth.queueLength > 50 ? '繁忙' : '正常'}
+                      {data.systemHealth.queueLength > 50 ? t('health.busy') : t('health.normal')}
                     </Badge>
                   </BlockStack>
                 </Grid.Cell>
                 
                 <Grid.Cell columnSpan={{xs: 6, sm: 3, md: 3, lg: 3}}>
                   <BlockStack gap="200">
-                    <Text variant="bodyMd" color="subdued">平均翻译时间</Text>
+                    <Text variant="bodyMd" color="subdued">{t('health.avgTranslationTime')}</Text>
                     <Text variant="headingLg">{data.systemHealth.avgTranslationTime}ms</Text>
                     <Badge tone={data.systemHealth.avgTranslationTime > 2000 ? "attention" : "success"}>
-                      {data.systemHealth.avgTranslationTime > 2000 ? '较慢' : '快速'}
+                      {data.systemHealth.avgTranslationTime > 2000 ? t('health.slow') : t('health.fast')}
                     </Badge>
                   </BlockStack>
                 </Grid.Cell>
@@ -361,15 +358,15 @@ export default function MonitoringDashboard() {
           </Card>
         </Layout.Section>
         
-        {/* 统计卡片 */}
+        {/* Stat cards */}
         <Layout.Section>
           <Grid>
             <Grid.Cell columnSpan={{xs: 6, sm: 6, md: 3, lg: 3}}>
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="bodyMd" color="subdued">总翻译数</Text>
+                  <Text variant="bodyMd" color="subdued">{t('statsCards.totalTranslations')}</Text>
                   <Text variant="headingXl">{data.stats.totalTranslations}</Text>
-                  <Badge tone="info">最近{data.timeRange}</Badge>
+                  <Badge tone="info">{t('statsCards.recent', { range: data.timeRange })}</Badge>
                 </BlockStack>
               </Card>
             </Grid.Cell>
@@ -377,7 +374,7 @@ export default function MonitoringDashboard() {
             <Grid.Cell columnSpan={{xs: 6, sm: 6, md: 3, lg: 3}}>
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="bodyMd" color="subdued">成功翻译</Text>
+                  <Text variant="bodyMd" color="subdued">{t('statsCards.successTranslations')}</Text>
                   <Text variant="headingXl" color="success">
                     {data.stats.successfulTranslations}
                   </Text>
@@ -389,11 +386,11 @@ export default function MonitoringDashboard() {
             <Grid.Cell columnSpan={{xs: 6, sm: 6, md: 3, lg: 3}}>
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="bodyMd" color="subdued">错误总数</Text>
+                  <Text variant="bodyMd" color="subdued">{t('statsCards.totalErrors')}</Text>
                   <Text variant="headingXl" color="critical">
                     {data.stats.totalErrors}
                   </Text>
-                  <Badge tone="critical">需要关注</Badge>
+                  <Badge tone="critical">{t('statsCards.needsAttention')}</Badge>
                 </BlockStack>
               </Card>
             </Grid.Cell>
@@ -401,27 +398,27 @@ export default function MonitoringDashboard() {
             <Grid.Cell columnSpan={{xs: 6, sm: 6, md: 3, lg: 3}}>
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="bodyMd" color="subdued">活跃任务</Text>
+                  <Text variant="bodyMd" color="subdued">{t('tables.jobsHeading')}</Text>
                   <Text variant="headingXl">{data.activeJobs.length}</Text>
-                  <Badge tone="info">进行中</Badge>
+                  <Badge tone="info">{t('statsCards.inProgress')}</Badge>
                 </BlockStack>
               </Card>
             </Grid.Cell>
           </Grid>
         </Layout.Section>
         
-        {/* 选项卡内容 */}
+        {/* Tabs content */}
         <Layout.Section>
           <Card>
             <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-              {/* 概览面板 */}
+              {/* Overview tab */}
               {selectedTab === 0 && (
                 <Card.Section>
                   <BlockStack gap="400">
-                    <Text variant="headingMd">语言翻译统计</Text>
+                    <Text variant="headingMd">{t('tables.overviewHeading')}</Text>
                     <DataTable
                       columnContentTypes={['text', 'numeric', 'numeric', 'numeric', 'numeric']}
-                      headings={['语言', '总计', '已同步', '待处理', '失败']}
+                      headings={t('tables.overviewHeadings')}
                       rows={Object.entries(data.stats.languageStats).map(([lang, stats]) => [
                         lang,
                         stats.total,
@@ -434,29 +431,29 @@ export default function MonitoringDashboard() {
                 </Card.Section>
               )}
               
-              {/* 错误监控面板 */}
+              {/* Errors tab */}
               {selectedTab === 1 && (
                 <Card.Section>
                   <BlockStack gap="400">
                     <InlineStack align="space-between">
-                      <Text variant="headingMd">最近错误</Text>
-                      <Button url="/app/errors">查看全部</Button>
+                      <Text variant="headingMd">{t('tables.recentErrors')}</Text>
+                      <Button url="/app/errors">{t('tables.viewAll')}</Button>
                     </InlineStack>
                     
                     {data.recentErrors.length > 0 ? (
                       <DataTable
                         columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                        headings={['时间', '类型', '消息', '资源', '严重度', '状态', '频率']}
+                        headings={t('tables.errorHeadings')}
                         rows={errorTableData}
                       />
                     ) : (
                       <Banner tone="success">
-                        <p>最近{data.timeRange}内没有错误记录</p>
+                        <p>{t('tables.noRecent', { range: data.timeRange })}</p>
                       </Banner>
                     )}
                     
                     <BlockStack gap="200">
-                      <Text variant="headingMd">错误类型分布</Text>
+                      <Text variant="headingMd">{t('tables.errorsByType')}</Text>
                       <InlineStack gap="200">
                         {Object.entries(data.stats.errorsByType).map(([type, count]) => (
                           <Badge key={type}>
@@ -469,20 +466,20 @@ export default function MonitoringDashboard() {
                 </Card.Section>
               )}
               
-              {/* 性能指标面板 */}
+              {/* Performance tab */}
               {selectedTab === 2 && (
                 <Card.Section>
                   <BlockStack gap="400">
-                    <Text variant="headingMd">性能指标</Text>
+                    <Text variant="headingMd">{t('performance.title')}</Text>
                     
                     <Grid>
                       <Grid.Cell columnSpan={{xs: 12, sm: 6, md: 6, lg: 6}}>
                         <Card sectioned>
                           <BlockStack gap="200">
-                            <Text variant="headingSm">翻译性能</Text>
-                            <Text>平均响应时间: {data.systemHealth.avgTranslationTime}ms</Text>
-                            <Text>队列处理速度: ~50 项/分钟</Text>
-                            <Text>并发处理数: 5</Text>
+                            <Text variant="headingSm">{t('performance.translation')}</Text>
+                            <Text>{t('performance.avgResponse', { ms: data.systemHealth.avgTranslationTime })}</Text>
+                            <Text>{t('performance.queueSpeed')}</Text>
+                            <Text>{t('performance.concurrency')}</Text>
                           </BlockStack>
                         </Card>
                       </Grid.Cell>
@@ -490,25 +487,25 @@ export default function MonitoringDashboard() {
                       <Grid.Cell columnSpan={{xs: 12, sm: 6, md: 6, lg: 6}}>
                         <Card sectioned>
                           <BlockStack gap="200">
-                            <Text variant="headingSm">API性能</Text>
-                            <Text>错误率: {data.systemHealth.apiErrorRate}%</Text>
-                            <Text>限流触发: 12次</Text>
-                            <Text>平均重试次数: 1.2</Text>
+                            <Text variant="headingSm">{t('performance.api')}</Text>
+                            <Text>{t('performance.errorRate', { rate: data.systemHealth.apiErrorRate })}</Text>
+                            <Text>{t('performance.throttles')}</Text>
+                            <Text>{t('performance.retries')}</Text>
                           </BlockStack>
                         </Card>
                       </Grid.Cell>
                     </Grid>
                     
-                    <Banner tone="info" title="性能优化建议">
+                    <Banner tone="info" title="{t('performance.adviceTitle')}">
                       <BlockStack gap="100">
                         {parseFloat(data.systemHealth.apiErrorRate) > 2 && (
-                          <Text>• API错误率较高，建议检查网络连接和API配额</Text>
+                          <Text>• {t('performance.adviceApi')}</Text>
                         )}
                         {data.systemHealth.queueLength > 50 && (
-                          <Text>• 队列积压较多，考虑增加并发处理数</Text>
+                          <Text>• {t('performance.adviceQueue')}</Text>
                         )}
                         {data.systemHealth.avgTranslationTime > 2000 && (
-                          <Text>• 翻译响应较慢，可能需要优化批处理大小</Text>
+                          <Text>• {t('performance.adviceSlow')}</Text>
                         )}
                       </BlockStack>
                     </Banner>
@@ -516,33 +513,33 @@ export default function MonitoringDashboard() {
                 </Card.Section>
               )}
               
-              {/* 任务队列面板 */}
+              {/* Jobs tab */}
               {selectedTab === 3 && (
                 <Card.Section>
                   <BlockStack gap="400">
                     <InlineStack align="space-between">
-                      <Text variant="headingMd">活跃任务</Text>
-                      <Badge>{data.activeJobs.length} 个任务</Badge>
+                      <Text variant="headingMd">{t('tables.jobsHeading')}</Text>
+                      <Badge>{t('tables.jobsBadge', { count: data.activeJobs.length })}</Badge>
                     </InlineStack>
                     
                     {data.activeJobs.length > 0 ? (
                       <DataTable
                         columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
-                        headings={['任务ID', '开始时间', '状态', '进度', '完成度', '错误']}
+                        headings={t('tables.jobsHeadings')}
                         rows={jobTableData}
                       />
                     ) : (
                       <Banner>
-                        <p>当前没有活跃的翻译任务</p>
+                        <p>{t('tables.noJobs')}</p>
                       </Banner>
                     )}
                     
                     <Card sectioned>
                       <BlockStack gap="200">
-                        <Text variant="headingSm">队列状态</Text>
-                        <Text>待处理: {data.systemHealth.queueLength} 项</Text>
-                        <Text>处理中: {data.activeJobs.filter(j => j.status === 'RUNNING').length} 项</Text>
-                        <Text>已暂停: {data.activeJobs.filter(j => j.status === 'PAUSED').length} 项</Text>
+                        <Text variant="headingSm">{t('tables.queueState')}</Text>
+                        <Text>{t('tables.queuePending', { count: data.systemHealth.queueLength })}</Text>
+                        <Text>{t('tables.queueRunning', { count: data.activeJobs.filter(j => j.status === 'RUNNING').length })}</Text>
+                        <Text>{t('tables.queuePaused', { count: data.activeJobs.filter(j => j.status === 'PAUSED').length })}</Text>
                       </BlockStack>
                     </Card>
                   </BlockStack>
@@ -552,13 +549,13 @@ export default function MonitoringDashboard() {
           </Card>
         </Layout.Section>
         
-        {/* 自动刷新状态 */}
+        {/* Auto refresh state */}
         {autoRefresh && (
           <Layout.Section>
             <Banner tone="info">
               <InlineStack gap="200" align="center">
                 <Spinner size="small" />
-                <Text>自动刷新已启用，每{refreshInterval/1000}秒更新一次</Text>
+                <Text>{t('autoRefresh', { seconds: refreshInterval/1000 })}</Text>
               </InlineStack>
             </Banner>
           </Layout.Section>

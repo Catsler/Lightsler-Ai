@@ -1,0 +1,19 @@
+{
+  "name": "t:Page",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_title",
+      "type": "checkbox",
+      "label": "t:Show_page_title",
+      "translate": false
+    },
+    {
+      "id": "page_width",
+      "type": "select",
+      "label": "t:Page_width",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

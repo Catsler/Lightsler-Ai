@@ -1,0 +1,37 @@
+{
+  "name": "t:Blog",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_blog_title",
+      "type": "checkbox",
+      "label": "t:Show_blog_title",
+      "translate": false
+    },
+    {
+      "id": "show_tags",
+      "type": "checkbox",
+      "label": "t:Show_tags",
+      "translate": false
+    },
+    {
+      "id": "show_category",
+      "type": "checkbox",
+      "label": "t:Show_category",
+      "translate": false
+    },
+    {
+      "id": "show_excerpt",
+      "type": "checkbox",
+      "label": "t:Show_excerpt",
+      "translate": false
+    },
+    {
+      "id": "articles_per_page",
+      "type": "range",
+      "label": "t:Blog_posts_per_page",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-console */
 import { json } from "@remix-run/node";
 import { useLoaderData, useNavigate, useFetcher } from "@remix-run/react";
 import {
@@ -11,7 +12,8 @@ import {
   Button,
   Divider,
   Banner,
-  Select
+  Select,
+  Box
 } from "@shopify/polaris";
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ThemeTranslationCompare from '../components/ThemeTranslationCompare';
@@ -20,12 +22,8 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getSyncErrorMessage } from "../utils/sync-error-helper.js";
 import { useAppRefresh } from "../utils/use-app-refresh.client";
-
-const DEFAULT_LANGUAGES = [
-  { code: 'zh-CN', name: '中文' },
-  { code: 'en', name: 'English' },
-  { code: 'ja', name: '日本語' }
-];
+import { useTranslation } from "react-i18next";
+import { getResourceDisplayTitle, getResourceDisplayDescription } from "../utils/resource-display-helpers";
 
 // Theme资源查询监控统计
 const queryMetrics = {
@@ -260,6 +258,16 @@ export default function ThemeDetailPage() {
   const navigate = useNavigate();
   const fetcher = useFetcher();
   const { hardRefresh } = useAppRefresh(); // 使用 hardRefresh 清除主题缓存
+  const { t, i18n } = useTranslation(['home', 'languages']);
+
+  const displayTitle = getResourceDisplayTitle(resource, i18n.language, t);
+  const displayDescription = getResourceDisplayDescription(resource, i18n.language, t);
+
+  const defaultLanguages = useMemo(() => ([
+    { code: 'zh-CN', name: t('languageList.zh-CN', { ns: 'home', defaultValue: 'Chinese (Simplified)' }) },
+    { code: 'en', name: t('languageList.en', { ns: 'home', defaultValue: 'English' }) },
+    { code: 'ja', name: t('languageList.ja', { ns: 'home', defaultValue: 'Japanese' }) }
+  ]), [t]);
 
   // Theme资源数据归一化函数 - 提取实际的模块化数据并扁平化复杂结构
   const normalizeThemeFields = (fields) => {
@@ -313,7 +321,7 @@ export default function ThemeDetailPage() {
   const hasTranslations = translationStats.total > 0;
 
   const availableLanguages = useMemo(() => {
-    const languageMap = new Map(DEFAULT_LANGUAGES.map(lang => [lang.code, lang.name]));
+    const languageMap = new Map(defaultLanguages.map(lang => [lang.code, lang.name]));
 
     (resource.translations || []).forEach((translation) => {
       if (translation?.language) {
@@ -326,7 +334,7 @@ export default function ThemeDetailPage() {
       code,
       name: name || code
     }));
-  }, [resource.translations]);
+  }, [defaultLanguages, resource.translations]);
 
   const initialTargetLanguage = useMemo(() => {
     // 优先级1: URL参数
@@ -446,17 +454,17 @@ export default function ThemeDetailPage() {
     }
 
     if (!targetLang) {
-      showToast('请在上方"目标语言"选择框中选择翻译语言', true);
+      showToast(t('toasts.selectTargetLanguage', { ns: 'home' }), true);
       return;
     }
 
     if (!primaryLocale?.locale) {
-      showToast('语言配置加载失败，请刷新页面后重试', true);
+      showToast(t('toasts.configLoadFailed', { ns: 'home' }), true);
       return;
     }
 
     if (hasNoSecondaryLanguages) {
-      showToast('请先在 Shopify 后台启用目标语言后再翻译', true);
+      showToast(t('toasts.enableSecondaryLanguage', { ns: 'home' }), true);
       return;
     }
 
@@ -465,7 +473,7 @@ export default function ThemeDetailPage() {
     const targetCode = targetLang?.toLowerCase();
 
     if (primaryCode && targetCode === primaryCode) {
-      showToast(`不能翻译到主语言 ${primaryLocale?.name || primaryLocale?.locale}`, true);
+      showToast(t('toasts.cannotTranslatePrimary', { ns: 'home', language: primaryLocale?.name || primaryLocale?.locale }), true);
       return;
     }
 
@@ -497,7 +505,7 @@ export default function ThemeDetailPage() {
   }, [resource.id, resource.resourceType, currentLanguage, initialTargetLanguage, fetcher]);
 
   const handleDelete = useCallback(() => {
-    if (confirm('确定删除所有翻译记录吗？此操作不可恢复。')) {
+    if (confirm(t('home:toasts.confirmDelete', { defaultValue: 'Are you sure you want to delete all translations? This cannot be undone.' }))) {
       lastActionRef.current = 'delete';
       fetcher.submit(
         {
@@ -515,12 +523,12 @@ export default function ThemeDetailPage() {
     }
 
     if (!primaryLocale?.locale) {
-      showToast('语言配置加载失败，请刷新页面后重试', true);
+      showToast(t('home:toasts.configLoadFailed'), true);
       return;
     }
 
     if (hasNoSecondaryLanguages) {
-      showToast('请先在 Shopify 后台启用目标语言后再翻译', true);
+      showToast(t('home:toasts.enableSecondaryLanguage'), true);
       return;
     }
 
@@ -529,7 +537,7 @@ export default function ThemeDetailPage() {
     const requestLangCode = translateRequest.language?.toLowerCase();
 
     if (primaryCode && requestLangCode === primaryCode) {
-      showToast(`无法翻译为主语言 ${primaryLocale?.name || primaryLocale?.locale}`, true);
+      showToast(t('home:toasts.cannotTranslatePrimary', { language: primaryLocale?.name || primaryLocale?.locale }), true);
       return;
     }
 
@@ -563,38 +571,38 @@ export default function ThemeDetailPage() {
     const payloadMessage = message || data?.message;
 
     if (!success) {
-      showToast(payloadMessage || '操作失败，请重试', true);
+      showToast(payloadMessage || t('home:toasts.genericError', { defaultValue: 'Operation failed, please retry' }), true);
       return;
     }
 
     if (lastAction === 'retranslate' || lastAction === 'translate-field') {
-      showToast(payloadMessage || '翻译任务已创建，正在刷新...');
+      showToast(payloadMessage || t('home:toasts.translationCreated', { defaultValue: 'Translation task created, refreshing...' }));
       setTimeout(() => hardRefresh(), 1500);
       return;
     }
 
     if (lastAction === 'sync') {
-      showToast(payloadMessage || '同步任务已提交');
+      showToast(payloadMessage || t('home:toasts.syncSubmitted', { defaultValue: 'Sync task submitted' }));
       return;
     }
 
     if (lastAction === 'delete') {
-      showToast(payloadMessage || '翻译记录已删除');
+      showToast(payloadMessage || t('home:toasts.translationDeleted', { defaultValue: 'Translation record deleted' }));
       setTimeout(() => hardRefresh(), 600);
     }
   }, [fetcher.state, fetcher.data, showToast]);
 
   const handleSaveTranslations = useCallback((saveRequest) => {
     console.log('保存Theme翻译:', saveRequest);
-    alert('保存功能正在开发中，目前请使用完整翻译后再同步到Shopify');
-  }, []);
+    alert(t('home:toasts.saveUnsupported', { defaultValue: 'Saving is not supported here. Please complete translation and sync to Shopify.' }));
+  }, [t]);
 
   // 渲染翻译列表
   const renderTranslations = () => {
     if (!resource.translations || resource.translations.length === 0) {
       return (
         <Text variant="bodySm" tone="subdued">
-          暂无翻译记录
+          {t('ui.noTranslations', { ns: 'home', defaultValue: 'No translation records' })}
         </Text>
       );
     }
@@ -632,14 +640,14 @@ export default function ThemeDetailPage() {
 
               {translation.titleTrans && (
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">标题翻译:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.titleTranslation', { ns: 'home', defaultValue: 'Title translation:' })}</Text>
                   <Text variant="bodySm">{translation.titleTrans}</Text>
                 </InlineStack>
               )}
               
               {translation.descTrans && (
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">描述翻译:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.descriptionTranslation', { ns: 'home', defaultValue: 'Description translation:' })}</Text>
                   <Text variant="bodySm" truncate>{translation.descTrans}</Text>
                 </InlineStack>
               )}
@@ -647,7 +655,7 @@ export default function ThemeDetailPage() {
               {/* Theme特定翻译字段 */}
               {translation.translationFields && (
                 <BlockStack gap="100">
-                  <Text variant="bodySm" fontWeight="semibold">Theme字段翻译:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.themeFieldTranslation', { ns: 'home', defaultValue: 'Theme field translation:' })}</Text>
                   <Text variant="bodyXs" tone="subdued">
                     {JSON.stringify(translation.translationFields, null, 2)}
                   </Text>
@@ -657,7 +665,7 @@ export default function ThemeDetailPage() {
               {/* 质量评分 */}
               {translation.qualityScore > 0 && (
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">质量评分:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.qualityScore', { ns: 'home', defaultValue: 'Quality score:' })}</Text>
                   <Badge tone={translation.qualityScore > 0.8 ? 'success' : translation.qualityScore > 0.6 ? 'caution' : 'critical'}>
                     {Math.round(translation.qualityScore * 100)}%
                   </Badge>
@@ -672,27 +680,27 @@ export default function ThemeDetailPage() {
 
   return (
     <Page
-      title={`Theme资源: ${resource.title || resource.resourceId}`}
+      title={t('ui.themeResourceTitle', { ns: 'home', defaultValue: 'Theme resource: {{title}}', title: displayTitle || resource.resourceId })}
       titleMetadata={<Badge tone="info">{resource.resourceType}</Badge>}
       backAction={{
-        content: '返回',
+        content: t('actions.back', { ns: 'home', defaultValue: 'Back' }),
         icon: ArrowLeftIcon,
         onAction: () => navigate('/app')
       }}
       primaryAction={canTranslate ? {
-        content: '重新翻译',
+        content: t('actions.retranslate', { ns: 'home', defaultValue: 'Retranslate' }),
         onAction: handleRetranslate,
         loading: isLoading
       } : undefined}
       secondaryActions={[
         {
-          content: '同步到Shopify',
+          content: t('actions.syncShopify', { ns: 'home', defaultValue: 'Sync to Shopify' }),
           onAction: handleSync,
           loading: isLoading,
           disabled: isLoading
         },
         {
-          content: '删除翻译',
+          content: t('actions.deleteTranslation', { ns: 'home', defaultValue: 'Delete translation' }),
           onAction: handleDelete,
           destructive: true,
           disabled: isLoading
@@ -705,13 +713,15 @@ export default function ThemeDetailPage() {
             {/* 零辅语言警告Banner */}
             {hasNoSecondaryLanguages && (
               <Banner
-                title="当前商店未配置次要语言"
+                title={t('banner.noSecondaryTitle', { ns: 'home' })}
                 tone="warning"
                 onDismiss={undefined}
               >
                 <p>
-                  您的商店目前只配置了主语言 ({primaryLocale?.name || primaryLocale?.locale || '未知'})，
-                  无法进行翻译操作。请先在 Shopify 设置中添加目标语言。
+                  {t('banner.noSecondaryDescription', {
+                    ns: 'home',
+                    language: primaryLocale?.name || primaryLocale?.locale || 'unknown'
+                  })}
                 </p>
               </Banner>
             )}
@@ -720,16 +730,16 @@ export default function ThemeDetailPage() {
             {!hasNoSecondaryLanguages && supportedLocales && supportedLocales.length > 0 && (
               <Card>
                 <BlockStack gap="300">
-                  <Text variant="headingMd">目标语言</Text>
+                  <Text variant="headingMd">{t('ui.targetLanguage', { ns: 'home' })}</Text>
                   <Select
-                    label="选择翻译目标语言"
+                    label={t('ui.chooseTargetLanguage', { ns: 'home', defaultValue: 'Choose the target language' })}
                     options={[
                       ...supportedLocales.map(lang => ({
                         label: lang.label,
                         value: lang.value
                       })),
                       ...(primaryLocale ? [{
-                        label: `${primaryLocale.name || primaryLocale.locale} (主语言 - 不可翻译)`,
+                        label: `${primaryLocale.name || primaryLocale.locale} (${t('ui.primaryLanguageDisabled', { ns: 'home', defaultValue: 'Primary language - not translatable' })})`,
                         value: primaryLocale.locale,
                         disabled: true
                       }] : [])
@@ -742,7 +752,11 @@ export default function ThemeDetailPage() {
                   />
                   {(currentLanguage || initialTargetLanguage) && (
                     <Text variant="bodySm" tone="subdued">
-                      当前将翻译到: {supportedLocales.find(l => l.value === (currentLanguage || initialTargetLanguage))?.label || currentLanguage || initialTargetLanguage}
+                      {t('ui.translationTargetLabel', {
+                        ns: 'home',
+                        label: supportedLocales.find(l => l.value === (currentLanguage || initialTargetLanguage))?.label || currentLanguage || initialTargetLanguage,
+                        defaultValue: `Translating to: ${currentLanguage || initialTargetLanguage}`
+                      })}
                     </Text>
                   )}
                 </BlockStack>
@@ -752,20 +766,20 @@ export default function ThemeDetailPage() {
             {/* 基本信息卡片 */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">基本信息</Text>
+                <Text variant="headingMd">{t('ui.basicInfo', { ns: 'home', defaultValue: 'Basic info' })}</Text>
                 
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">资源ID:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.resourceId', { ns: 'home', defaultValue: 'Resource ID:' })}</Text>
                   <Text variant="bodySm">{resource.resourceId}</Text>
                 </InlineStack>
                 
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">资源类型:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.resourceType', { ns: 'home', defaultValue: 'Resource type:' })}</Text>
                   <Badge tone="info">{resource.resourceType}</Badge>
                 </InlineStack>
                 
                 <InlineStack align="space-between">
-                  <Text variant="bodySm" fontWeight="semibold">状态:</Text>
+                  <Text variant="bodySm" fontWeight="semibold">{t('ui.status', { ns: 'home', defaultValue: 'Status:' })}</Text>
                   <Badge tone={resource.status === 'completed' ? 'success' : 'warning'}>
                     {resource.status}
                   </Badge>
@@ -776,26 +790,26 @@ export default function ThemeDetailPage() {
                   <Text variant="bodySm" truncate>{resource.gid}</Text>
                 </InlineStack>
 
-                {resource.title && (
+                {displayTitle && (
                   <InlineStack align="space-between">
-                    <Text variant="bodySm" fontWeight="semibold">标题:</Text>
-                    <Text variant="bodySm">{resource.title}</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.titleTranslation', { ns: 'home', defaultValue: 'Title:' })}</Text>
+                    <Text variant="bodySm">{displayTitle}</Text>
                   </InlineStack>
                 )}
 
-                {resource.description && (
+                {displayDescription && (
                   <BlockStack gap="100">
-                    <Text variant="bodySm" fontWeight="semibold">描述:</Text>
-                    <Text variant="bodySm">{resource.description}</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.descriptionTranslation', { ns: 'home', defaultValue: 'Description:' })}</Text>
+                    <Text variant="bodySm">{displayDescription}</Text>
                   </BlockStack>
                 )}
 
                 {/* 查询信息（开发调试用） */}
                 {process.env.NODE_ENV === 'development' && queryInfo && (
                   <InlineStack align="space-between">
-                    <Text variant="bodySm" fontWeight="semibold">查询方式:</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.queryMode', { ns: 'home', defaultValue: 'Query mode:' })}</Text>
                     <Badge tone={queryInfo.foundBy === 'uuid' ? 'info' : 'warning'}>
-                      {queryInfo.foundBy === 'uuid' ? 'UUID匹配' : 'FileID匹配'}
+                      {queryInfo.foundBy === 'uuid' ? 'UUID' : 'FileID'}
                     </Badge>
                   </InlineStack>
                 )}
@@ -805,18 +819,18 @@ export default function ThemeDetailPage() {
             {/* 翻译统计卡片 */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">翻译统计</Text>
+                <Text variant="headingMd">{t('ui.translationStats', { ns: 'home', defaultValue: 'Translation stats' })}</Text>
                 <InlineStack gap="400">
                   <InlineStack gap="100">
-                    <Text variant="bodySm" fontWeight="semibold">总计:</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.total', { ns: 'home', defaultValue: 'Total:' })}</Text>
                     <Badge>{translationStats.total}</Badge>
                   </InlineStack>
                   <InlineStack gap="100">
-                    <Text variant="bodySm" fontWeight="semibold">已完成:</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.completed', { ns: 'home', defaultValue: 'Completed:' })}</Text>
                     <Badge tone="success">{translationStats.completed}</Badge>
                   </InlineStack>
                   <InlineStack gap="100">
-                    <Text variant="bodySm" fontWeight="semibold">已同步:</Text>
+                    <Text variant="bodySm" fontWeight="semibold">{t('ui.synced', { ns: 'home', defaultValue: 'Synced:' })}</Text>
                     <Badge tone="info">{translationStats.synced}</Badge>
                   </InlineStack>
                 </InlineStack>
@@ -828,19 +842,19 @@ export default function ThemeDetailPage() {
         <Layout.Section variant="oneThird">
           <Card>
             <BlockStack gap="200">
-              <Text variant="headingSm">状态信息</Text>
+              <Text variant="headingSm">{t('ui.status', { ns: 'home', defaultValue: 'Status' })}</Text>
               <InlineStack gap="100">
                 <Badge tone={resource.riskScore > 0.7 ? 'critical' : resource.riskScore > 0.4 ? 'caution' : 'success'}>
-                  风险: {Math.round(resource.riskScore * 100)}%
+                  {t('ui.risk', { ns: 'home', defaultValue: 'Risk' })}: {Math.round(resource.riskScore * 100)}%
                 </Badge>
                 <Badge>v{resource.contentVersion}</Badge>
                 {resource.errorCount > 0 && (
-                  <Badge tone="critical">错误: {resource.errorCount}</Badge>
+                  <Badge tone="critical">{t('ui.errors', { ns: 'home', defaultValue: 'Errors' })}: {resource.errorCount}</Badge>
                 )}
               </InlineStack>
               {resource.lastScannedAt && (
                 <Text variant="bodySm" tone="subdued">
-                  最后扫描: {new Date(resource.lastScannedAt).toLocaleDateString('zh-CN')}
+                  {t('ui.lastScan', { ns: 'home', defaultValue: 'Last scan: {{date}}', date: new Date(resource.lastScannedAt).toLocaleDateString() })}
                 </Text>
               )}
             </BlockStack>
@@ -852,14 +866,16 @@ export default function ThemeDetailPage() {
           <Card>
             <BlockStack gap="300">
               <InlineStack align="space-between">
-                <Text variant="headingMd">翻译详情</Text>
+                <Text variant="headingMd">{t('ui.translationDetails', { ns: 'home', defaultValue: 'Translation details' })}</Text>
                 {hasTranslations && (
                   <Button
                     variant="tertiary"
                     size="slim"
                     onClick={() => handleViewModeChange(viewMode === 'list' ? 'compare' : 'list')}
                   >
-                    {viewMode === 'list' ? '切换到对比视图' : '切换到列表视图'}
+                    {viewMode === 'list'
+                      ? t('ui.switchToCompare', { ns: 'home', defaultValue: 'Switch to compare view' })
+                      : t('ui.switchToList', { ns: 'home', defaultValue: 'Switch to list view' })}
                   </Button>
                 )}
               </InlineStack>

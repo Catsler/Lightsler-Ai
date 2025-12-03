@@ -36,6 +36,6 @@ async function handleDeprecatedScanCollections() {
 }
 
 export const action = createApiRoute(handleDeprecatedScanCollections, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: '已废弃的集合扫描端点'
 });

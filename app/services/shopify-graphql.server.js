@@ -1007,11 +1007,11 @@ export async function fetchThemeResources(admin, resourceType, maxRetries = 3) {
             const typeMap = {
               'ONLINE_STORE_THEME': '主题',
               'ONLINE_STORE_THEME_APP_EMBED': '应用嵌入',
-              'ONLINE_STORE_THEME_JSON_TEMPLATE': 'JSON模板',
-              'ONLINE_STORE_THEME_LOCALE_CONTENT': '本地化内容',
-              'ONLINE_STORE_THEME_SECTION_GROUP': '区块组',
-              'ONLINE_STORE_THEME_SETTINGS_CATEGORY': '主题设置分类',
-              'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': '静态区块'
+              'ONLINE_STORE_THEME_JSON_TEMPLATE': 'JSON Template',
+              'ONLINE_STORE_THEME_LOCALE_CONTENT': 'Locale Content',
+              'ONLINE_STORE_THEME_SECTION_GROUP': 'Section Group',
+              'ONLINE_STORE_THEME_SETTINGS_CATEGORY': 'Theme Settings Category',
+              'ONLINE_STORE_THEME_SETTINGS_DATA_SECTIONS': 'Theme Settings Sections'
             };
             displayTitle = typeMap[resourceType] || `Theme ${resourceType.replace(/_/g, ' ').toLowerCase()}`;
             
@@ -1220,7 +1220,7 @@ export async function fetchShopInfo(admin, resourceType, maxRetries = 3) {
       originalId: resourceId, // 添加originalId字段
       gid: resource.resourceId,
       resourceType: resourceType.toLowerCase(),
-      title: content.title || content.name || '店铺信息',
+      title: content.title || content.name || 'Shop info',
       description: content.body || content.description || '',
       translatableContent: resource.translatableContent
     };

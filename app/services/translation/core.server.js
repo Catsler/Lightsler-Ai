@@ -1,3 +1,4 @@
+/* eslint-disable import/first, no-unused-vars, no-console */
 /**
  * GPT翻译API服务
  */
@@ -51,6 +52,9 @@ import {
   persistenceConfig
 } from '../../utils/logger.server.js';
 import { getLocalizedErrorMessage } from '../../utils/error-messages.server.js';
+import { creditManager } from '../credit-manager.server.js';
+import { creditCalculator } from '../credit-calculator.server.js';
+import { InsufficientCreditsError } from '../../utils/billing-errors.server.js';
 
 // 导入质量分析器
 import { qualityErrorAnalyzer } from '../quality-error-analyzer.server.js';
@@ -95,6 +99,17 @@ const SKIP_BRAND_CHECK_FIELDS = [
   'optionName',     // contentFields.optionName
   'valueName'       // contentFields.valueName
 ];
+
+const BILLING_ENABLED = process.env.SHOPIFY_BILLING_ENABLED === 'true';
+const BILLING_BYPASS = process.env.BILLING_BYPASS === 'true';
+
+function shouldEnforceBilling(options = {}) {
+  if (!BILLING_ENABLED) return false;
+  if (BILLING_BYPASS) return false;
+  if (options.billingBypass || options.skipBilling) return false;
+  if (!options.shopId) return false;
+  return true;
+}
 
 const translationLogger = createTranslationLogger('TRANSLATION');
 
@@ -1015,6 +1030,10 @@ export async function postProcessTranslation(translatedText, targetLang, origina
 export async function translateText(text, targetLang, options = {}) {
   let retryCount = 0;
   let optionPayload = {};
+  let billingReservationId = null;
+  let billingEnabled = false;
+  let estimatedUsage = null;
+  let translationResult = null;
 
   if (typeof options === 'number') {
     retryCount = options;
@@ -1026,8 +1045,11 @@ export async function translateText(text, targetLang, options = {}) {
     optionPayload = { retryCount };
   }
 
+  let preferLongText = false;
+
   // 品牌词保护检测
   const normalizedText = typeof text === 'string' ? text : '';
+  const sourceTextForBilling = typeof text === 'string' ? text : normalizedText;
   const brandWordResult = checkBrandWords(normalizedText, optionPayload);
   if (brandWordResult.shouldSkip) {
     logger.info('[TRANSLATION] 品牌词保护跳过翻译', {
@@ -1044,43 +1066,124 @@ export async function translateText(text, targetLang, options = {}) {
 
   // HTML长文本检测和路由
   if (normalizedText && isLikelyHtml(normalizedText) && normalizedText.length > 1500) {
+    preferLongText = true;
     logger.info('[TRANSLATION] 路由到长文本HTML处理', {
       length: normalizedText.length,
       resourceType: optionPayload.resourceType,
       charsOverThreshold: normalizedText.length - 1500
     });
+  }
 
-    try {
-      const longTextResult = await translateLongTextEnhanced(normalizedText, targetLang, optionPayload);
-      return longTextResult;
-    } catch (error) {
-      logger.warn('[TRANSLATION] 长文本HTML处理失败，降级到标准处理', {
-        error: error.message,
-        textLength: normalizedText.length
+  const hasTranslatableText = typeof normalizedText === 'string' && normalizedText.trim().length > 0;
+  billingEnabled = hasTranslatableText && shouldEnforceBilling(optionPayload);
+
+  try {
+    if (billingEnabled) {
+      estimatedUsage = creditCalculator.calculateEstimated(normalizedText, targetLang, optionPayload.resourceType, {
+        stripHtmlTags: true
       });
-      // 降级到标准处理流程
+
+      if (estimatedUsage?.credits > 0) {
+        billingReservationId = await creditManager.reserveCredits(optionPayload.shopId, estimatedUsage.credits, {
+          debug: optionPayload.debugBilling,
+          resourceType: optionPayload.resourceType,
+          resourceId: optionPayload.resourceId,
+          fieldName: optionPayload.fieldName,
+          operation: optionPayload.operation || 'translate_text'
+        });
+      }
+    }
+
+    if (preferLongText) {
+      try {
+        translationResult = await translateLongTextEnhanced(normalizedText, targetLang, optionPayload);
+      } catch (error) {
+        logger.warn('[TRANSLATION] 长文本HTML处理失败，降级到标准处理', {
+          error: error.message,
+          textLength: normalizedText.length
+        });
+        translationResult = null;
+        preferLongText = false;
+      }
+    }
+
+    if (!translationResult) {
+      translationResult = await translateTextWithFallback(text, targetLang, optionPayload);
+    }
+
+    if (!translationResult.success) {
+      throw new TranslationError(`翻译失败: ${translationResult.error || '未知错误'}`, {
+        code: translationResult.errorCode || 'TRANSLATION_FAILED',
+        category: 'TRANSLATION',
+        retryable: translationResult.retryable ?? true,
+        context: {
+          targetLang,
+          retryCount,
+          isOriginal: translationResult.isOriginal ?? false
+        }
+      });
+    }
+
+    if (billingEnabled && billingReservationId) {
+      const actualUsage = creditCalculator.calculateActual(
+        sourceTextForBilling,
+        translationResult.text || '',
+        targetLang,
+        optionPayload.resourceType,
+        { stripHtmlTags: true }
+      );
+
+      const usageMetadata = {
+        ...(optionPayload.metadata || {})
+      };
+
+      if (optionPayload.fieldName && !usageMetadata.fieldName) {
+        usageMetadata.fieldName = optionPayload.fieldName;
+      }
+      if (estimatedUsage?.details) {
+        usageMetadata.estimatedCreditsDetails = estimatedUsage.details;
+      }
+      usageMetadata.actualCreditsDetails = actualUsage.details;
+
+      await creditManager.confirmUsage(billingReservationId, actualUsage.credits, {
+        resourceId: optionPayload.resourceId,
+        resourceType: optionPayload.resourceType,
+        operation: optionPayload.operation || 'translate_text',
+        sourceLanguage: optionPayload.sourceLanguage,
+        targetLanguage: targetLang,
+        batchId: optionPayload.batchId,
+        sessionId: optionPayload.sessionId,
+        sourceCharCount: actualUsage.details.sourceEffectiveChars,
+        metadata: usageMetadata
+      });
+    }
+  } catch (error) {
+    if (billingEnabled && error instanceof InsufficientCreditsError) {
+      translationLogger.warn('[Billing] 翻译被拒绝：额度不足', {
+        shopId: optionPayload.shopId,
+        fieldName: optionPayload.fieldName,
+        resourceType: optionPayload.resourceType,
+        targetLang,
+        requiredCredits: estimatedUsage?.credits,
+        availableCredits: error.available,
+        planName: error.planName
+      });
+    }
+    throw error;
+  } finally {
+    if (billingEnabled && billingReservationId) {
+      await creditManager.ensureReservationHandled(billingReservationId);
     }
   }
 
-  const result = await translateTextWithFallback(text, targetLang, optionPayload);
-
-  if (!result.success) {
-    throw new TranslationError(`翻译失败: ${result.error || '未知错误'}`, {
-      code: result.errorCode || 'TRANSLATION_FAILED',
-      category: 'TRANSLATION',
-      retryable: result.retryable ?? true,
-      context: {
-        targetLang,
-        retryCount,
-        isOriginal: result.isOriginal ?? false
-      }
-    });
+  if (preferLongText) {
+    return translationResult;
   }
 
   const normalizedOriginal = (text || '').trim().toLowerCase();
-  const normalizedTranslated = (result.text || '').trim().toLowerCase();
+  const normalizedTranslated = (translationResult.text || '').trim().toLowerCase();
 
-  if ((result.isOriginal || normalizedOriginal === normalizedTranslated) && normalizedOriginal) {
+  if ((translationResult.isOriginal || normalizedOriginal === normalizedTranslated) && normalizedOriginal) {
     // 分析skip原因
     const skipReason = analyzeIdenticalResult(text, targetLang);
     
@@ -1092,13 +1195,13 @@ export async function translateText(text, targetLang, options = {}) {
     
     // 返回特殊标记而非抛出错误
     return {
-      text: result.text,
+      text: translationResult.text,
       skipped: true,
       skipReason
     };
   }
 
-  return result.text;
+  return translationResult.text;
 }
 
 /**
@@ -1190,7 +1293,7 @@ async function translateTextWithSkip(text, targetLang, context = {}) {
   }
   
   try {
-    const result = await translateText(text, targetLang);
+    const result = await translateText(text, targetLang, context);
     
     // 检查是否返回skip标记
     if (result && typeof result === 'object' && result.skipped) {
@@ -2037,6 +2140,26 @@ export async function translateResource(resource, targetLang, options = {}) {
   // 2. schedule Hook - 调度资源翻译任务
   const resourceTranslationTask = async () => {
     // 初始化翻译结果对象
+    const baseTranslationOptions = {
+      shopId: options.shopId,
+      resourceType: resource.resourceType,
+      resourceId: resource.id,
+      operation: 'translate_resource',
+      sessionId: options.sessionId,
+      requestId: options.requestId,
+      sourceLanguage: options.sourceLanguage,
+      batchId: options.batchId
+    };
+
+    const translateField = async (value, fieldName, extraOptions = {}) => {
+      if (!value) return value;
+      return translateText(value, targetLang, {
+        ...baseTranslationOptions,
+        fieldName,
+        ...extraOptions
+      });
+    };
+
     const translated = {
       titleTrans: null,
       descTrans: null,
@@ -2050,7 +2173,7 @@ export async function translateResource(resource, targetLang, options = {}) {
     try {
     // 翻译标题（关键字段）
     if (resource.title) {
-      translated.titleTrans = await translateText(resource.title, targetLang);
+      translated.titleTrans = await translateField(resource.title, 'title');
       translated.titleTrans = await postProcessTranslation(
         translated.titleTrans,
         targetLang,
@@ -2072,7 +2195,7 @@ export async function translateResource(resource, targetLang, options = {}) {
     }
     
     if (descriptionToTranslate) {
-      translated.descTrans = await translateText(descriptionToTranslate, targetLang);
+      translated.descTrans = await translateField(descriptionToTranslate, 'description');
       translated.descTrans = await postProcessTranslation(
         translated.descTrans,
         targetLang,
@@ -2094,7 +2217,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
     // 翻译摘要（主要用于文章）
     if (resource.summary) {
-      translated.summaryTrans = await translateText(resource.summary, targetLang);
+      translated.summaryTrans = await translateField(resource.summary, 'summary');
       translated.summaryTrans = await postProcessTranslation(
         translated.summaryTrans,
         targetLang,
@@ -2105,7 +2228,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
     // 翻译标签（主要用于过滤器）
     if (resource.label) {
-      translated.labelTrans = await translateText(resource.label, targetLang);
+      translated.labelTrans = await translateField(resource.label, 'label');
       translated.labelTrans = await postProcessTranslation(
         translated.labelTrans,
         targetLang,
@@ -2116,7 +2239,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
     // 翻译SEO标题（关键字段）
     if (resource.seoTitle) {
-      translated.seoTitleTrans = await translateText(resource.seoTitle, targetLang);
+      translated.seoTitleTrans = await translateField(resource.seoTitle, 'seoTitle');
       translated.seoTitleTrans = await postProcessTranslation(
         translated.seoTitleTrans,
         targetLang,
@@ -2131,7 +2254,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
     // 翻译SEO描述（关键字段）
     if (resource.seoDescription) {
-      translated.seoDescTrans = await translateText(resource.seoDescription, targetLang);
+      translated.seoDescTrans = await translateField(resource.seoDescription, 'seoDescription');
       translated.seoDescTrans = await postProcessTranslation(
         translated.seoDescTrans,
         targetLang,
@@ -2152,7 +2275,7 @@ export async function translateResource(resource, targetLang, options = {}) {
           // 使用安全转换函数处理 name 字段（可能是对象或其他类型）
           const normalizedName = normalizeOptionValue(contentFields.name);
           if (normalizedName) {
-            dynamicTranslationFields.name = await translateText(normalizedName, targetLang, { fieldName: 'name' });
+            dynamicTranslationFields.name = await translateField(normalizedName, 'name');
             dynamicTranslationFields.name = await postProcessTranslation(
               dynamicTranslationFields.name,
               targetLang,
@@ -2183,7 +2306,7 @@ export async function translateResource(resource, targetLang, options = {}) {
               continue;
             }
 
-            const translatedValue = await translateText(normalizedValue, targetLang, { fieldName: 'value' });
+            const translatedValue = await translateField(normalizedValue, 'value');
             dynamicTranslationFields.values.push(
               await postProcessTranslation(translatedValue, targetLang, normalizedValue, { linkConversion: options.linkConversion })
             );
@@ -2193,7 +2316,7 @@ export async function translateResource(resource, targetLang, options = {}) {
 
       case 'PRODUCT_METAFIELD':
         if (typeof contentFields.value === 'string' && contentFields.value.trim()) {
-          const translatedValue = await translateText(contentFields.value, targetLang);
+          const translatedValue = await translateField(contentFields.value, 'value');
           dynamicTranslationFields.value = await postProcessTranslation(
             translatedValue,
             targetLang,
@@ -2598,7 +2721,7 @@ async function translateWithSimplePrompt(text, targetLang) {
     case 'ONLINE_STORE_THEME_LOCALE_CONTENT':
       // 翻译本地化内容
       if (contentFields.localeContent) {
-        fieldsToTranslate.localeContent = await translateText(contentFields.localeContent, targetLang);
+        fieldsToTranslate.localeContent = await translateField(contentFields.localeContent, 'localeContent');
       }
       break;
 
@@ -2610,7 +2733,7 @@ async function translateWithSimplePrompt(text, targetLang) {
         if (typeof value === 'string' && value.trim()) {
           // 跳过技术键名和URL
           if (!key.match(/^(id|type|key|url|path|class|style)$/i)) {
-            fieldsToTranslate[key] = await translateText(value, targetLang);
+            fieldsToTranslate[key] = await translateField(value, key);
             fieldsToTranslate[key] = await postProcessTranslation(
               fieldsToTranslate[key], 
               targetLang, 
@@ -2625,11 +2748,11 @@ async function translateWithSimplePrompt(text, targetLang) {
     case 'PRODUCT_OPTION_VALUE':
       // 翻译产品选项
       if (contentFields.name) {
-        fieldsToTranslate.name = await translateText(contentFields.name, targetLang);
+        fieldsToTranslate.name = await translateField(contentFields.name, 'name');
       }
       if (contentFields.values && Array.isArray(contentFields.values)) {
         fieldsToTranslate.values = await Promise.all(
-          contentFields.values.map(value => translateText(value, targetLang))
+          contentFields.values.map((value) => translateField(value, 'values'))
         );
       }
       break;
@@ -2638,17 +2761,17 @@ async function translateWithSimplePrompt(text, targetLang) {
     case 'SELLING_PLAN_GROUP':
       // 翻译销售计划
       if (contentFields.name) {
-        fieldsToTranslate.name = await translateText(contentFields.name, targetLang);
+        fieldsToTranslate.name = await translateField(contentFields.name, 'name');
       }
       if (contentFields.description) {
-        fieldsToTranslate.description = await translateText(contentFields.description, targetLang);
+        fieldsToTranslate.description = await translateField(contentFields.description, 'description');
       }
       if (contentFields.options && Array.isArray(contentFields.options)) {
         fieldsToTranslate.options = await Promise.all(
           contentFields.options.map(async (option) => ({
             ...option,
-            name: option.name ? await translateText(option.name, targetLang) : option.name,
-            value: option.value ? await translateText(option.value, targetLang) : option.value
+            name: option.name ? await translateField(option.name, 'optionName') : option.name,
+            value: option.value ? await translateField(option.value, 'optionValue') : option.value
           }))
         );
       }
@@ -2659,7 +2782,7 @@ async function translateWithSimplePrompt(text, targetLang) {
       const shopFields = ['name', 'description', 'announcement', 'contactEmail'];
       for (const field of shopFields) {
         if (contentFields[field]) {
-          fieldsToTranslate[field] = await translateText(contentFields[field], targetLang);
+          fieldsToTranslate[field] = await translateField(contentFields[field], field);
         }
       }
       break;
@@ -2669,7 +2792,7 @@ async function translateWithSimplePrompt(text, targetLang) {
       const policyFields = ['title', 'body', 'url'];
       for (const field of policyFields) {
         if (contentFields[field] && field !== 'url') {
-          fieldsToTranslate[field] = await translateText(contentFields[field], targetLang);
+          fieldsToTranslate[field] = await translateField(contentFields[field], field);
         }
       }
       break;
@@ -2678,7 +2801,7 @@ async function translateWithSimplePrompt(text, targetLang) {
       // 通用字段翻译
       for (const [key, value] of Object.entries(contentFields)) {
         if (typeof value === 'string' && value.trim() && !key.match(/^(id|handle|url)$/i)) {
-          fieldsToTranslate[key] = await translateText(value, targetLang);
+          fieldsToTranslate[key] = await translateField(value, key);
         }
       }
   }
@@ -2721,7 +2844,7 @@ async function translateThemeJsonData(data, targetLang) {
     // 检查是否为需要翻译的文本字段
     if (key.match(/^(title|label|name|description|text|content|placeholder|message|caption|heading|subheading|button_text)$/i)) {
       if (typeof value === 'string' && value.trim()) {
-        translated[key] = await translateText(value, targetLang);
+        translated[key] = await translateField(value, key);
         translated[key] = await postProcessTranslation(translated[key], targetLang, value);
       } else {
         translated[key] = value;
@@ -2738,3 +2861,4 @@ async function translateThemeJsonData(data, targetLang) {
   return translated;
 }
 */
+/* eslint-disable import/first */

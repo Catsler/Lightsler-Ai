@@ -42,11 +42,11 @@ async function handleCacheAction({ request }) {
 }
 
 export const loader = createApiRoute(handleGetCacheStats, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: '获取缓存统计'
 });
 
 export const action = createApiRoute(handleCacheAction, {
-  requireAuth: false,
+  requireAuth: true,
   operationName: '缓存操作'
 });

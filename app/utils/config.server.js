@@ -77,13 +77,15 @@ export const config = {
     modelTokenLimit: getEnvVar('TRANSLATION_MODEL_TOKEN_LIMIT', 6000, 'number'),
     tokenSafetyMargin: getEnvVar('TRANSLATION_TOKEN_SAFETY_MARGIN', 512, 'number'),
     minResponseTokens: getEnvVar('TRANSLATION_MIN_RESPONSE_TOKENS', 256, 'number'),
+    maxRequestsPerMinute: getEnvVar('TRANSLATION_MAX_REQUESTS_PER_MINUTE', 20, 'number'),
+    minRequestIntervalMs: getEnvVar('TRANSLATION_MIN_REQUEST_INTERVAL_MS', 3000, 'number'),
     skipEnabled: getEnvVar('ENABLE_TRANSLATION_SKIP', 'false') === 'true',
     skipOnlyWithHash: getEnvVar('TRANSLATION_SKIP_ONLY_WITH_HASH', 'true') !== 'false',
   },
   
   // 队列配置
   queue: {
-    concurrency: getEnvVar('QUEUE_CONCURRENCY', 5, 'number'),
+    concurrency: getEnvVar('QUEUE_CONCURRENCY', 2, 'number'),
     maxAttempts: getEnvVar('QUEUE_MAX_ATTEMPTS', 3, 'number'),
     removeOnComplete: getEnvVar('QUEUE_REMOVE_ON_COMPLETE', 10, 'number'),
     removeOnFail: getEnvVar('QUEUE_REMOVE_ON_FAIL', 5, 'number'),

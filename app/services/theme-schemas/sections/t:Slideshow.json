@@ -1,0 +1,179 @@
+{
+  "name": "t:Slideshow",
+  "type": "slideshow",
+  "settings": [
+    {
+      "id": "section_height",
+      "type": "select",
+      "label": "t:Section_height",
+      "translate": false
+    },
+    {
+      "id": "background_type",
+      "type": "select",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "transition_type",
+      "type": "select",
+      "label": "t:Transition_type",
+      "translate": false
+    },
+    {
+      "id": "autoplay",
+      "type": "checkbox",
+      "label": "t:Auto_rotate_between_slides",
+      "translate": false
+    },
+    {
+      "id": "cycle_speed",
+      "type": "range",
+      "label": "t:Change_slides_every",
+      "translate": false
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "t:Image",
+      "settings": [
+        {
+          "id": "image",
+          "type": "image_picker",
+          "label": "t:Image",
+          "translate": false
+        },
+        {
+          "id": "split_image",
+          "type": "image_picker",
+          "label": "t:Split_image",
+          "translate": false
+        },
+        {
+          "id": "mobile_image",
+          "type": "image_picker",
+          "label": "t:Mobile_image",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Video",
+          "translate": false
+        },
+        {
+          "id": "video_file",
+          "type": "video",
+          "label": "t:Video_file",
+          "translate": false
+        },
+        {
+          "id": "mobile_video_file",
+          "type": "video",
+          "label": "t:Mobile_video_file",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Content",
+          "translate": false
+        },
+        {
+          "id": "text_position",
+          "type": "select",
+          "label": "t:Text_position",
+          "translate": false
+        },
+        {
+          "id": "mobile_text_position",
+          "type": "select",
+          "label": "t:Mobile_text_position",
+          "translate": false
+        },
+        {
+          "id": "subheading",
+          "type": "text",
+          "label": "t:Subheading",
+          "translate": true
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "t:Heading",
+          "translate": true
+        },
+        {
+          "id": "content",
+          "type": "inline_richtext",
+          "label": "t:Content",
+          "translate": true
+        },
+        {
+          "id": "button_1_text",
+          "type": "text",
+          "label": "t:Button_1_text",
+          "translate": true
+        },
+        {
+          "id": "button_1_link",
+          "type": "url",
+          "label": "t:Button_1_link",
+          "translate": false
+        },
+        {
+          "id": "button_2_text",
+          "type": "text",
+          "label": "t:Button_2_text",
+          "translate": true
+        },
+        {
+          "id": "button_2_link",
+          "type": "url",
+          "label": "t:Button_2_link",
+          "translate": false
+        },
+        {
+          "type": "header",
+          "label": "t:Colors",
+          "translate": false
+        },
+        {
+          "id": "text_color",
+          "type": "color",
+          "label": "t:Text",
+          "translate": false
+        },
+        {
+          "id": "button_background",
+          "type": "color",
+          "label": "t:Button_background",
+          "translate": false
+        },
+        {
+          "id": "button_text_color",
+          "type": "color",
+          "label": "t:Button_text",
+          "translate": false
+        },
+        {
+          "id": "overlay_color",
+          "type": "color",
+          "label": "t:Overlay",
+          "translate": false
+        },
+        {
+          "id": "overlay_opacity",
+          "type": "range",
+          "label": "t:Overlay_opacity",
+          "translate": false
+        }
+      ]
+    }
+  ]
+}

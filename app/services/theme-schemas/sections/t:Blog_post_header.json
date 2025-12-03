@@ -1,0 +1,25 @@
+{
+  "name": "t:Blog_post_header",
+  "type": null,
+  "settings": [
+    {
+      "id": "show_category",
+      "type": "checkbox",
+      "label": "t:Show_category",
+      "translate": false
+    },
+    {
+      "id": "blog_header_background",
+      "type": "color",
+      "label": "t:Background",
+      "translate": false
+    },
+    {
+      "id": "blog_header_text_color",
+      "type": "color",
+      "label": "t:Text_color",
+      "translate": false
+    }
+  ],
+  "blocks": []
+}

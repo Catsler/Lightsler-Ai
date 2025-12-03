@@ -18,7 +18,7 @@ async function handleBatchPublish({ request, admin }) {
 
     console.log('🚀 批量发布请求:', { batchSize, delayMs, filters });
 
-    // 构建查询条件
+    // Build query conditions
     const whereCondition = {
       syncStatus: 'pending',
       ...filters
@@ -63,6 +63,7 @@ async function handleBatchPublish({ request, admin }) {
       skipped: 0,
       skippedReasons: {},
       errors: [],
+      warnings: [],
       batches: [],
       byType: {}
     };
@@ -219,6 +220,16 @@ async function handleBatchPublish({ request, admin }) {
           batchResult.published++;
           results.published++;
 
+          if (hasWarnings && Array.isArray(updateResult.warnings) && updateResult.warnings.length > 0) {
+            results.warnings.push({
+              translationId: translation.id,
+              resourceTitle: translation.resource.title,
+              language: translation.language,
+              resourceType,
+              warnings: updateResult.warnings
+            });
+          }
+
           if (!results.byType[resourceType]) {
             results.byType[resourceType] = { success: 0, failed: 0 };
           }
@@ -315,11 +326,13 @@ async function handleBatchPublish({ request, admin }) {
       successRate: `${successRate}%`,
       skipped: results.skipped,
       skippedReasons: results.skippedReasons,
+      warnings: results.warnings,
       processingTime: new Date() - (results.batches[0]?.startTime || new Date())
     };
 }
 
 export const action = createApiRoute(handleBatchPublish, {
   requireAuth: true,
-  operationName: '批量发布翻译'
+  operationName: '批量发布翻译',
+  timeout: 180000
 });

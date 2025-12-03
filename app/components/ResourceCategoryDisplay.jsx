@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getResourceDisplayTitle } from '../utils/resource-display-helpers.js';
 import {
   Badge,
   BlockStack,
@@ -17,14 +19,15 @@ import {
 import { ChevronDownIcon, ChevronRightIcon, InfoIcon } from '@shopify/polaris-icons';
 import { RESOURCE_CATEGORIES, organizeResourcesByCategory } from '../config/resource-categories';
 import { filterResourcesForList } from '../utils/resource-filters';
+import { parseSyncError } from '../utils/sync-error-helper';
 
 /**
- * 资源分类展示组件 - 网格布局版本
- * @param {Array} resources - 资源数组
- * @param {Function} onResourceClick - 资源点击回调
- * @param {Array} selectedResources - 已选中的资源ID数组
- * @param {Function} onSelectionChange - 资源选择改变回调
- * @param {String} currentLanguage - 当前选择的语言
+ * Resource category display component (grid layout)
+ * @param {Array} resources - resource list
+ * @param {Function} onResourceClick - resource click handler
+ * @param {Array} selectedResources - selected resource IDs
+ * @param {Function} onSelectionChange - selection change handler
+ * @param {String} currentLanguage - current language
  */
 export function ResourceCategoryDisplay({
   resources = [],
@@ -33,28 +36,30 @@ export function ResourceCategoryDisplay({
   onSelectionChange,
   currentLanguage = 'zh-CN',
   onTranslateCategory,
-  onSyncCategory, // 已废弃，请使用发布管理页面
+  onSyncCategory, // deprecated, use publish management instead
   translatingCategories = new Set(),
-  syncingCategories = new Set(), // 已废弃
+  syncingCategories = new Set(), // deprecated
   clearCache = false,
-  showOtherLanguageHints = true // 新增：是否显示其他语言翻译提示
+  showOtherLanguageHints = true // whether to show other-language translation hints
 }) {
-  // 废弃提示
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language || 'en';
+  // Deprecated notice: keep plain text to avoid template issues
   if (onSyncCategory && typeof onSyncCategory === 'function') {
-    console.warn('[Deprecated] onSyncCategory prop已废弃，请使用发布管理页面进行翻译发布');
+    console.warn('[Deprecated] onSyncCategory prop is deprecated. Please use the publish management flow.');
   }
   const [expandedSubcategories, setExpandedSubcategories] = useState({});
   const [expandedProducts, setExpandedProducts] = useState({}); // productId -> bool
   const [productOptionsMap, setProductOptionsMap] = useState({}); // productId -> { loading, options }
   
-  // 过滤掉产品关联资源（产品选项、Metafields等），改为在产品详情页统一管理
-  // 使用统一的过滤函数，便于维护和扩展
+  // Filter out product-linked resources (options/metafields) and manage them in the product detail page
+  // Use a shared filter helper for maintainability
   const filteredResources = filterResourcesForList(resources);
 
-  // 按分类组织资源
+  // Organize resources by category
   const organizedResources = organizeResourcesByCategory(filteredResources);
   
-  // 切换子分类展开状态
+  // Toggle subcategory expand state
   const toggleSubcategory = (categoryKey, subcategoryKey) => {
     const key = `${categoryKey}_${subcategoryKey}`;
     setExpandedSubcategories(prev => ({
@@ -68,7 +73,7 @@ export function ResourceCategoryDisplay({
   const toggleProductOptions = useCallback(async (resource) => {
     const pid = resource.id;
     setExpandedProducts(prev => ({ ...prev, [pid]: !prev[pid] }));
-    // 懒加载：首次展开时拉取
+    // Lazy-load on first expand
     if (!productOptionsMap[pid] && resource.gid) {
       setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: true, options: [] } }));
       try {
@@ -78,70 +83,81 @@ export function ResourceCategoryDisplay({
         setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: false, options } }));
       } catch (e) {
         setProductOptionsMap(prev => ({ ...prev, [pid]: { loading: false, options: [] } }));
-        // 静默失败，不阻塞页面
+        // Ignore errors to avoid blocking the page
       }
     }
   }, [productOptionsMap]);
   
-  // 获取资源显示名称
+  // Get resource display name
   const getResourceDisplayName = (resource) => {
-    return resource.title || resource.handle || resource.name || resource.gid;
+    return getResourceDisplayTitle(resource, locale, t) || resource.handle || resource.name || resource.gid;
   };
   
-  // 获取资源状态标签 - 基于语言特定状态
+  // Status badge per language
   const getResourceStatusBadge = (resource) => {
-    // 检查当前语言是否有翻译
+    // If current language has translation
     if (resource.hasTranslationForLanguage) {
-      // 根据同步状态显示不同状态
+      // Map sync status
       if (resource.translationSyncStatus === 'synced') {
-        return <Badge tone="success">已发布</Badge>;
+        return <Badge tone="success">{t('resources.status.synced')}</Badge>;
+      }
+      if (resource.translationSyncStatus === 'partial') {
+        const { warnings, message } = parseSyncError(resource.translationSyncError);
+        const tooltipContent = warnings.length > 0
+          ? warnings.map(w => w.message || t('resources.status.partialField', { field: w.field || t('resources.status.field') })).join('\n')
+          : (message || t('resources.status.partialDefault'));
+        return (
+          <Tooltip content={tooltipContent}>
+            <Badge tone="attention">{t('resources.status.partial')}</Badge>
+          </Tooltip>
+        );
       }
       if (resource.translationSyncStatus === 'pending') {
-        return <Badge tone="warning">待发布</Badge>;
+        return <Badge tone="warning">{t('resources.status.pending')}</Badge>;
       }
       if (resource.translationSyncStatus === 'syncing') {
-        return <Badge tone="info">发布中</Badge>;
+        return <Badge tone="info">{t('resources.status.syncing')}</Badge>;
       }
       if (resource.translationSyncStatus === 'failed') {
-        return <Badge tone="critical">发布失败</Badge>;
+        return <Badge tone="critical">{t('resources.status.failed')}</Badge>;
       }
-      // 如果有翻译但状态未知，显示处理中
-      return <Badge tone="info">处理中</Badge>;
+      // Unknown translation status but translation exists
+      return <Badge tone="info">{t('resources.status.processing')}</Badge>;
     }
 
-    // 当前语言没有翻译，但检查是否有其他语言的翻译
+    // If current language lacks translations, optionally show hints from other languages
     if (showOtherLanguageHints && resource.hasOtherLanguageTranslations) {
       const otherCount = resource.totalTranslationCount || 0;
       return (
         <InlineStack gap="100" wrap={false} blockAlign="center">
-          <Badge tone="attention">待翻译</Badge>
-          <Tooltip content={`已有 ${otherCount} 个其他语言翻译可参考`}>
+          <Badge tone="attention">{t('resources.status.notTranslated')}</Badge>
+          <Tooltip content={t('resources.tooltip.otherTranslations', { count: otherCount })}>
             <Icon source={InfoIcon} tone="subdued" />
           </Tooltip>
         </InlineStack>
       );
     }
 
-    // 完全没有任何翻译
-    return <Badge tone="attention">待翻译</Badge>;
+    // No translations available
+    return <Badge tone="attention">{t('resources.status.notTranslated')}</Badge>;
   };
   
-  // 获取语言标签
+  // Get language label
   const getLanguageBadge = () => {
     const languageMap = {
-      'zh-CN': '简体中文',
-      'zh-TW': '繁体中文',
-      'en': 'English',
-      'ja': '日本語',
-      'ko': '한국어',
-      'fr': 'Français',
-      'de': 'Deutsch',
-      'es': 'Español'
+      'zh-CN': t('resources.languages.zh-CN'),
+      'zh-TW': t('resources.languages.zh-TW'),
+      'en': t('resources.languages.en'),
+      'ja': t('resources.languages.ja'),
+      'ko': t('resources.languages.ko'),
+      'fr': t('resources.languages.fr'),
+      'de': t('resources.languages.de'),
+      'es': t('resources.languages.es')
     };
     return languageMap[currentLanguage] || currentLanguage;
   };
   
-  // 选择分类内所有资源
+  // Select all resources in a category
   const selectCategoryResources = (category, select) => {
     if (!onSelectionChange) return;
     
@@ -156,7 +172,7 @@ export function ResourceCategoryDisplay({
     });
   };
   
-  // 检查分类是否全选
+  // Check if a category is fully selected
   const isCategoryAllSelected = (category) => {
     let totalItems = 0;
     let selectedItems = 0;
@@ -173,11 +189,11 @@ export function ResourceCategoryDisplay({
     return totalItems > 0 && totalItems === selectedItems;
   };
   
-  // 翻译整个分类
+  // Translate an entire category
   const handleTranslateCategory = (categoryKey, category) => {
     if (!onTranslateCategory) return;
     
-    // 收集该分类下所有资源的ID
+    // Collect all resource IDs under the category
     const categoryResourceIds = [];
     Object.values(category.subcategories).forEach(subcategory => {
       subcategory.items.forEach(resource => {
@@ -190,12 +206,12 @@ export function ResourceCategoryDisplay({
     }
   };
   
-  // 如果没有资源，显示空状态
+  // Empty state
   if (resources.length === 0) {
     return (
       <Card>
         <Text as="p" tone="subdued" alignment="center">
-          暂无资源数据，请先执行扫描操作
+          {t('resources.empty')}
         </Text>
       </Card>
     );
@@ -203,33 +219,31 @@ export function ResourceCategoryDisplay({
   
   return (
     <BlockStack gap="4">
-      {/* 总体统计卡片 */}
-      <Card>
+            <Card>
         <InlineStack align="space-between">
           <BlockStack gap="2">
             <Text as="h2" variant="headingMd">
-              资源分类总览
+              {t('resources.overview.title')}
             </Text>
             <InlineStack gap="3">
               <Badge tone="info">
-                总计: {resources.length} 个资源
+                {t('resources.overview.total', { count: resources.length })}
               </Badge>
               <Badge tone="success">
-                {Object.keys(organizedResources).length} 个分类
+                {t('resources.overview.categories', { count: Object.keys(organizedResources).length })}
               </Badge>
               {selectedResources.length > 0 && (
                 <Badge tone="attention">
-                  已选择: {selectedResources.length} 个
+                  {t('resources.overview.selected', { count: selectedResources.length })}
                 </Badge>
               )}
               <Badge>
-                目标语言: {getLanguageBadge()}
+                {t('resources.overview.targetLanguage', { language: getLanguageBadge() })}
               </Badge>
             </InlineStack>
-            {/* 用户提示：产品关联资源会自动翻译 */}
-            <Box padding="200" background="bg-surface-secondary" borderRadius="200">
+                        <Box padding="200" background="bg-surface-secondary" borderRadius="200">
               <Text variant="bodySm" tone="subdued">
-                💡 产品的选项和Metafields会随产品一起翻译，无需单独选择
+                {t('resources.overview.tip')}
               </Text>
             </Box>
           </BlockStack>
@@ -255,18 +269,16 @@ export function ResourceCategoryDisplay({
                 }
               }}
             >
-              {selectedResources.length === resources.length ? '取消全选' : '全选所有'}
+              {selectedResources.length === resources.length ? t('resources.actions.unselectAll') : t('resources.actions.selectAll')}
             </Button>
           )}
         </InlineStack>
       </Card>
       
-      {/* 分类单列展示 */}
-      <BlockStack gap="400">
+            <BlockStack gap="400">
         {Object.entries(organizedResources).map(([categoryKey, category]) => (
           <Card key={categoryKey}>
-              {/* 分类标题栏 */}
-              <Box paddingBlockEnd="3">
+                            <Box paddingBlockEnd="3">
                 <InlineStack align="space-between">
                   <InlineStack gap="2" blockAlign="center">
                     <Text as="h3" variant="headingMd">
@@ -290,33 +302,30 @@ export function ResourceCategoryDisplay({
                         loading={translatingCategories.has(categoryKey)}
                         disabled={translatingCategories.has(categoryKey) || category.totalCount === 0}
                       >
-                        {translatingCategories.has(categoryKey) ? '翻译中...' : '翻译'}
+                        {translatingCategories.has(categoryKey) ? t('resources.actions.translating') : t('resources.actions.translate')}
                       </Button>
                     )}
-                    {/* 同步/发布按钮已移除，请使用发布管理页面 */}
-                    {onSelectionChange && (
+                                        {onSelectionChange && (
                       <Button
                         size="slim"
                         variant="plain"
                         onClick={() => selectCategoryResources(category, !isCategoryAllSelected(category))}
                       >
-                        {isCategoryAllSelected(category) ? '取消' : '全选'}
+                        {isCategoryAllSelected(category) ? t('resources.actions.unselect') : t('resources.actions.select')}
                       </Button>
                     )}
                   </InlineStack>
                 </InlineStack>
-                {/* 添加发布提示 */}
-                {category.translatedCount > 0 && (
+                                {category.translatedCount > 0 && (
                   <Box paddingBlockStart="2">
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      翻译完成后请使用上方发布按钮
-                    </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {t('resources.overview.publishReminder')}
+                  </Text>
                   </Box>
                 )}
               </Box>
               
-              {/* 固定高度的内容区域 */}
-              <Box 
+                            <Box 
                 style={{
                   maxHeight: '350px',
                   overflowY: 'auto',
@@ -328,13 +337,12 @@ export function ResourceCategoryDisplay({
                 <BlockStack gap="3">
                   {Object.entries(category.subcategories).map(([subcategoryKey, subcategory]) => {
                     const subKey = `${categoryKey}_${subcategoryKey}`;
-                    const isExpanded = expandedSubcategories[subKey] !== false; // 默认展开
+                    const isExpanded = expandedSubcategories[subKey] !== false; // expanded by default
                     
                     return (
                       <Box key={subcategoryKey}>
                         <BlockStack gap="2">
-                          {/* 子分类标题 */}
-                          <Button
+                                                    <Button
                             variant="plain"
                             onClick={() => toggleSubcategory(categoryKey, subcategoryKey)}
                             fullWidth
@@ -355,8 +363,7 @@ export function ResourceCategoryDisplay({
                             </InlineStack>
                           </Button>
                           
-                          {/* 资源列表 */}
-                          <Collapsible
+                                                    <Collapsible
                             open={isExpanded}
                             id={`subcategory-${subKey}`}
                             transition={{duration: '150ms', timingFunction: 'ease-in-out'}}
@@ -392,7 +399,7 @@ export function ResourceCategoryDisplay({
                                         {getResourceStatusBadge(resource)}
                                         {isProduct(resource) && resource.gid && (
                                           <Button size="micro" variant="plain" onClick={() => toggleProductOptions(resource)}>
-                                            {expandedProducts[resource.id] ? '收起选项' : '展开选项'}
+                                            {expandedProducts[resource.id] ? t('resources.actions.collapseOptions') : t('resources.actions.expandOptions')}
                                           </Button>
                                         )}
                                         {onResourceClick && (
@@ -401,7 +408,7 @@ export function ResourceCategoryDisplay({
                                             variant="plain"
                                             onClick={() => onResourceClick(resource)}
                                           >
-                                            详情
+                                            {t('resources.actions.detail')}
                                           </Button>
                                         )}
                                       </InlineStack>
@@ -410,7 +417,7 @@ export function ResourceCategoryDisplay({
                                       <Box padding="2" paddingInlineStart="8">
                                         <BlockStack gap="1">
                                           {productOptionsMap[resource.id]?.loading && (
-                                            <Text variant="bodySm" tone="subdued">加载选项中...</Text>
+                                            <Text variant="bodySm" tone="subdued">{t('resources.options.loading')}</Text>
                                           )}
                                           {!productOptionsMap[resource.id]?.loading && (
                                             (productOptionsMap[resource.id]?.options || []).length > 0 ? (
@@ -421,7 +428,7 @@ export function ResourceCategoryDisplay({
                                                 </Text>
                                               ))
                                             ) : (
-                                              <Text variant="bodySm" tone="subdued">无选项</Text>
+                                              <Text variant="bodySm" tone="subdued">{t('resources.options.empty')}</Text>
                                             )
                                           )}
                                         </BlockStack>
@@ -439,11 +446,9 @@ export function ResourceCategoryDisplay({
                 </BlockStack>
               </Box>
               
-              {/* 分类统计信息 */}
-              <Box paddingBlockStart="3">
+                            <Box paddingBlockStart="3">
                 <BlockStack gap="2">
-                  {/* 进度条 */}
-                  <ProgressBar 
+                                    <ProgressBar 
                     progress={category.translationProgress / 100}
                     tone={
                       category.translationProgress === 100 ? "success" :
@@ -454,12 +459,18 @@ export function ResourceCategoryDisplay({
                   />
                   <InlineStack gap="2" align="space-between">
                     <Text as="span" variant="bodySm" tone="subdued">
-                      已选: {Object.values(category.subcategories).reduce((acc, sub) => 
-                        acc + sub.items.filter(r => selectedResources.includes(r.id)).length, 0
-                      )} / {category.totalCount}
+                      {t('resources.overview.selectedProgress', {
+                        selected: Object.values(category.subcategories).reduce((acc, sub) =>
+                          acc + sub.items.filter(r => selectedResources.includes(r.id)).length, 0
+                        ),
+                        total: category.totalCount
+                      })}
                     </Text>
                     <Text as="span" variant="bodySm" tone="subdued">
-                      已翻译: {category.translatedCount} / {category.totalCount}
+                      {t('resources.overview.translatedProgress', {
+                        translated: category.translatedCount,
+                        total: category.totalCount
+                      })}
                     </Text>
                   </InlineStack>
                 </BlockStack>
