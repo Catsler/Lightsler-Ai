@@ -27,7 +27,7 @@ describe('Lang参数验证 - Loader层面', () => {
   test('缺少lang参数应返回400错误', async (t) => {
     // 模拟请求对象（实际环境需要完整的Remix Request）
     const mockRequest = {
-      url: 'https://translate.ease-joy.fun/app/resource/product/123',
+      url: 'https://translate.ease-joy.com/app/resource/product/123',
       // 缺少 ?lang=xx 参数
     };
 
@@ -66,7 +66,7 @@ describe('Lang参数验证 - Loader层面', () => {
     ];
 
     for (const invalidLang of invalidLangParams) {
-      const mockUrl = `https://translate.ease-joy.fun/app/resource/product/123?lang=${invalidLang}`;
+      const mockUrl = `https://translate.ease-joy.com/app/resource/product/123?lang=${invalidLang}`;
 
       // 预期每个无效参数都返回400
       const expectedStatusCode = 400;
@@ -96,7 +96,7 @@ describe('Lang参数验证 - Loader层面', () => {
     ];
 
     for (const validLang of validLangParams) {
-      const mockUrl = `https://translate.ease-joy.fun/app/resource/product/123?lang=${validLang}`;
+      const mockUrl = `https://translate.ease-joy.com/app/resource/product/123?lang=${validLang}`;
 
       // 预期有效参数返回200或正常渲染
       const expectedStatusCode = 200;
@@ -192,7 +192,7 @@ describe('Lang参数验证 - 边界情况', () => {
   });
 
   test('空字符串lang参数应视为缺失', async (t) => {
-    const emptyLangUrl = 'https://translate.ease-joy.fun/app/resource/product/123?lang=';
+    const emptyLangUrl = 'https://translate.ease-joy.com/app/resource/product/123?lang=';
 
     // URL中 ?lang= 等同于缺失参数
     const urlParams = new URL(emptyLangUrl).searchParams;
@@ -208,7 +208,7 @@ describe('Lang参数验证 - 边界情况', () => {
 
   test('URL编码的lang参数应正确解析', async (t) => {
     // 测试URL编码场景（虽然实际很少见）
-    const encodedUrl = 'https://translate.ease-joy.fun/app/resource/product/123?lang=zh%2DCN';
+    const encodedUrl = 'https://translate.ease-joy.com/app/resource/product/123?lang=zh%2DCN';
     const urlParams = new URL(encodedUrl).searchParams;
     const langParam = urlParams.get('lang');
 

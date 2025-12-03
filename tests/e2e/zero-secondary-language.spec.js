@@ -12,7 +12,7 @@
  * - 需要有已扫描的资源数据
  *
  * 运行方式:
- * E2E_BASE_URL=https://translate.ease-joy.fun:3000 \
+ * E2E_BASE_URL=https://translate.ease-joy.com:3000 \
  * E2E_STORAGE_STATE=playwright/.auth/admin.json \
  * E2E_ZERO_LANG_RESOURCE_ID=<resource-id> \
  * npm run test:e2e -- zero-secondary-language.spec.js

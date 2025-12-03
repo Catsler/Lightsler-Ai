@@ -424,7 +424,7 @@ sqlite3 prisma/dev.sqlite "
 
 - **环境配置**: `CLAUDE.md` - 生产部署红线警告
 - **发布问题排查**: `docs/troubleshooting/publish-issues.md`
-- **多店铺部署**: `docs/multi-shop-deployment.md`
+- **多店铺部署**: 已废弃，参考归档 `archive/project-cleanup-20241202/duplicate-docs/multi-shop-deployment.md`（只读）
 - **VPN绕过配置**: `docs/troubleshooting/publish-issues.md#前置步骤ssh连接`
 
 ---

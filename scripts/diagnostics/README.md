@@ -2,7 +2,7 @@
 
 ## 概述
 
-本目录包含用于诊断生产环境翻译发布问题的脚本。所有脚本输出JSON格式，便于自动化分析。
+本目录包含用于诊断生产环境翻译发布问题的脚本。除特别说明外，脚本输出 JSON 格式，便于自动化分析；新的网络连通性诊断脚本将输出人类可读的逐步检查结果。
 
 ## 运行环境
 
@@ -106,6 +106,46 @@ node scripts/diagnostics/check-gid-format-issues.mjs --shop=shop1
   "summary": "Found 15 resources with invalid GID format, affecting 45 pending translations"
 }
 ```
+
+### 4. diagnose-translation-connectivity.mjs
+
+**用途**: 多步骤诊断 GPT 翻译 API 的 DNS/TLS/鉴权问题（轻量服务器网络排障首选）
+
+**命令**:
+```bash
+cd /var/www/app1-fynony
+node scripts/diagnostics/diagnose-translation-connectivity.mjs --timeout 12000
+```
+
+**输出示例**:
+```
+=== Translation Connectivity Diagnostics ===
+Environment: production | Node: v20.11.1
+
+Overall Status: ❌ offline
+Summary       : API调用失败: API密钥无效或已过期
+API Key       : sk-su9o…bf8f (present)
+Model         : gpt-4o-mini
+Primary URL   : https://us.vveai.com/v1
+
+[PRIMARY] https://us.vveai.com/v1
+  Status : ❌ offline
+  Detail : API调用失败: API密钥无效或已过期
+    - dnsLookup: success (15ms)
+      Addresses: 203.205.136.173 (IPv4)
+    - tlsHandshake: success (112ms)
+    - apiCall: failure (802ms)
+      HTTP 401
+      Body: {"error":{"code":"401","message":"invalid auth"}}
+  Recommendations:
+    • 更新 GPT_API_KEY，或确认密钥仍然有效且具备访问权限。
+
+Diagnostics completed at 2025-10-16T10:56:02.413Z
+```
+
+**提示**:
+- `--no-fallbacks` 可跳过 `GPT_API_FALLBACK_URLS`
+- 非健康状态会返回非零退出码，方便 CI/巡检脚本接入
 
 ## 故障排查流程
 
