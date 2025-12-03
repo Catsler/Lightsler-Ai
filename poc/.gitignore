@@ -1,0 +1,11 @@
+# 报告输出
+reports/*.json
+reports/*.txt
+
+# 敏感或生产数据样本
+datasets/*-prod.json
+datasets/*-sensitive.json
+
+# 临时文件
+*.tmp
+*.bak

@@ -1,0 +1,9 @@
+[
+  { "input": "Home", "expected": false, "context": { "fieldType": "navigation.link" } },
+  { "input": "Shop", "expected": false, "context": { "fieldType": "navigation.link" } },
+  { "input": "Orders", "expected": false, "context": { "fieldType": "navigation.link" } },
+  { "input": "Size", "expected": false, "context": { "fieldType": "product.option" } },
+  { "input": "Color", "expected": false, "context": { "fieldType": "product.option" } },
+  { "input": "Nike", "expected": true, "context": { "fieldType": "vendor" } },
+  { "input": "Apple", "expected": true, "context": { "fieldType": "vendor" } }
+]

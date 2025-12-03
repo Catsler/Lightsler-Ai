@@ -1,0 +1,20 @@
+[
+  {
+    "path": "sections/header.liquid",
+    "size": 8192,
+    "contentLength": 8192,
+    "truncated": false
+  },
+  {
+    "path": "templates/product.liquid",
+    "size": 75000,
+    "contentLength": 75000,
+    "truncated": false
+  },
+  {
+    "path": "assets/theme.css",
+    "size": 10420,
+    "contentLength": 10420,
+    "truncated": false
+  }
+]
