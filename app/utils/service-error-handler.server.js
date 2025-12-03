@@ -28,9 +28,34 @@ const ensureError = (error) => {
   if (error instanceof Error) {
     return error;
   }
-  const wrapped = new Error(typeof error === 'string' ? error : 'Unknown error');
+
+  const deriveMessage = () => {
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object') {
+      if (typeof error.message === 'string' && error.message.trim()) return error.message;
+      if (typeof error.status === 'number') {
+        const statusText = error.statusText ? ` ${error.statusText}` : '';
+        return `HTTP ${error.status}${statusText}`;
+      }
+      if (Array.isArray(error.errors) && error.errors.length > 0) {
+        const first = error.errors[0];
+        if (typeof first === 'string') return first;
+        if (first && typeof first.message === 'string') return first.message;
+      }
+      if (typeof error.toString === 'function') {
+        const str = error.toString();
+        if (str && str !== '[object Object]') return str;
+      }
+    }
+    return 'Unknown error';
+  };
+
+  const wrapped = new Error(deriveMessage());
   if (error && typeof error === 'object') {
     Object.assign(wrapped, error);
+  }
+  if (error && wrapped.cause === undefined) {
+    wrapped.cause = error;
   }
   return wrapped;
 };

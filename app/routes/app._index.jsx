@@ -36,6 +36,7 @@ import { creditManager } from "../services/credit-manager.server.js";
 import { CreditBar } from "../components/billing/CreditBar.jsx";
 import { PRICING_CONFIG } from "../utils/pricing-config.js";
 import { useTranslation } from "react-i18next";
+import { logger } from "../utils/logger.server.js";
 
 const DEFAULT_AVERAGE_CHARS_PER_RESOURCE = 5_000;
 
@@ -84,9 +85,33 @@ export const loader = async ({ request }) => {
   ]);
 
   // 从 Shopify 读取店铺语言，区分默认语言与目标语言
-  const shopLocales = await getShopLocales(admin);
-  const primaryLocale = shopLocales.find((locale) => locale.primary) || null;
-  const alternateLocales = shopLocales.filter((locale) => !locale.primary);
+  let shopLocales = [];
+  let primaryLocale = null;
+  let alternateLocales = [];
+
+  try {
+    shopLocales = await getShopLocales(admin);
+    primaryLocale = shopLocales.find((locale) => locale.primary) || null;
+    alternateLocales = shopLocales.filter((locale) => !locale.primary);
+  } catch (error) {
+    logger.warn("[Index Loader] Failed to fetch shop locales, falling back to DB", {
+      shopId: session.shop,
+      error: error?.message || error,
+      code: error?.code
+    });
+
+    const shop = await prisma.shop.findUnique({
+      where: { id: session.shop },
+      include: { languages: { where: { isActive: true, enabled: true } } }
+    });
+
+    alternateLocales = (shop?.languages ?? []).map((lang) => ({
+      locale: lang.code,
+      name: lang.name,
+      primary: false,
+      published: true
+    }));
+  }
 
   let supportedLanguages = alternateLocales.map((locale) => ({
     label: locale.name || locale.locale,
@@ -156,7 +181,7 @@ export const loader = async ({ request }) => {
             startDate: subscription.startDate,
             endDate: subscription.endDate,
             cancelledAt: subscription.cancelledAt
-          }
+        }
         : null,
       credits,
       languageLimit: {

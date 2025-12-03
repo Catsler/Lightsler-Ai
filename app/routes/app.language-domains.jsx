@@ -52,7 +52,7 @@ import {
 import { useCallback, useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { Redirect } from "@shopify/app-bridge/actions/index.js";
+import { Redirect } from "@shopify/app-bridge/actions";
 import { prisma } from "../db.server";
 import { subscriptionManager } from "../services/subscription-manager.server.js";
 import { creditManager } from "../services/credit-manager.server.js";

@@ -12,6 +12,23 @@ const DEFAULT_PLAN_NAME = process.env.DEFAULT_PLAN || 'free';
 const RESERVATION_TTL_MS = Number(process.env.BILLING_RESERVATION_TTL_MS || 5 * 60 * 1000);
 const COST_PER_CREDIT = PRICING_CONFIG.COST_PER_CREDIT;
 
+const REQUIRED_BILLING_MODELS = ['creditUsage', 'creditReservation', 'shopSubscription', 'subscriptionPlan', 'shop'];
+
+function assertBillingModels(prismaClient) {
+  const missing = REQUIRED_BILLING_MODELS.filter((model) => typeof prismaClient?.[model] !== 'object');
+
+  if (missing.length > 0) {
+    const message = `Prisma client missing billing models: ${missing.join(', ')}. Run "npx prisma generate" and apply migrations to add creditUsage/creditReservation.`;
+    const error = new BillingConfigurationError(message);
+
+    billingLogger.error('[Billing] Prisma client missing required models', {
+      missingModels: missing
+    });
+
+    throw error;
+  }
+}
+
 function getTopUpAvailable(shop) {
   if (!shop) return 0;
   const expired = shop.topUpExpiresAt && shop.topUpExpiresAt < new Date();
@@ -73,12 +90,24 @@ class CreditManager {
       return existing;
     }
 
-    const defaultPlan = await tx.subscriptionPlan.findFirst({
+    let defaultPlan = await tx.subscriptionPlan.findFirst({
       where: { name: DEFAULT_PLAN_NAME, isActive: true }
     });
 
+    // 自动创建基础免费套餐，避免因缺少种子数据导致功能不可用
     if (!defaultPlan) {
-      throw new BillingConfigurationError('Default subscription plan is not configured');
+      defaultPlan = await tx.subscriptionPlan.create({
+        data: {
+          id: DEFAULT_PLAN_NAME,
+          name: DEFAULT_PLAN_NAME,
+          displayName: 'Free',
+          price: 0,
+          monthlyCredits: 0,
+          maxLanguages: 2,
+          features: {},
+          isActive: true
+        }
+      });
     }
 
     const created = await tx.shopSubscription.create({
@@ -349,15 +378,10 @@ class CreditManager {
   }
 
   async getAvailableCredits(shopId) {
-    const { start, end } = getMonthRange();
-    const subscription = await this.prisma.shopSubscription.findUnique({
-      where: { shopId },
-      include: { plan: true }
-    });
+    assertBillingModels(this.prisma);
 
-    if (!subscription) {
-      throw new MissingSubscriptionError({ shopId });
-    }
+    const { start, end } = getMonthRange();
+    const subscription = await this.getActiveSubscription(this.prisma, shopId);
 
     const shop = await this.prisma.shop.findUnique({
       where: { id: shopId },

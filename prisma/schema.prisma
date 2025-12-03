@@ -58,6 +58,8 @@ model Shop {
 
   // Billing relations
   subscriptions ShopSubscription[]
+  creditUsages  CreditUsage[]
+  creditReservations CreditReservation[]
 }
 
 // 支持的语言
@@ -197,9 +199,64 @@ model ShopSubscription {
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
   plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
+  creditUsages       CreditUsage[]
+  creditReservations CreditReservation[]
+
   @@unique([shopId])
   @@index([shopId])
   @@index([planId])
+}
+
+// 计费使用记录
+model CreditUsage {
+  id               String    @id @default(cuid())
+  shopId           String
+  subscriptionId   String?
+  resourceId       String?
+  resourceType     String?
+  operation        String?
+  sourceCharCount  Int        @default(0)
+  creditsUsed      Int
+  estimatedCredits Int        @default(0)
+  actualCredits    Int        @default(0)
+  creditsDiff      Int        @default(0)
+  diffPercentage   Float      @default(0)
+  sourceLanguage   String?
+  targetLanguage   String?
+  batchId          String?
+  sessionId        String?
+  status           String     @default("completed") // pending/completed/failed
+  usageDate        DateTime   @default(now())
+  metadata         Json?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  shop           Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  subscription  ShopSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([usageDate])
+}
+
+// 计费额度预留记录
+model CreditReservation {
+  id              String    @id @default(cuid())
+  shopId          String
+  subscriptionId  String?
+  reservedCredits Int
+  expiresAt       DateTime?
+  status          String    @default("pending") // pending/confirmed/released/expired
+  actualCredits   Int?
+  releasedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  shop          Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  subscription  ShopSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([status])
+  @@index([expiresAt])
 }
 
 // 错误日志表 - 全面的错误收集和分析系统

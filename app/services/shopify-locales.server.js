@@ -103,8 +103,17 @@ async function getShopLocalesInternal(admin) {
     }
   `;
 
-  const response = await admin.graphql(query);
-  const result = await response.json();
+  let result;
+
+  try {
+    const response = await admin.graphql(query);
+    result = await response.json();
+  } catch (networkError) {
+    const error = new Error(`Failed to fetch shop locales: ${networkError?.message || networkError}`);
+    error.code = 'SHOPIFY_SHOP_LOCALES_REQUEST_FAILED';
+    error.context = { originalError: networkError?.message || networkError };
+    throw error;
+  }
 
   if (result.errors) {
     const error = new Error('Failed to fetch shop locales');
