@@ -1,0 +1,99 @@
+{
+  "page": {
+    "title": "Support & Help Center",
+    "subtitle": "Get help with Lightsler AI Translator"
+  },
+  "chat": {
+    "title": "Live Chat Support",
+    "description": "Need immediate help? Chat with our support team using the chat widget below.",
+    "availability": "We typically respond within a few hours during business hours.",
+    "notice": "The chat widget will load below if chat is enabled for your store."
+  },
+  "email": {
+    "title": "Email Support",
+    "description": "Prefer email? Send us a message and we'll get back to you within 24 hours.",
+    "address": "Support Email:",
+    "emailLink": "{{supportEmail}}"
+  },
+  "quickStart": {
+    "title": "Quick Start Guide",
+    "description": "New to Lightsler AI Translator? Here's how to get started:",
+    "steps": [
+      "1. Go to the main dashboard and click 'Scan Resources' to discover translatable content",
+      "2. Select your target languages from the language selector",
+      "3. Click 'Batch Translate' to translate multiple items at once",
+      "4. Review translations in the resource detail view",
+      "5. Click 'Publish' or 'Batch Publish' to push translations to your Shopify store",
+      "6. Monitor your credit usage in the Billing page"
+    ]
+  },
+  "faq": {
+    "title": "Frequently Asked Questions",
+    "items": [
+      {
+        "question": "How do translation credits work?",
+        "answer": "Each plan includes monthly credits. 1 credit = ~1 word translated. Unused monthly credits expire at the end of each billing cycle. Top-up credits purchased separately never expire."
+      },
+      {
+        "question": "What content types can be translated?",
+        "answer": "We support 26 resource types including products, collections, blogs, pages, themes, navigation menus, policies, metafields, product options, and more."
+      },
+      {
+        "question": "Can I review translations before publishing?",
+        "answer": "Yes! All translations are stored in our database first. You can review, edit, and approve them before publishing to your store."
+      },
+      {
+        "question": "How does the glossary/brand protection work?",
+        "answer": "Our AI automatically preserves brand names, HTML tags, and special formatting. You can also configure custom terms that should never be translated."
+      },
+      {
+        "question": "Is this compatible with Shopify Markets?",
+        "answer": "Yes, Lightsler AI Translator is built specifically for Shopify Markets. It handles primary and secondary languages correctly."
+      },
+      {
+        "question": "What happens to my data if I uninstall?",
+        "answer": "Upon uninstallation, your data is soft-deleted immediately and permanently purged within 48 hours, in compliance with GDPR."
+      }
+    ]
+  },
+  "resources": {
+    "title": "Resources & Documentation",
+    "items": [
+      {
+        "label": "Privacy Policy",
+        "url": "/privacy",
+        "description": "Learn how we handle your data"
+      },
+      {
+        "label": "Terms of Service",
+        "url": "/terms",
+        "description": "Read our service terms"
+      }
+    ]
+  },
+  "troubleshooting": {
+    "title": "Common Issues",
+    "items": [
+      {
+        "issue": "Translations not appearing in my store",
+        "solution": "Ensure you've clicked 'Publish' after translation. Check that the target language is enabled in Shopify Settings > Store languages."
+      },
+      {
+        "issue": "Translation quality concerns",
+        "solution": "Our AI provides draft-quality translations. For critical content, we recommend human review. You can edit translations before publishing."
+      },
+      {
+        "issue": "Running out of credits",
+        "solution": "Upgrade your plan or purchase top-up credits from the Billing page. Top-up credits never expire."
+      },
+      {
+        "issue": "Slow translation speed",
+        "solution": "Large batches may take time. Use the queue system for bulk operations. Check the Status page for progress updates."
+      }
+    ]
+  },
+  "feedback": {
+    "title": "Feature Requests & Feedback",
+    "description": "We'd love to hear your ideas! Contact us via chat or email to suggest new features or improvements."
+  }
+}

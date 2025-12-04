@@ -10,6 +10,7 @@ embedded = true
 automatically_update_urls_on_dev = false
 
 [webhooks]
+# Use latest stable API version to ensure webhook topics are recognized.
 api_version = "2025-10"
 
   [[webhooks.subscriptions]]
@@ -64,6 +65,12 @@ api_version = "2025-10"
   [[webhooks.subscriptions]]
   topics = [ "locales/update" ]
   uri = "/webhooks/locale/update"
+
+[webhooks.privacy_compliance]
+# GDPR mandatory endpoints
+customer_data_request_url = "/webhooks/customers/data_request"
+customer_deletion_url = "/webhooks/customers/redact"
+shop_deletion_url = "/webhooks/shop/redact"
 
 
 [access_scopes]

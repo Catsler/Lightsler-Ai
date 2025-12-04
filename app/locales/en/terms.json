@@ -1,0 +1,112 @@
+{
+  "page": {
+    "title": "Terms of Service",
+    "status": "Effective version (updated regularly)"
+  },
+  "intro": {
+    "title": "Introduction",
+    "content": "Welcome to Lightsler AI Translator (the \"Service\"). By installing or using the Service, you agree to be bound by these Terms of Service. Please read them carefully."
+  },
+  "acceptance": {
+    "title": "Acceptance of Terms",
+    "content": "By accessing or using the Service, you accept and agree to be bound by these Terms and our Privacy Policy. If you do not agree, you may not use the Service."
+  },
+  "account": {
+    "title": "Account and Service Use",
+    "items": [
+      "Eligibility: You must have a valid Shopify store and be authorized to bind your business to these Terms.",
+      "Account Security: You are responsible for maintaining the security of your Shopify account and any activity under it.",
+      "Permitted Use: You may only use the Service for lawful business purposes and in accordance with these Terms.",
+      "Prohibited Use: You may not misuse the Service, interfere with its operation, or attempt to access it through unauthorized means."
+    ]
+  },
+  "service": {
+    "title": "Service Description",
+    "content": "Lightsler AI Translator provides AI-powered translation services for Shopify stores, including but not limited to:",
+    "features": [
+      "Translation of products, collections, pages, blogs, themes, and other store content",
+      "Batch translation capabilities",
+      "Translation management and publishing tools",
+      "Integration with Shopify Markets",
+      "Usage tracking and billing management"
+    ]
+  },
+  "billing": {
+    "title": "Billing and Payment",
+    "items": [
+      "Subscription Plans: We offer multiple subscription tiers with monthly recurring charges through Shopify Billing.",
+      "Free Trial: New users may be eligible for a free trial period. After the trial, your selected plan will be charged automatically.",
+      "Credits System: Each plan includes a monthly credit allocation. Additional credits can be purchased as top-ups (non-expiring, one-time charge).",
+      "Payment Processing: All payments are processed securely through Shopify's billing system.",
+      "Refunds: Subscription fees are generally non-refundable. Unused credits expire at the end of each billing cycle (except top-up credits).",
+      "Price Changes: We reserve the right to modify pricing with 30 days' notice. Changes will not affect your current billing cycle."
+    ]
+  },
+  "data": {
+    "title": "Data and Privacy",
+    "items": [
+      "We access your store content (products, collections, pages, themes, locales) solely to provide translation services.",
+      "Translation content is processed by our AI provider (OpenAI-compatible API) in accordance with our Privacy Policy.",
+      "We do not sell or share your data with third parties except as necessary to provide the Service.",
+      "We comply with GDPR and implement mandatory data request and deletion webhooks.",
+      "See our Privacy Policy for detailed information on data handling, storage, and retention."
+    ]
+  },
+  "intellectual": {
+    "title": "Intellectual Property",
+    "items": [
+      "Your Content: You retain all rights to your store content. By using the Service, you grant us a limited license to process and translate your content.",
+      "Our Service: The Service, including its design, code, and algorithms, is our proprietary property and protected by intellectual property laws.",
+      "Translations: Generated translations are provided \"as-is.\" While we strive for accuracy, you are responsible for reviewing and verifying translations before publishing.",
+      "Brand Names: We may reference your use of the Service in marketing materials unless you opt out by contacting us."
+    ]
+  },
+  "limitations": {
+    "title": "Limitations and Disclaimers",
+    "items": [
+      "Service Availability: We strive for 99.9% uptime but do not guarantee uninterrupted service. Maintenance windows may occur.",
+      "Translation Quality: AI translations are provided as-is. We do not guarantee accuracy, completeness, or suitability for specific purposes.",
+      "Third-Party Services: The Service integrates with Shopify and third-party APIs. We are not responsible for their availability or performance.",
+      "Limitation of Liability: To the maximum extent permitted by law, we are not liable for indirect, incidental, or consequential damages arising from your use of the Service.",
+      "Maximum Liability: Our total liability shall not exceed the amount you paid us in the 12 months preceding the claim."
+    ]
+  },
+  "termination": {
+    "title": "Termination",
+    "items": [
+      "By You: You may cancel your subscription at any time through your Shopify admin. Cancellation takes effect at the end of the current billing cycle.",
+      "By Us: We reserve the right to suspend or terminate your access if you violate these Terms or engage in abusive behavior.",
+      "Effect of Termination: Upon termination, your access to the Service will cease. Data will be retained according to our Privacy Policy and then deleted.",
+      "No Refunds: Termination does not entitle you to a refund of fees already paid."
+    ]
+  },
+  "modifications": {
+    "title": "Modifications to Terms",
+    "content": "We may update these Terms from time to time. Material changes will be communicated via email or in-app notification at least 30 days in advance. Continued use after changes constitutes acceptance."
+  },
+  "governing": {
+    "title": "Governing Law and Disputes",
+    "items": [
+      "Governing Law: These Terms are governed by the laws of [Your Jurisdiction], without regard to conflict of law principles.",
+      "Dispute Resolution: Any disputes shall first be resolved through good faith negotiation. If unresolved, disputes may be submitted to binding arbitration or court jurisdiction as applicable.",
+      "Waiver of Class Actions: You agree to resolve disputes individually and waive any right to class action proceedings."
+    ]
+  },
+  "miscellaneous": {
+    "title": "Miscellaneous",
+    "items": [
+      "Entire Agreement: These Terms, together with our Privacy Policy, constitute the entire agreement between you and us.",
+      "Severability: If any provision is found invalid, the remaining provisions remain in full effect.",
+      "No Waiver: Our failure to enforce any right does not constitute a waiver of that right.",
+      "Assignment: You may not assign these Terms without our consent. We may assign our rights and obligations.",
+      "Force Majeure: We are not liable for delays or failures due to causes beyond our reasonable control."
+    ]
+  },
+  "contact": {
+    "title": "Contact Us",
+    "content": "If you have questions about these Terms, please contact us:",
+    "email": "Support Email: {{supportEmail}}"
+  },
+  "effectiveDate": "Effective Date: {{date}}",
+  "disclaimer": "Disclaimer: These Terms of Service are the initial version and may be updated to reflect legal requirements and service changes."
+}

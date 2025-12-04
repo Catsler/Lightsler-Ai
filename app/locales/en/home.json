@@ -145,6 +145,12 @@
       "unknown": "Unknown"
     }
   },
+  "errors": {
+    "noCreditsAvailable": "Insufficient credits. Please top up or upgrade your plan.",
+    "noActiveSubscription": "No active subscription. Please subscribe to a plan.",
+    "serviceUnhealthy": "Translation service is temporarily unavailable.",
+    "noResources": "No resources available to translate."
+  },
   "navigation": {
     "resourceList": "Resource list"
   },

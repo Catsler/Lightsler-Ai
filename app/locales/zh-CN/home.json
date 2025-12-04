@@ -109,6 +109,12 @@
       "unknown": "未知状态"
     }
   },
+  "errors": {
+    "noCreditsAvailable": "额度不足，请充值或升级套餐。",
+    "noActiveSubscription": "未激活订阅，请订阅套餐。",
+    "serviceUnhealthy": "翻译服务暂时不可用。",
+    "noResources": "无可翻译的资源。"
+  },
   "navigation": {
     "resourceList": "资源列表"
   },
