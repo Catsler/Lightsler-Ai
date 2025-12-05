@@ -13,12 +13,12 @@
 import { logger } from '../utils/logger.server.js';
 import { captureError } from '../utils/error-handler.server.js';
 import { createSyncWarning } from '../utils/sync-error-helper.server.js';
+import { sanitizeTranslationValue as sanitizeTranslationValueUtil } from '../utils/html-sanitizer.server.js';
 
 // 诊断开关
 const DIAGNOSE_OPTION = process.env.DIAGNOSE_PRODUCT_OPTION === 'true';
 
-function sanitizeTranslationValue(value, fallback = null) {
-  // 处理字符串类型
+function sanitizeTranslationValue(value, fallback = null, fieldType = 'auto') {
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed === '') {
@@ -29,14 +29,16 @@ function sanitizeTranslationValue(value, fallback = null) {
         reason: 'empty_string'
       };
     }
+
+    const cleaned = sanitizeTranslationValueUtil(trimmed, fieldType);
     return {
-      value: trimmed,
+      value: cleaned,
       skipped: false,
-      shouldSkip: false
+      shouldSkip: false,
+      sanitized: cleaned !== trimmed
     };
   }
 
-  // 处理非字符串类型（转JSON）
   if (value != null) {
     const jsonString = JSON.stringify(value);
     if (jsonString === '{}' || jsonString === '[]' || jsonString === 'null') {
@@ -54,7 +56,6 @@ function sanitizeTranslationValue(value, fallback = null) {
     };
   }
 
-  // null或undefined
   return {
     value: fallback || '',
     skipped: true,

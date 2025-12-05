@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { applySoftDeleteMiddleware } from "./utils/prisma-soft-delete.server.js";
+import { applyTokenCryptoMiddleware } from "./utils/prisma-token-crypto.server.js";
+import { ensureEncryptionKeyReady } from "./utils/crypto.server.js";
 
 const EXPECTED_MODELS = [
   "subscriptionPlan",
@@ -27,11 +29,13 @@ if (process.env.NODE_ENV !== "production") {
   const missing = hadClient ? getMissingModels(prismaClient) : [];
 
   if (!prismaClient || missing.length > 0) {
+    ensureEncryptionKeyReady();
     if (prismaClient && typeof prismaClient.$disconnect === "function") {
       prismaClient.$disconnect().catch(() => {});
     }
     prismaClient = new PrismaClient({ log: ["warn", "error"] });
     applySoftDeleteMiddleware(prismaClient);
+    applyTokenCryptoMiddleware(prismaClient);
     globalObj.prismaGlobal = prismaClient;
 
     if (missing.length > 0) {
@@ -44,12 +48,15 @@ if (process.env.NODE_ENV !== "production") {
     }
   }
 } else if (!prismaClient) {
+  ensureEncryptionKeyReady();
   prismaClient = new PrismaClient();
   applySoftDeleteMiddleware(prismaClient);
+  applyTokenCryptoMiddleware(prismaClient);
 }
 
 const prisma = prismaClient ?? new PrismaClient();
 applySoftDeleteMiddleware(prisma);
+applyTokenCryptoMiddleware(prisma);
 
 if (process.env.NODE_ENV !== "production") {
   const missing = getMissingModels(prisma);

@@ -54,6 +54,29 @@ let emitRetentionWarning = (message) => {
 };
 
 const retentionWarningBuffer = [];
+let retentionParseNotified = false;
+
+function safeParseRetentionConfig(raw) {
+  const quiet = process.env.NODE_ENV === 'test';
+  if (!raw || typeof raw !== 'string') return null;
+
+  try {
+    // 支持纯数字（天数）或 JSON 字符串
+    const trimmed = raw.trim();
+    if (/^\d+$/.test(trimmed)) {
+      const days = Number.parseInt(trimmed, 10);
+      return Number.isFinite(days) ? { INFO: days } : null;
+    }
+    return JSON.parse(trimmed);
+  } catch (error) {
+    if (!quiet && !retentionParseNotified) {
+      // 用 console 避免依赖 logger 尚未初始化
+      console.warn(`[Logger] LOGGING_RETENTION_DAYS 配置解析失败: ${error.message}`);
+      retentionParseNotified = true;
+    }
+    return null;
+  }
+}
 
 // 配置 pino transport
 const targets = [
@@ -70,7 +93,7 @@ const targets = [
 
 // 如果启用文件输出，添加文件 transport
 if (process.env.LOGGING_FILE_ENABLED === 'true') {
-  const retentionConfig = process.env.LOGGING_RETENTION_DAYS;
+  const retentionConfigRaw = process.env.LOGGING_RETENTION_DAYS;
   const rollingFilePath = path.join(logsDir, 'app.log');
 
   targets.push({
@@ -81,28 +104,24 @@ if (process.env.LOGGING_FILE_ENABLED === 'true') {
     }
   });
 
-  if (retentionConfig) {
-    try {
-      const retention = JSON.parse(retentionConfig);
-      const days = Number(retention.INFO ?? retention.default ?? 7);
-      const ttlMs = Number.isFinite(days) ? days * 24 * 60 * 60 * 1000 : null;
+  const retention = safeParseRetentionConfig(retentionConfigRaw);
+  if (retention) {
+    const days = Number(retention.INFO ?? retention.default ?? 7);
+    const ttlMs = Number.isFinite(days) ? days * 24 * 60 * 60 * 1000 : null;
 
-      if (ttlMs && ttlMs > 0) {
-        setInterval(() => {
-          try {
-            const stats = fs.statSync(rollingFilePath);
-            const age = Date.now() - stats.mtimeMs;
-            if (age > ttlMs) {
-              const archivePath = path.join(logsDir, `app-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
-              fs.renameSync(rollingFilePath, archivePath);
-            }
-          } catch (error) {
-            emitRetentionWarning(`[Logger] 日志轮转失败: ${error.message}`);
+    if (ttlMs && ttlMs > 0) {
+      setInterval(() => {
+        try {
+          const stats = fs.statSync(rollingFilePath);
+          const age = Date.now() - stats.mtimeMs;
+          if (age > ttlMs) {
+            const archivePath = path.join(logsDir, `app-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
+            fs.renameSync(rollingFilePath, archivePath);
           }
-        }, Math.max(ttlMs, 6 * 60 * 60 * 1000)); // 至少每6小时检查一次
-      }
-    } catch (error) {
-      emitRetentionWarning(`[Logger] LOGGING_RETENTION_DAYS 配置解析失败: ${error.message}`);
+        } catch (error) {
+          emitRetentionWarning(`[Logger] 日志轮转失败: ${error.message}`);
+        }
+      }, Math.max(ttlMs, 6 * 60 * 60 * 1000)); // 至少每6小时检查一次
     }
   }
 }

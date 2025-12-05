@@ -1,0 +1,26 @@
+name: Security - Encryption Key Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate-encryption-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check ENCRYPTION_KEY presence and length
+        env:
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+        run: |
+          if [ -z "$ENCRYPTION_KEY" ]; then
+            echo "❌ ENCRYPTION_KEY is not set in secrets"
+            exit 1
+          fi
+          LEN=${#ENCRYPTION_KEY}
+          if [ "$LEN" -lt 32 ]; then
+            echo "❌ ENCRYPTION_KEY too short: $LEN < 32"
+            exit 1
+          fi
+          echo "✅ ENCRYPTION_KEY length OK ($LEN)"

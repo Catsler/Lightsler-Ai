@@ -91,7 +91,8 @@ function applyRetentionOverrides(overrides, defaults) {
   };
 }
 
-function parseRetentionConfig(raw) {
+function parseRetentionConfig(raw, options = {}) {
+  const quiet = options.quiet === true;
   const defaults = { ERROR: 30, WARN: 15, INFO: 7, DEBUG: 3 };
 
   if (raw === null || raw === undefined) {
@@ -124,7 +125,9 @@ function parseRetentionConfig(raw) {
         return applyRetentionOverrides(parsed, defaults);
       }
     } catch (error) {
-      consoleLogger.warn('Failed to parse LOG_RETENTION_DAYS JSON config', { error: error.message });
+      if (!quiet) {
+        consoleLogger.warn('Failed to parse LOG_RETENTION_DAYS JSON config', { error: error.message });
+      }
     }
     return defaults;
   }
@@ -262,7 +265,7 @@ function chunk(items, size) {
 
 const persistenceEnabled = process.env.LOGGING_ENABLE_PERSISTENT_LOGGER !== 'false';
 const persistenceLevel = parsePersistenceLevel(process.env.LOGGING_PERSISTENCE_LEVEL);
-const retentionConfig = parseRetentionConfig(process.env.LOGGING_RETENTION_DAYS);
+const retentionConfig = parseRetentionConfig(process.env.LOGGING_RETENTION_DAYS, { quiet: process.env.NODE_ENV === 'test' });
 const bufferSize = Math.max(Number(process.env.LOGGING_BATCH_SIZE || 50), 1);
 const flushInterval = Math.max(Number(process.env.LOGGING_FLUSH_INTERVAL || 5000), 1000);
 const memoryLimit = Math.max(bufferSize * 10, 200);
