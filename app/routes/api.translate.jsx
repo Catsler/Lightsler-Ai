@@ -6,6 +6,7 @@ import { createApiRoute } from "../utils/base-route.server.js";
 import { getLocalizedErrorMessage } from "../utils/error-messages.server.js";
 import { getLinkConversionConfig } from "../services/market-urls.server.js";
 import { getShopLocales } from "../services/shopify-locales.server.js";
+import { prisma } from "../db.server.js";
 
 /**
  * POST请求处理函数 - 核心翻译API
@@ -56,6 +57,32 @@ async function handleTranslate({ request, admin, session }) {
     
     // Fetch shop record
     const shop = await getOrCreateShop(session.shop, session.accessToken);
+
+    // 🔒 语言数限制：若套餐有限制且当前语言已达上限，拒绝新增语言翻译
+    const shopSubscription = await prisma.shopSubscription.findUnique({
+      where: { shopId: shop.id },
+      include: { plan: true }
+    });
+
+    const planLimit = shopSubscription?.plan?.maxLanguages;
+    if (planLimit !== null && planLimit !== undefined) {
+      const activeLanguages = await prisma.language.findMany({
+        where: { shopId: shop.id, enabled: true, isActive: true },
+        select: { code: true }
+      });
+
+      const activeCount = activeLanguages.length;
+      const isTargetActive = activeLanguages.some(
+        (lang) => (lang.code || '').toLowerCase() === targetLanguage.toLowerCase()
+      );
+
+      if (!isTargetActive && typeof planLimit === 'number' && activeCount >= planLimit) {
+        throw new Error(
+          `Language limit exceeded: plan allows ${planLimit}, active ${activeCount}. ` +
+          `Please disable a language or upgrade your plan before adding ${targetLanguage}.`
+        );
+      }
+    }
     
     // Fetch all resources
     const allResources = await getAllResources(shop.id);

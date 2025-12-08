@@ -209,10 +209,7 @@ function createSubscriptionManager({ prismaClient }) {
         where: {
           shopId,
           enabled: true,
-          OR: [
-            { isActive: true }, // 已发布
-            { status: 'draft' } // 草稿也占用槽位
-          ]
+          isActive: true // 仅有 isActive 字段，schema 中不存在 status
         }
       });
 

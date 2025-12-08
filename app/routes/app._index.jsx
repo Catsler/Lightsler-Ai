@@ -80,7 +80,11 @@ export const loader = async ({ request }) => {
     subscriptionManager.getSubscription(session.shop),
     creditManager.getAvailableCredits(session.shop).catch(() => null),
     prisma.language.count({
-      where: { shopId: session.shop, isActive: true, enabled: true }
+      where: {
+        shopId: session.shop,
+        enabled: true,
+        isActive: true
+      }
     })
   ]);
 
@@ -318,21 +322,12 @@ function Index() {
   const creditToChars = PRICING_CONFIG.CREDIT_TO_CHARS;
   const hasActiveSubscription = subscription?.status === 'active';
   const availableCredits = credits?.available ?? 0;
-  const translateDisabledReason = useMemo(() => {
-    if (!hasActiveSubscription) {
-      return t('errors.noActiveSubscription', { ns: 'home', defaultValue: 'No active subscription. Please subscribe to a plan.' });
-    }
-    if (availableCredits <= 0) {
-      return t('errors.noCreditsAvailable', { ns: 'home', defaultValue: 'Insufficient credits. Please top up or upgrade your plan.' });
-    }
-    if (translationService && translationService.status === 'unhealthy') {
-      return t('errors.serviceUnhealthy', { ns: 'home', defaultValue: 'Translation service is temporarily unavailable.' });
-    }
-    if (resources.length === 0) {
-      return t('errors.noResources', { ns: 'home', defaultValue: 'No resources available to translate.' });
-    }
-    return null;
-  }, [hasActiveSubscription, availableCredits, translationService, resources.length, t]);
+  const languageLimit = billing?.languageLimit ?? {};
+  const maxLanguages = languageLimit?.maxLanguages ?? null;
+  const remainingLanguageSlots = languageLimit?.remainingLanguageSlots ?? null;
+  const isSelectedLanguageActive = supportedLanguages.some(
+    (lang) => lang.value === selectedLanguage
+  );
   const resourceCountForEstimation = (selectedResources.length > 0 ? selectedResources.length : resources.length) || 0;
   const estimatedCharacters = resourceCountForEstimation * DEFAULT_AVERAGE_CHARS_PER_RESOURCE;
   const estimatedCredits = resourceCountForEstimation > 0
@@ -341,10 +336,72 @@ function Index() {
         Math.ceil(estimatedCharacters / creditToChars)
       )
     : 0;
-  const canTranslate = hasActiveSubscription && availableCredits > 0;
+  const requiredCreditsWithBuffer = resourceCountForEstimation > 0
+    ? Math.ceil(estimatedCredits * 1.05) // 5% buffer for token/HTML差异
+    : 0;
+  const hasLanguageLimitBlock =
+    maxLanguages !== null &&
+    !isSelectedLanguageActive &&
+    remainingLanguageSlots !== null &&
+    remainingLanguageSlots <= 0;
+  const insufficientCredits =
+    resourceCountForEstimation > 0 && requiredCreditsWithBuffer > availableCredits;
+  const translateDisabledReason = useMemo(() => {
+    if (!hasActiveSubscription) {
+      return t('errors.noActiveSubscription', { ns: 'home', defaultValue: 'No active subscription. Please subscribe to a plan.' });
+    }
+    if (availableCredits <= 0) {
+      return t('errors.noCreditsAvailable', { ns: 'home', defaultValue: 'Insufficient credits. Please top up or upgrade your plan.' });
+    }
+    if (insufficientCredits) {
+      return t('errors.insufficientCreditsForSelection', {
+        ns: 'home',
+        defaultValue: `Not enough credits for the selected items. Need ~${requiredCreditsWithBuffer} credits (incl. 5% buffer), available ${availableCredits}. Please top up or reduce the selection.`,
+        required: requiredCreditsWithBuffer,
+        available: availableCredits
+      });
+    }
+    if (hasLanguageLimitBlock) {
+      return t('errors.languageLimitReached', {
+        ns: 'home',
+        defaultValue: `Language limit reached. Plan allows ${maxLanguages}, active ${languageLimit?.activeLanguagesCount ?? 0}. Please remove a language or upgrade your plan.`,
+        limit: maxLanguages ?? 0,
+        active: languageLimit?.activeLanguagesCount ?? 0,
+        includesDraft: true
+      });
+    }
+    if (translationService && translationService.status === 'unhealthy') {
+      return t('errors.serviceUnhealthy', { ns: 'home', defaultValue: 'Translation service is temporarily unavailable.' });
+    }
+    if (resources.length === 0) {
+      return t('errors.noResources', { ns: 'home', defaultValue: 'No resources available to translate.' });
+    }
+    return null;
+  }, [
+    hasActiveSubscription,
+    availableCredits,
+    translationService,
+    resources.length,
+    insufficientCredits,
+    hasLanguageLimitBlock,
+    t
+  ]);
+  const canTranslate = hasActiveSubscription && availableCredits > 0 && !insufficientCredits && !hasLanguageLimitBlock;
   const estimatedSummaryText = resourceCountForEstimation > 0
     ? t('ui.estimatedCost', { ns: 'home', credits: formatCompactNumber(estimatedCredits), chars: formatCompactNumber(estimatedCharacters) })
     : t('ui.selectForEstimate', { ns: 'home' });
+  const languageLimitSummary =
+    maxLanguages === null
+      ? t('ui.languageLimitUnlimited', { ns: 'home', defaultValue: 'Language limit: unlimited' })
+      : t('ui.languageLimitSummary', {
+          ns: 'home',
+          defaultValue: `Language limit: ${maxLanguages}, active ${languageLimit?.activeLanguagesCount ?? 0} (incl. drafts)`,
+          limit: maxLanguages ?? 0,
+          active: languageLimit?.activeLanguagesCount ?? 0,
+          includesDraft: true
+        });
+  const estimatedSummaryWithLimit =
+    resourceCountForEstimation > 0 ? `${estimatedSummaryText} · ${languageLimitSummary}` : estimatedSummaryText;
 
   const currentPlan = useMemo(() => {
     if (!subscription?.planId) return null;
@@ -1267,11 +1324,58 @@ function Index() {
           return;
         }
 
+        // Language limit guard: blocking before请求
+        if (hasLanguageLimitBlock) {
+          const msg = t('errors.languageLimitReached', {
+            ns: 'home',
+            defaultValue: 'Language limit reached. Please remove a language or upgrade your plan.'
+          });
+          addLog(msg, 'error');
+          showToast(msg, { isError: true });
+          return;
+        }
+
+        // Credit guard: estimated消耗超额
+        if (insufficientCredits) {
+          const msg = t('errors.insufficientCreditsForSelection', {
+            ns: 'home',
+            defaultValue: 'Not enough credits for the selected items. Please top up or reduce the selection.'
+          });
+          addLog(msg, 'warning');
+          showToast(msg, { isError: true });
+          return;
+        }
+
         // Check translation service health
         if (translationService && translationService.status === 'unhealthy') {
           const errorMsg = translationService.errors?.[0] || t('home.toasts.translationServiceUnavailable');
           addLog(t('logs.translationServiceUnavailable', { ns: 'home', error: errorMsg }), 'error');
           showToast(t('home.toasts.translationServiceError', { message: errorMsg }), { isError: true });
+          return;
+        }
+
+        if (hasLanguageLimitBlock) {
+          const msg = t('errors.languageLimitReached', {
+            ns: 'home',
+            defaultValue: `Language limit reached. Plan allows ${maxLanguages}, active ${languageLimit?.activeLanguagesCount ?? 0}. Please remove a language or upgrade your plan.`,
+            limit: maxLanguages ?? 0,
+            active: languageLimit?.activeLanguagesCount ?? 0,
+            includesDraft: true
+          });
+          addLog(msg, 'error');
+          showToast(msg, { isError: true });
+          return;
+        }
+
+        if (insufficientCredits) {
+          const msg = t('errors.insufficientCreditsForSelection', {
+            ns: 'home',
+            defaultValue: `Not enough credits for the selected items. Need ~${requiredCreditsWithBuffer} credits (incl. 5% buffer), available ${availableCredits}. Please top up or reduce the selection.`,
+            required: requiredCreditsWithBuffer,
+            available: availableCredits
+          });
+          addLog(msg, 'warning');
+          showToast(msg, { isError: true });
           return;
         }
 
@@ -1304,7 +1408,22 @@ function Index() {
         });
       })(); // 立即调用返回的函数
     }, 1000);
-  }, [selectedLanguage, selectedResources, resources, translationService, addLog, showToast, translateFetcher, clearCache, debounce, safeAsyncOperation, shopId, shopQueryParam]);
+  }, [
+    selectedLanguage,
+    selectedResources,
+    resources,
+    translationService,
+    addLog,
+    showToast,
+    translateFetcher,
+    clearCache,
+    debounce,
+    safeAsyncOperation,
+    shopId,
+    shopQueryParam,
+    hasLanguageLimitBlock,
+    insufficientCredits
+  ]);
 
   // 清空数据（带操作锁）
   useEffect(() => {
@@ -1971,7 +2090,7 @@ function Index() {
 
                   <BlockStack gap="150">
                     <Text variant="bodySm" tone="subdued">
-                      {t('ui.scanningNote', { ns: 'home', credits: formatCompactNumber(availableCredits), chars: formatCompactNumber(availableCredits * creditToChars) })} {` ${estimatedSummaryText}`}
+                      {t('ui.scanningNote', { ns: 'home', credits: formatCompactNumber(availableCredits), chars: formatCompactNumber(availableCredits * creditToChars) })} {` ${estimatedSummaryWithLimit}`}
                     </Text>
                     {!hasActiveSubscription && (
                       <Banner tone="warning" title={t('subscription.inactiveTitle', { ns: 'home' })}>

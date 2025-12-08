@@ -88,6 +88,7 @@ export const RESOURCE_TYPES = {
   // B. 产品相关资源 (4个)
   PRODUCT_OPTION: 'PRODUCT_OPTION',
   PRODUCT_OPTION_VALUE: 'PRODUCT_OPTION_VALUE',
+  PRODUCT_METAFIELD: 'PRODUCT_METAFIELD',
   SELLING_PLAN: 'SELLING_PLAN',
   SELLING_PLAN_GROUP: 'SELLING_PLAN_GROUP',
   
@@ -135,6 +136,11 @@ export const FIELD_MAPPINGS = {
     // handleTrans: 'handle', // @deprecated 不再同步handle到Shopify (SEO最佳实践) - 2025-01-19
     seoTitleTrans: 'meta_title',
     seoDescTrans: 'meta_description'
+  },
+  [RESOURCE_TYPES.PRODUCT_METAFIELD]: {
+    // Shopify translatableContent exposes metafield value as "value"
+    // translationFields.value 也会走动态字段分支；这里补标准映射以避免“不支持的资源类型”错误
+    value: 'value'
   },
   [RESOURCE_TYPES.MENU]: {
     titleTrans: 'title'
