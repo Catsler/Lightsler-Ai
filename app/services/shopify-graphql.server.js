@@ -188,7 +188,7 @@ export const EXTENDED_FIELD_MAPPINGS = {
   [RESOURCE_TYPES.PRODUCT_OPTION]: {
     nameTrans: 'name'
   },
-  ['product_option']: { // 兼容小写（历史扫描数据使用了硬编码小写）
+  'product_option': { // 兼容小写（历史扫描数据使用了硬编码小写）
     nameTrans: 'name'
   },
   [RESOURCE_TYPES.PRODUCT_OPTION_VALUE]: {

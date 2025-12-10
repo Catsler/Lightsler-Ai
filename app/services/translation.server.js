@@ -6,20 +6,29 @@
 export {
   translationLogger,
   isBrandWord,
-  translateUrlHandle,
-  translateTextWithFallback,
   postProcessTranslation,
   translateText,
-  translateTextEnhanced,
   validateTranslation,
-  validateTranslationConfig,
   runTranslationDiagnostics,
-  getTranslationServiceStatus,
+  getTranslationOrchestratorStatus
+} from './translation/core.server.js';
+
+export {
+  validateTranslationConfig,
+  getTranslationServiceStatus
+} from './translation/config-check.server.js';
+
+export {
   getTranslationStats,
   getTranslationLogs,
-  getTranslationOrchestratorStatus,
-  translateResource
-} from './translation/core.server.js';
+  getPlaceholderErrorStats
+} from './translation/logs.server.js';
+
+export { translateResource } from './translation/resource-translator.server.js';
+
+// 策略化调度的兼容导出
+export { translateTextWithFallbackOrchestrated as translateTextWithFallback } from './translation/strategy-orchestrator.server.js';
+export { translateTextEnhancedStrategy as translateTextEnhanced } from './translation/enhanced-strategy.server.js';
 
 // Import translateThemeResource from dedicated theme service
 export { translateThemeResource } from './theme-translation.server.js';

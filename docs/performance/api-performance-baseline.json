@@ -1,0 +1,18 @@
+{
+  "target": "http://localhost:3000/api/translate",
+  "iterations": 20,
+  "concurrency": 2,
+  "text": "Hello world",
+  "timestamp": "2025-12-09T09:26:31.446Z",
+  "metrics": {
+    "count": 20,
+    "success": 0,
+    "failures": 20,
+    "p50": 8.084208000000018,
+    "p90": 37.602542000000014,
+    "p95": 67.06633300000001,
+    "p99": 67.06633300000001,
+    "mean": 11.956672950000002,
+    "throughput": 83.63530592345923
+  }
+}

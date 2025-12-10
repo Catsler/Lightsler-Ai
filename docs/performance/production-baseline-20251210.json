@@ -1,0 +1,89 @@
+{
+  "timestamp": "2025-12-10T05:37:09.997Z",
+  "config": {
+    "API_URL": "https://translate.ease-joy.com/api/translate",
+    "ITERATIONS": 10,
+    "CONCURRENCY": 2,
+    "TEXT_LENGTH": 40
+  },
+  "stats": {
+    "总请求数": 10,
+    "成功数": 0,
+    "失败数": 10,
+    "成功率": "0.0%",
+    "总耗时": "1507ms",
+    "吞吐量": "6.64 req/s"
+  },
+  "results": [
+    {
+      "id": 0,
+      "success": false,
+      "status": 500,
+      "duration": 571,
+      "error": "An error occurred"
+    },
+    {
+      "id": 1,
+      "success": false,
+      "status": 500,
+      "duration": 532,
+      "error": "An error occurred"
+    },
+    {
+      "id": 2,
+      "success": false,
+      "status": 500,
+      "duration": 412,
+      "error": "An error occurred"
+    },
+    {
+      "id": 3,
+      "success": false,
+      "status": 500,
+      "duration": 364,
+      "error": "An error occurred"
+    },
+    {
+      "id": 4,
+      "success": false,
+      "status": 500,
+      "duration": 188,
+      "error": "An error occurred"
+    },
+    {
+      "id": 5,
+      "success": false,
+      "status": 500,
+      "duration": 186,
+      "error": "An error occurred"
+    },
+    {
+      "id": 6,
+      "success": false,
+      "status": 500,
+      "duration": 161,
+      "error": "An error occurred"
+    },
+    {
+      "id": 7,
+      "success": false,
+      "status": 500,
+      "duration": 168,
+      "error": "An error occurred"
+    },
+    {
+      "id": 8,
+      "success": false,
+      "status": 500,
+      "duration": 164,
+      "error": "An error occurred"
+    },
+    {
+      "id": 9,
+      "success": false,
+      "status": 500,
+      "duration": 162,
+      "error": "An error occurred"
+    }
+  ]
+}

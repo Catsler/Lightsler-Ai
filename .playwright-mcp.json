@@ -1,0 +1,38 @@
+{
+    "browser": {
+        "browserName": "chromium",
+        "userDataDir": "/Users/elie/Library/Application Support/Google/Chrome",
+        "launchOptions": {
+            "channel": "chrome",
+            "headless": false,
+            "args": [
+                "--profile-directory=Profile 1",
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check"
+            ]
+        },
+        "contextOptions": {
+            "viewport": {
+                "width": 1280,
+                "height": 720
+            }
+        }
+    },
+    "capabilities": [
+        "core",
+        "vision"
+    ],
+    "network": {
+        "allowedOrigins": [
+            "*"
+        ]
+    },
+    "console": {
+        "level": "info"
+    },
+    "timeouts": {
+        "action": 10000,
+        "navigation": 60000
+    }
+}

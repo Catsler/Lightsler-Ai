@@ -156,6 +156,22 @@ class FakePrisma {
     }
   };
 
+  shop = {
+    findUnique: async ({ where: { id } }) => {
+      return this.clone({
+        id,
+        topUpCredits: 0,
+        topUpExpiresAt: null
+      });
+    },
+    update: async ({ where: { id }, data }) => {
+      return this.clone({
+        id,
+        ...data
+      });
+    }
+  };
+
   getReservation(id) {
     const record = this.creditReservations.get(id);
     return record ? this.clone(record) : null;

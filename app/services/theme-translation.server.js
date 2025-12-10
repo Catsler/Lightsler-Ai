@@ -6,7 +6,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { performance } from 'node:perf_hooks';
-import { translateTextWithFallback, postProcessTranslation } from './translation/core.server.js';
+import { translateTextWithFallback, postProcessTranslation } from './translation.server.js';
 import { logger } from '../utils/logger.server.js';
 import { collectErrorBatch, ERROR_TYPES, ERROR_CATEGORIES } from './error-collector.server.js';
 import { validateThemeUrl } from '../utils/theme-url-validator.server.js';

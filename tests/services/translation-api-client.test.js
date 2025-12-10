@@ -37,6 +37,45 @@ describe('createInMemoryCache', () => {
   });
 });
 
+describe('createInMemoryCache', () => {
+  it('stores and expires entries', async () => {
+    const cache = createInMemoryCache({ ttlSeconds: 1, cleanupIntervalSeconds: 0, maxEntries: 2 });
+    cache.set('a', 1);
+    expect(cache.get('a')).toBe(1);
+    await new Promise(r => setTimeout(r, 1100));
+    expect(cache.get('a')).toBeNull();
+  });
+
+  it('evicts oldest when exceeding maxEntries', () => {
+    const cache = createInMemoryCache({ maxEntries: 2, cleanupIntervalSeconds: 0 });
+    cache.set('a', 1);
+    cache.set('b', 2);
+    cache.set('c', 3); // should evict 'a'
+    expect(cache.get('a')).toBeNull();
+    expect(cache.get('b')).toBe(2);
+    expect(cache.get('c')).toBe(3);
+  });
+});
+
+describe('createRequestDeduplicator', () => {
+  it('deduplicates concurrent calls', async () => {
+    const dedupe = createRequestDeduplicator({ maxInFlight: 2 });
+    let calls = 0;
+    const factory = async () => {
+      calls += 1;
+      await new Promise(r => setTimeout(r, 10));
+      return 'ok';
+    };
+    const results = await Promise.all([
+      dedupe.run('k', factory),
+      dedupe.run('k', factory),
+      dedupe.run('k', factory)
+    ]);
+    expect(results).toEqual(['ok', 'ok', 'ok']);
+    expect(calls).toBe(1);
+  });
+});
+
 describe('createRequestDeduplicator', () => {
   it('reuses the same promise for duplicate keys', async () => {
     const dedupe = createRequestDeduplicator();

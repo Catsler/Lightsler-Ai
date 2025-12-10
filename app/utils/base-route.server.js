@@ -190,9 +190,11 @@ export function createApiRoute(handler, options = {}) {
         shopDomain: session?.shop
       });
 
-      // 标准化响应
+      // 标准化响应（允许处理器返回原生 Response 以保留 headers/status 等）
       let response;
-      if (result && typeof result === 'object' && 'success' in result) {
+      if (result instanceof Response) {
+        response = result;
+      } else if (result && typeof result === 'object' && 'success' in result) {
         // 如果处理器已经返回标准格式，直接返回
         response = json(result);
       } else {

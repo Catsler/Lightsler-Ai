@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import crypto from 'crypto';
 // 使用 console 避免日志模块与 Prisma/加密的循环依赖
 

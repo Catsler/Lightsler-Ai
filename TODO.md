@@ -1,5 +1,102 @@
 # TODO 任务列表
 
+## 🔧 API 路由规范化与基线验证（Phase 1 - 进行中）
+**目标**：统一 API 包装、补安全防护与基线验证，避免行为回归。
+
+### Phase 1.0 准备
+- [ ] 基准记录：`npm run test`（如有 `test:coverage` 也跑）；保存日志；记录 core.server.js/app._index.jsx 行数；手工翻译基准用例（纯文本/HTML/品牌词/长文本/计费扣减）
+- [ ] 确认 `createApiRoute` 是否透传 `Response`/headers/status；如不支持，标记影响路由（set-locale/health）
+- [ ] 管理员白名单配置：`ADMIN_SHOPS=shop1.myshopify.com,shop2.myshopify.com`
+- [ ] rate limit/幂等策略确认（无设施则在路由标记 TODO）
+
+### Phase 1.1 路由迁移（按优先级）
+- [x] `app/routes/api.debug.seed-plans.jsx`：改 POST+createApiRoute，生产禁用/白名单，审计日志（shopId/时间/结果），确认调用方同步
+- [x] `app/routes/api.billing.top-up.jsx`：包装，校验 credits，支持幂等键（header 或 formData，内存短 TTL），错误转 4xx
+- [x] `app/routes/api.billing.validate-plan.jsx`：包装，`planId` 必填校验，错误转 4xx
+- [x] `app/routes/api.debug.billing-status.jsx`：包装，生产禁用/白名单，错误处理
+- [x] `app/routes/api.set-locale.jsx`：`requireAuth:false`，locale 白名单，Set-Cookie 透传，内存限流（每 IP 每分钟 30 次）
+- [x] `app/routes/api.billing.health.jsx`：包装，保持自定义 status（200/503），补日志/兜底
+
+### Phase 1.2 验收
+- [ ] 自测 6 路由 happy/edge；prod 模拟验证 debug/seed 拦截；幂等/rate-limit 如实现需验证
+- [ ] 确认响应格式与已标准化路由一致（成功/失败结构）
+- [ ] 更新 TODO/文档：标记已完成项，记录未实现的透传/幂等/rate-limit 技术债
+
+## 🧠 翻译核心拆分与编排优化（Phase 2-N） - 新增
+**目标**：将翻译核心从单体瘦身为可测试的策略化编排层，保障 HTML 保真、品牌词保护、分片一致性与计费稳定；拆分后核心模块单测“分支覆盖率” ≥80%，集成回归保持现有行为。
+
+**范围与约束**
+- 拆分至独立服务：text-translator（编排）、html-handler（protect/restore）、chunking-engine（分片策略）、api-client（LLM/翻译提供商适配）、post-processor（占位符/品牌词/去重）。
+- 删除未使用入口（translateUrlHandle），接口向外保持兼容；避免路由/调用方破坏性变更。（2025-12-09 已完成）
+- 日志与计费口径保持一致，新增指标需兼容现有监控格式。
+- `translation.server.js` 作为纯 facade（re-export + 配置注入），不保留业务逻辑。
+
+**验收口径**
+- 核心模块单测分支覆盖率：html-handler/post-processor/chunking/api-client 均 ≥80%，关键分支（品牌词保护、HTML 标签还原、分片与合并、计费扣减）均有用例。
+- 编排层（translateText 等）保持现有输入/输出契约；集成测试覆盖 HTML 保留、品牌词保护、分片+合并一致性、计费扣减一致性。
+- 文件体积目标：`translation/core.server.js` <500 行，`translateText` 主体 <200 行。
+- 性能：拆分后核心路径 P95 延迟不劣于基线 5%。
+- 回滚路径清晰：可单独恢复到拆分前的核心文件备份（git tag/branch），不影响路由与 UI。
+
+**风险与回滚**
+- 风险：拆分过程引入行为偏差（HTML/占位符/品牌词/计费）。
+- 缓解：逐步拆分，每阶段完成后跑 `npm run test` + 关键手工对比（纯文本/HTML/品牌词/长文本/计费扣减）。
+- 回滚：保留阶段性分支/标签，必要时恢复至拆分前核心文件并重跑基线。
+
+### Phase 2.0 基线记录
+- [x] 创建 `docs/refactor/phase2-baseline.md`，记录文件行数（core.server.js / translateText）、当前测试结果（覆盖率待补）、手工基准占位（纯文本/HTML/Liquid+品牌词/长文本/计费）。
+- [x] 运行 `npm run test` 并记录状态；覆盖率未收集，后续补分支覆盖率。
+- [ ] 手工基准：纯文本、HTML（保留标签）、品牌词（保持不变）、长文本（无截断）、计费（扣减一致），作为后续对比锚点。
+
+### Phase 2.1 快速清理
+- [x] 删除 `translateUrlHandle` 及辅助函数（如 normalizeHandle/intelligentSegmentation/SEGMENTATION_RULES/cleanTranslationResult），确认无引用；跑核心测试回归（文本/HTML/品牌词/计费）。
+
+### Phase 2.2 HTML Handler 解耦
+- [x] 抽离 `protectHtmlTags/restoreHtmlTags` 至 `app/services/html-handler.server.js`，暴露纯函数接口，保留现有策略。
+- [x] 单测覆盖 HTML 保护/还原、空/异常输入、嵌套标签、自闭合标签、Liquid 占位符；分支覆盖率 ≥80%。
+
+### Phase 2.3 Post-Processor 解耦
+- [x] 抽离占位符/品牌词保护/去重逻辑至 `app/services/translation/post-processor-rules.server.js`，保留策略与可配置项。
+- [x] 单测覆盖品牌词保持、占位符回退、空输入旁路；分支覆盖率 ≥80%（见 `tests/services/post-processor-rules.test.js`）。
+
+### Phase 2.4 分片与 API 客户端收敛
+- [x] 确认 `chunking.server.js` 与 `api-client.server.js` 独立且无重复实现，清理重复引用；统一导出接口，并以 JSDoc/.d.ts 固定签名（`chunking.server.d.ts` / `api-client.server.d.ts`）。
+- [x] 为分片策略与 API 客户端补单测：分片边界（plain/HTML）、去重器与缓存基础路径；覆盖率 ≥80%（`tests/services/chunking.server.test.js`、`tests/services/translation-api-client.test.js`）。
+
+### Phase 2.5 策略化 translateText
+- [ ] 将 `translateText` 改为策略/调度器模式（文本/HTML/长文本/分片），主体 <200 行，外部接口兼容。
+- [ ] 增强指标：记录策略选择、分片数、耗时、品牌词命中、HTML 保护命中，格式兼容现有日志。
+
+### Phase 2.6 核心编排瘦身
+- [x] `translation/core.server.js` 仅保留编排/配置入口与依赖注入，体积 <500 行；内部调用拆分后的模块。（当前已瘦至 ~461 行）
+- [x] 文档化模块契约（输入/输出、错误模型、日志键），作为后续演进基线（`docs/refactor/translation-module-contracts.md`）。
+- [ ] TODO：如新增策略类型，再考虑将 orchestrator 辅助（skip/brand/link/postProcess 调用链）进一步下沉，避免过度拆分导致维护成本上升。
+
+### Phase 2.7 集成回归
+- [ ] 集成测试覆盖：HTML 保持（标签/实体）、品牌词保护、分片/合并一致性、计费扣减一致性、错误回退路径。
+- [ ] 手工对比基线（纯文本/HTML/品牌词/长文本/计费），记录差异；如有行为差异需归档与决策。
+
+## 🖥️ UI 主控制台拆分（Phase 3） - 规划中
+**目标**：将 `app/routes/app._index.jsx` 瘦身 <600 行，按 KISS 原则拆分为容器 + 组件 + hooks，保持现有行为（含计费跳转），避免引入新状态管理库。
+
+**范围与约束**
+- 保持现有路由/行为/跳转不变，尤其计费/无额度 Banner 跳转 `/app/billing`。
+- 不引入 store（Zustand/Redux）；使用 `useState/useReducer` + 自定义 hooks；组件收敛于 `app/components/translation-console/`，暂不下沉公共库。
+- 优先保证可读性与回归安全，前端测试暂以手工验证 + 现有 135 个后端/服务测试为主（前端测试可后置为 Phase 4）。
+
+**拆分方案（KISS 版）**
+- Hooks：`useTranslationState`（列表/筛选/选中项）、`useTranslationActions`（翻译/暂停/删除等动作）、`useBillingStatus`（额度检查/跳转逻辑）。
+- 组件：`TranslationConsole.jsx`（容器 <100 行）、`TranslationList.jsx`、`TranslationFilters.jsx`、`BillingBanner.jsx`（可选，保持跳转行为）。
+- 目录：`app/components/translation-console/*`；如无 `app/hooks/` 则创建 `app/hooks/translation-console/`。
+
+**验收与验证**
+- 文件体量：`app/routes/app._index.jsx` <600 行，容器/组件代码清晰。
+- 行为：列表加载、筛选、翻译触发、计费跳转保持原样；无新增回归。
+- 测试：跑 `npm run test` 全量（现有 135 用例）；前端测试暂缓，手工验证关键路径。
+
+**后续可选（非本阶段）**
+- 若有复用需求再下沉公共组件；如需自动化前端测试，另起 Phase 4 补渲染/交互 smoke。
+
 ## 💳 Pricing V2 "Ultra"（2025-11-XX） - 待启动
 **目标**：五档阶梯（Free→Gold）、全线 GPT-5 对外展示、可灵活 Top-up，支持后台种子店铺手动升档。
 

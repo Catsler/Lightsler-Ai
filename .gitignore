@@ -28,6 +28,13 @@ diagnose-*.js
 *.bak
 *.old
 
+# Session cookies and sensitive temporary data
+tmp/
+tmp/**/*
+session-cookie.json
+*-session-cookie.json
+*.cookie.json
+
 # Logs directory
 logs/
 theme/
@@ -35,6 +42,9 @@ theme/
 # Cache directories
 .serena/
 screenshoots/
+
+# Serena MCP memory files
+prisma/:memory:
 
 # Extensions
 /extensions/*/dist

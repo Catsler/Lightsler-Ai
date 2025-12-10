@@ -5,12 +5,14 @@ vi.mock('../../app/services/subscription-manager.server.js', () => {
   const listActivePlans = vi.fn();
   const scheduleDowngrade = vi.fn();
   const createSubscriptionSession = vi.fn();
+  const validatePlanChange = vi.fn(async () => ({ canProceed: true }));
   return {
     subscriptionManager: {
       getSubscription,
       listActivePlans,
       scheduleDowngrade,
-      createSubscriptionSession
+      createSubscriptionSession,
+      validatePlanChange
     }
   };
 });

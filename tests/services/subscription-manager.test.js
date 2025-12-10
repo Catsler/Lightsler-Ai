@@ -173,6 +173,11 @@ class FakePrisma {
       return record ? this.clone(record) : null;
     }
   };
+
+  language = {
+    findMany: async () => [],
+    count: async () => 0
+  };
 }
 
 const fakePrisma = new FakePrisma();

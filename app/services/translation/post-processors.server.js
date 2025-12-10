@@ -75,7 +75,7 @@ export async function applyPostProcessors(text, context = {}) {
 
   // 统一恢复 HTML 占位符（如果需要）
   if (context.tagMap?.size && current.includes('__PROTECTED_')) {
-    const { restoreHtmlTags } = await import('./chunking.server.js');
+    const { restoreHtmlTags } = await import('./html-handler.server.js');
     current = restoreHtmlTags(current, context.tagMap);
   }
 

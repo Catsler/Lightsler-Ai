@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-
-process.env.LOGGING_RETENTION_DAYS = '{"INFO":7}';
-process.env.ENCRYPTION_KEY = 'test-key-must-be-at-least-32-chars-long-for-security';
 import {
   sanitizeHtml,
   isThemeJson,
   sanitizeTranslationValue
 } from '../../app/utils/html-sanitizer.server.js';
+
+process.env.LOGGING_RETENTION_DAYS = '{"INFO":7}';
+process.env.ENCRYPTION_KEY = 'test-key-must-be-at-least-32-chars-long-for-security';
 
 describe('HTML Sanitizer', () => {
   describe('XSS 防护', () => {

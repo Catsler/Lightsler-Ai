@@ -196,3 +196,30 @@ test('createApiRoute surfaces pre-timeout errors without reference failures', as
   assert.equal(window1m.sampleSize, 1);
   assert.equal(window1m.statusCounts['500'], 1);
 });
+
+test('createApiRoute passes through Response without re-wrapping (headers/status/body preserved)', async () => {
+  resetApiMonitor();
+
+  const route = createApiRoute(
+    async () => new Response(JSON.stringify({ ok: true }), {
+      status: 201,
+      headers: { 'x-test-header': 'keep-me' }
+    }),
+    { requireAuth: false, operationName: '测试-透传' }
+  );
+
+  const request = buildRequest('https://example.com/api/example', { method: 'GET' });
+  const response = await route({ request, params: noopRouteParams });
+
+  assert.equal(response.status, 201);
+  assert.equal(response.headers.get('x-test-header'), 'keep-me');
+  const payload = await response.json();
+  assert.deepEqual(payload, { ok: true });
+
+  const metrics = getApiMetrics({ operation: '/api/example' });
+  assert.ok(metrics);
+  assert.equal(metrics.totals.total, 1);
+  assert.equal(metrics.totals.success, 1);
+  const window1m = metrics.windows['1m'];
+  assert.equal(window1m.statusCounts['201'], 1);
+});

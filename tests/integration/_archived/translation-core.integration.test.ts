@@ -16,8 +16,8 @@ vi.mock('../../app/services/translation/api-client.server.js', () => {
   return {
     createInMemoryCache: vi.fn(() => ({
       get: () => null,
-      set: () => {},
-      clear: () => {}
+      set: () => { },
+      clear: () => { }
     })),
     createRequestDeduplicator: vi.fn(() => ({
       run: (_key: string, factory: () => Promise<any>) => factory()
@@ -56,7 +56,7 @@ vi.mock('../../app/services/quality-error-analyzer.server.js', () => ({
 }));
 
 vi.mock('../../app/services/error-collector.server.js', () => ({
-  collectError: vi.fn(async () => {}),
+  collectError: vi.fn(async () => { }),
   ERROR_TYPES: {
     TRANSLATION: 'TRANSLATION'
   }
@@ -92,7 +92,7 @@ vi.mock('../../app/services/theme-translation.server.js', () => ({
 }));
 
 const {
-  translateTextEnhanced,
+  translateText,
   getPlaceholderErrorStats
 } = await import('../../app/services/translation/core.server.js');
 
@@ -104,7 +104,7 @@ describe('translation-core integration', () => {
   it('returns translated text when API succeeds', async () => {
     translationResponses.push({ success: true, text: '你好，世界', meta: { duration: 42 } });
 
-    const result = await translateTextEnhanced('Hello world', 'zh-CN');
+    const result = await translateText('Hello world', 'zh-CN');
 
     expect(result.success).toBe(true);
     expect(result.text).toBe('你好，世界');
@@ -116,7 +116,7 @@ describe('translation-core integration', () => {
   it('falls back when API outputs placeholder token', async () => {
     translationResponses.push({ success: true, text: '__PROTECTED_FAKE__', meta: { duration: 5 } });
 
-    const result = await translateTextEnhanced('Config_KEY_NAME', 'zh-CN');
+    const result = await translateText('Config_KEY_NAME', 'zh-CN');
 
     expect(result.success).toBe(true);
     expect(result.isOriginal).toBe(true);

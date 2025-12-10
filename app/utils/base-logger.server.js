@@ -71,6 +71,7 @@ function safeParseRetentionConfig(raw) {
   } catch (error) {
     if (!quiet && !retentionParseNotified) {
       // 用 console 避免依赖 logger 尚未初始化
+      // eslint-disable-next-line no-console
       console.warn(`[Logger] LOGGING_RETENTION_DAYS 配置解析失败: ${error.message}`);
       retentionParseNotified = true;
     }

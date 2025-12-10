@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "remix vite:build",
-    "test": "npm run test:api-contracts",
+    "test": "npm run test:api-contracts && npm run test:services",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
@@ -22,7 +22,8 @@
     "check": "npm run check:lint && npm run check:build",
     "check:lint": "eslint --cache --cache-location ./node_modules/.cache/eslint . --max-warnings=190",
     "check:build": "npm run build",
-    "test:api-contracts": "node --test --experimental-test-module-mocks \"tests/api/**/*.test.js\" \"tests/services/**/*.test.js\"",
+    "test:api-contracts": "node --test --experimental-test-module-mocks \"tests/api/**/*.test.js\"",
+    "test:services": "vitest run tests/services",
     "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
@@ -45,7 +46,7 @@
     "@shopify/shopify-app-remix": "^3.7.0",
     "@shopify/shopify-app-session-storage-prisma": "^6.0.0",
     "bull": "^4.16.5",
-    "dotenv": "^17.2.1",
+    "dotenv": "^17.2.3",
     "i18next": "^23.16.8",
     "i18next-browser-languagedetector": "^7.2.2",
     "i18next-fs-backend": "^2.6.1",
@@ -71,11 +72,13 @@
     "@types/node": "^22.2.0",
     "@types/react": "^18.2.31",
     "@types/react-dom": "^18.2.14",
+    "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
     "typescript": "^5.2.2",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "vitest": "^1.6.0"
   },
   "workspaces": [
     "extensions/*"
