@@ -35,6 +35,11 @@ const shopify = shopifyApp({
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks/shop/redact",
     },
+    // Billing lifecycle: keep local subscription status in sync
+    APP_SUBSCRIPTIONS_UPDATE: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/app_subscriptions/update",
+    },
   },
   hooks: {
     afterAuth: async ({ session }) => {

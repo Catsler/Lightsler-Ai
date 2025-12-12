@@ -75,7 +75,7 @@ if (typeof window !== 'undefined') {
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const [plans, subscription, credits, activeLanguagesCount] = await Promise.all([
+  let [plans, subscription, credits, activeLanguagesCount] = await Promise.all([
     subscriptionManager.listActivePlans(),
     subscriptionManager.getSubscription(session.shop),
     creditManager.getAvailableCredits(session.shop).catch(() => null),
@@ -87,6 +87,24 @@ export const loader = async ({ request }) => {
       }
     })
   ]);
+
+  // If local subscription is missing or not active, refresh from Shopify to avoid stale paywall
+  if (!subscription || subscription.status !== 'active') {
+    try {
+      const synced = await subscriptionManager.syncSubscriptionFromShopify({
+        admin,
+        shopId: session.shop
+      });
+      if (synced) {
+        subscription = synced;
+      }
+    } catch (error) {
+      logger.warn('[Index Loader] Failed to sync subscription from Shopify', {
+        shopId: session.shop,
+        error: error?.message || error
+      });
+    }
+  }
 
   // 从 Shopify 读取店铺语言，区分默认语言与目标语言
   let shopLocales = [];

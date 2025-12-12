@@ -1,7 +1,7 @@
 import { translateResource, getTranslationStats } from "../services/translation.server.js";
 import { getRecentLogSummaries } from "../utils/logger.server.js";
 import { clearTranslationCache } from "../services/memory-cache.server.js";
-import { getOrCreateShop, saveTranslation, updateResourceStatus, getAllResources } from "../services/database.server.js";
+import { getOrCreateShop, saveTranslation, updateResourceStatus } from "../services/database.server.js";
 import { createApiRoute } from "../utils/base-route.server.js";
 import { getLocalizedErrorMessage } from "../utils/error-messages.server.js";
 import { getLinkConversionConfig } from "../services/market-urls.server.js";
@@ -84,50 +84,122 @@ async function handleTranslate({ request, admin, session }) {
       }
     }
     
-    // Fetch all resources
-    const allResources = await getAllResources(shop.id);
-    
     // Filter resources to translate - IDs required
     if (resourceIds.length === 0) {
       throw new Error('Please select resources to translate; cannot be empty');
     }
-    
-    const resourcesToTranslate = allResources.filter(r => resourceIds.includes(r.id));
+
+    const normalizedResourceIds = resourceIds.map((id) => String(id));
+
+    const resourcesToTranslate = await prisma.resource.findMany({
+      where: {
+        shopId: shop.id,
+        id: { in: normalizedResourceIds }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
     const OPTION_RESOURCE_TYPES = new Set(['PRODUCT_OPTION', 'product_option', 'PRODUCT_OPTION_VALUE', 'product_option_value']);
     const METAFIELD_RESOURCE_TYPES = new Set(['PRODUCT_METAFIELD', 'product_metafield']);
 
-    const collectRelatedResourceIds = (product) => {
-      if (!product || product.resourceType !== 'PRODUCT') {
+    const resolveProductIdentifiers = (product) => {
+      if (!product) return { stableId: '', stableGid: null };
+
+      const numericId = product.resourceId || product.originalResourceId;
+      let gid = typeof product.gid === 'string' ? product.gid : null;
+
+      let extractedId = numericId;
+      if (!extractedId && gid && gid.includes('/')) {
+        const parts = gid.split('/');
+        extractedId = parts[parts.length - 1];
+      }
+
+      const stableId = extractedId ? String(extractedId) : '';
+      const stableGid = gid || (stableId ? `gid://shopify/Product/${stableId}` : null);
+
+      return { stableId, stableGid };
+    };
+
+    const collectRelatedResourceIds = async (product) => {
+      if (!product || String(product.resourceType || '').toUpperCase() !== 'PRODUCT') {
         return [];
       }
 
-      const productId = product.id || '';
-      const productResourceId = product.resourceId || '';
-      const productGid = product.gid || '';
+      const { stableId, stableGid } = resolveProductIdentifiers(product);
+      const relatedTypes = [
+        'PRODUCT_OPTION',
+        'product_option',
+        'PRODUCT_OPTION_VALUE',
+        'product_option_value',
+        'PRODUCT_METAFIELD',
+        'product_metafield'
+      ];
 
-      return allResources
-        .filter((candidate) => {
-          const candidateType = candidate.resourceType || '';
-          if (!OPTION_RESOURCE_TYPES.has(candidateType) && !METAFIELD_RESOURCE_TYPES.has(candidateType)) {
-            return false;
+      const candidateIds = Array.from(
+        new Set([stableId, product.resourceId, product.originalResourceId].filter(Boolean).map(String))
+      );
+
+      const buildFilters = (includeContent = true) => {
+        const filters = [];
+
+        for (const idValue of candidateIds) {
+          filters.push({ resourceId: { startsWith: `${idValue}-` } });
+          filters.push({ resourceId: { endsWith: `-${idValue}` } });
+        }
+
+        if (includeContent) {
+          if (stableId) {
+            filters.push({
+              contentFields: {
+                path: '$.productId',
+                equals: stableId
+              }
+            });
+            filters.push({
+              contentFields: {
+                path: '$.parentProductId',
+                equals: stableId
+              }
+            });
           }
+          if (stableGid) {
+            filters.push({
+              contentFields: {
+                path: '$.productGid',
+                equals: stableGid
+              }
+            });
+          }
+        }
 
-          const candidateResourceId = candidate.resourceId || '';
-          const contentFields = candidate.contentFields || {};
+        return filters;
+      };
 
-          const matchesByResourceId =
-            (productId && (candidateResourceId.startsWith(`${productId}-`) || candidateResourceId.endsWith(`-${productId}`))) ||
-            (productResourceId && candidateResourceId.startsWith(`${productResourceId}-`));
+      const queryRelated = async (filters) => {
+        const whereClause = {
+          shopId: product.shopId || shop.id,
+          resourceType: { in: relatedTypes }
+        };
+        if (filters.length > 0) {
+          whereClause.OR = filters;
+        }
 
-          const matchesByContent =
-            (contentFields.productId && contentFields.productId === productId) ||
-            (contentFields.productGid && contentFields.productGid === productGid) ||
-            (contentFields.parentProductId && contentFields.parentProductId === productId);
+        const related = await prisma.resource.findMany({
+          where: whereClause,
+          select: { id: true }
+        });
+        return related.map((r) => r.id);
+      };
 
-          return matchesByResourceId || matchesByContent;
-        })
-        .map((candidate) => candidate.id);
+      try {
+        return await queryRelated(buildFilters(true));
+      } catch (error) {
+        console.warn('[TRANSLATION] Related resource lookup with JSON filters failed, falling back to id patterns', {
+          productId: product.id,
+          error: error?.message || error
+        });
+        return queryRelated(buildFilters(false));
+      }
     };
 
     const clearedResourceIds = new Set();
@@ -196,7 +268,7 @@ async function handleTranslate({ request, admin, session }) {
         const targetIds = [resource.id];
 
         if (resource.resourceType === 'PRODUCT') {
-          const relatedIds = collectRelatedResourceIds(resource);
+          const relatedIds = await collectRelatedResourceIds(resource);
           targetIds.push(...relatedIds);
         }
 

@@ -34,7 +34,7 @@ import { useSafeAppBridge } from "../hooks/useSafeAppBridge";
 import { PRICING_CONFIG, formatCompactNumber, ULTRA_PLANS, getEffectivePlan } from "../utils/pricing-config.js";
 
 export async function loader({ request }) {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   let subscription = null;
   let shop = null;
@@ -69,6 +69,23 @@ export async function loader({ request }) {
         }
       })
     ]);
+  }
+
+  if (!subscription || subscription.status !== 'active') {
+    try {
+      const synced = await subscriptionManager.syncSubscriptionFromShopify({
+        admin,
+        shopId: session.shop
+      });
+      if (synced) {
+        subscription = synced;
+      }
+    } catch (error) {
+      console.warn('[Billing Loader] Failed to sync subscription from Shopify', {
+        shopId: session.shop,
+        error: error?.message || error
+      });
+    }
   }
 
   let credits = null;
